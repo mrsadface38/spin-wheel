@@ -4172,29 +4172,38 @@ function updateGroupSfxPresetUI() {
 /**
  * Load reverse slide-off buffer for the current preset (or custom file).
  * Synth preset has no buffer (uses playSlipperySlide).
+ * Each preset uses its own buffer key so switching never plays a stale sample.
+ * @param {string|null} [bufferKey] force a key; default from current preset
+ * @param {boolean} [forceReload] re-fetch even if already buffered
  * @returns {Promise<boolean>} true if a sample buffer is ready
  */
-async function ensureReverseSlideSfxBuffer(bufferKey = "rig_reverse_slide") {
+async function ensureReverseSlideSfxBuffer(bufferKey = null, forceReload = false) {
   const sec = ensureSecretState();
   const preset = getReverseSlideSfxPreset();
+  const key = bufferKey || reverseSlideBufferKey(preset);
+  if (!key) return false;
   try {
-    if (preset === "custom" && sec.reverseSlideSfxData) {
-      await audio.loadDataUrl(bufferKey, sec.reverseSlideSfxData);
+    if (forceReload) audio.buffers.delete(key);
+
+    if (preset === "custom") {
+      if (!sec.reverseSlideSfxData) return false;
+      if (!forceReload && audio.buffers.has(key)) return true;
+      await audio.loadDataUrl(key, sec.reverseSlideSfxData);
       return true;
     }
-    if (preset === "synth" || preset === "custom") {
-      audio.buffers.delete(bufferKey);
+    if (preset === "synth") {
       return false;
     }
-    const meta = REVERSE_SLIDE_PRESETS[preset] || REVERSE_SLIDE_PRESETS["goofy-slip"];
-    if (!meta?.url) {
-      audio.buffers.delete(bufferKey);
-      return false;
-    }
-    await audio.loadUrl(bufferKey, meta.url);
+    const meta =
+      REVERSE_SLIDE_PRESETS[preset] || REVERSE_SLIDE_PRESETS["goofy-slip"];
+    if (!meta?.url) return false;
+    if (!forceReload && audio.buffers.has(key)) return true;
+    // Cache-bust so GH Pages / browsers don't reuse a wrong asset
+    const url = `${meta.url}${meta.url.includes("?") ? "&" : "?"}v=${APP_UPDATE}`;
+    await audio.loadUrl(key, url);
     return true;
   } catch (err) {
-    console.warn("Reverse slide SFX load failed:", err);
+    console.warn("Reverse slide SFX load failed:", err, { preset, key });
     return false;
   }
 }
@@ -4224,20 +4233,26 @@ function playReverseSlideSfx() {
     Math.max(0, Number(sec.reverseSlideSfxVolume) || 0.4)
   );
   audio.ensure();
+  // Always re-read preset from state (and live select) at play time
   const preset = getReverseSlideSfxPreset();
+  sec.reverseSlideSfxPreset = preset;
   if (preset === "synth") {
     audio.playSlipperySlide(vol);
     return;
   }
-  const playBuf = () => audio.playDivert("rig_reverse_slide", vol);
-  if (audio.buffers.has("rig_reverse_slide")) {
-    playBuf();
-    return;
-  }
-  ensureReverseSlideSfxBuffer("rig_reverse_slide")
+  const key = reverseSlideBufferKey(preset);
+  const playBuf = () => {
+    if (audio.buffers.has(key)) {
+      audio.playDivert(key, vol);
+      return true;
+    }
+    return false;
+  };
+  if (playBuf()) return;
+  ensureReverseSlideSfxBuffer(key, true)
     .then((ok) => {
-      if (ok) playBuf();
-      else audio.playSlipperySlide(vol);
+      if (ok && playBuf()) return;
+      audio.playSlipperySlide(vol);
     })
     .catch(() => audio.playSlipperySlide(vol));
 }
@@ -4514,23 +4529,52 @@ $("#secret-reverse-slide-speed")?.addEventListener("input", () => {
   }
   persist();
 });
+async function previewReverseSlideSfxNow() {
+  audio.ensure();
+  const sec = ensureSecretState();
+  const vol = Math.min(
+    1,
+    Math.max(0, Number(sec.reverseSlideSfxVolume) || 0.4)
+  );
+  // Stop anything currently previewing so the new pick is obvious
+  if (audio.isPreviewPlaying) audio.stopPreview();
+  audio.stopDivert?.();
+
+  const preset = getReverseSlideSfxPreset();
+  sec.reverseSlideSfxPreset = preset;
+  if (preset === "synth") {
+    audio.playSlipperySlide(vol, true);
+    return;
+  }
+  const key = reverseSlideBufferKey(preset);
+  const ok = await ensureReverseSlideSfxBuffer(key, true);
+  if (ok && audio.buffers.has(key)) {
+    audio.playOneShot(key, vol, "land", true);
+    return;
+  }
+  audio.playSlipperySlide(vol, true);
+}
+
 $("#secret-reverse-slide-sfx-preset")?.addEventListener("change", async () => {
   const sec = ensureSecretState();
   let v = $("#secret-reverse-slide-sfx-preset")?.value;
   if (v === "default") v = "goofy-slip";
   if (!v || !REVERSE_SLIDE_PRESET_IDS.has(v)) v = "goofy-slip";
   sec.reverseSlideSfxPreset = v;
-  if (v !== "custom") {
-    // Keep custom file in storage only while Custom is selected
-    // (don't wipe data so switching back can reuse it)
-  }
-  if (v === "custom" && !sec.reverseSlideSfxData) {
-    $("#secret-reverse-slide-sfx-input")?.click();
-  }
-  audio.buffers?.delete?.("rig_reverse_slide");
-  await ensureReverseSlideSfxBuffer("rig_reverse_slide");
-  updateReverseSlideSfxPresetUI();
+  // Write through immediately so spin / preview never read a stale preset
   persist();
+  if (v === "custom" && !sec.reverseSlideSfxData) {
+    updateReverseSlideSfxPresetUI();
+    $("#secret-reverse-slide-sfx-input")?.click();
+    return;
+  }
+  updateReverseSlideSfxPresetUI();
+  // Force reload + auto-preview so changing the dropdown is audible
+  try {
+    await previewReverseSlideSfxNow();
+  } catch (err) {
+    console.warn("Reverse slide preview failed:", err);
+  }
 });
 $("#secret-reverse-slide-sfx-input")?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
@@ -4540,26 +4584,28 @@ $("#secret-reverse-slide-sfx-input")?.addEventListener("change", async (e) => {
       ensureSecretState().reverseSlideSfxPreset = "goofy-slip";
     }
     updateReverseSlideSfxPresetUI();
+    persist();
     return;
   }
   const sec = ensureSecretState();
   sec.reverseSlideSfxPreset = "custom";
   sec.reverseSlideSfxData = await fileToDataUrl(file);
   sec.reverseSlideSfxName = file.name;
-  audio.buffers?.delete?.("rig_reverse_slide");
-  await ensureReverseSlideSfxBuffer("rig_reverse_slide");
+  audio.buffers.delete(reverseSlideBufferKey("custom"));
+  await ensureReverseSlideSfxBuffer(reverseSlideBufferKey("custom"), true);
   updateReverseSlideSfxPresetUI();
   persist();
+  await previewReverseSlideSfxNow();
 });
 $("#secret-reverse-slide-sfx-clear")?.addEventListener("click", async () => {
   const sec = ensureSecretState();
   sec.reverseSlideSfxPreset = "goofy-slip";
   sec.reverseSlideSfxData = null;
   sec.reverseSlideSfxName = null;
-  audio.buffers?.delete?.("rig_reverse_slide");
-  await ensureReverseSlideSfxBuffer("rig_reverse_slide");
+  audio.buffers.delete(reverseSlideBufferKey("custom"));
   updateReverseSlideSfxPresetUI();
   persist();
+  await previewReverseSlideSfxNow();
 });
 $("#secret-reverse-slide-sfx-volume")?.addEventListener("input", () => {
   const vol = Math.min(
@@ -4578,28 +4624,7 @@ $("#secret-reverse-slide-sfx-preview")?.addEventListener("click", async () => {
     audio.stopPreview();
     return;
   }
-  const sec = ensureSecretState();
-  const vol = Math.min(
-    1,
-    Math.max(0, Number(sec.reverseSlideSfxVolume) || 0.4)
-  );
-  const preset = getReverseSlideSfxPreset();
-  if (preset === "synth") {
-    audio.togglePreview("reverse_slide", () => {
-      audio.playSlipperySlide(vol, true);
-    });
-    return;
-  }
-  const ok = await ensureReverseSlideSfxBuffer("preview_rig_reverse_slide");
-  if (!ok || audio.isPreviewPlaying) {
-    audio.togglePreview("reverse_slide", () => {
-      audio.playSlipperySlide(vol, true);
-    });
-    return;
-  }
-  audio.togglePreview("reverse_slide", () => {
-    audio.playOneShot("preview_rig_reverse_slide", vol, "land", true);
-  });
+  await previewReverseSlideSfxNow();
 });
 
 async function hideWinnerPart() {
