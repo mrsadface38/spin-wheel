@@ -765,9 +765,9 @@ export class Wheel {
   }
 
   /**
-   * Labels sit near the outer circumference (where the arc is widest) so type
-   * can be as large as possible. Text runs along the arc; full string always
-   * drawn (scaled to fit) — never ellipsized.
+   * Labels hug the outer rim (widest arc) and scale as large as the slice
+   * allows. Text runs along the arc, hangs inward from the rim — full string,
+   * never ellipsized.
    * @param {boolean} spinFrame lighter text (no shadow) while spinning
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
@@ -778,19 +778,21 @@ export class Wheel {
 
     const solid = asSolidDisc || sl.span >= Math.PI * 2 - 1e-4;
     const dpr = this._dpr || 1;
-    const weight = solid ? 700 : 700;
+    const weight = 700;
+    // Fixed measure size; we scale freely (can be >> 1 for short names)
+    const baseFont = 64;
 
-    // Single full-disc section: large label near the top of the rim
+    // Single full-disc section: large label on the outer rim
     if (solid) {
       ctx.save();
-      const rText = radius * 0.78;
-      const arcLen = radius * 1.6;
-      const maxH = radius * 0.2;
-      const baseFont = Math.max(12 * dpr, radius * 0.09);
+      const rimPad = 8 * dpr;
+      const rText = radius - rimPad;
+      const arcLen = radius * 1.8;
+      const maxH = radius * 0.28;
       ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
       const tw = Math.max(1, ctx.measureText(label).width);
-      const s = Math.min(arcLen / tw, maxH / baseFont, (radius * 0.12) / baseFont);
-      ctx.translate(0, -rText);
+      const s = Math.min(arcLen / tw, maxH / baseFont);
+      ctx.translate(0, -(rText - (baseFont * s) / 2));
       ctx.scale(s, s);
       ctx.fillStyle = this.look.textColor || "#fff";
       ctx.textAlign = "center";
@@ -804,40 +806,38 @@ export class Wheel {
       return;
     }
 
-    // Just inside the rim — max arc length → biggest readable type
-    const rText = radius * 0.88;
-    const arcLen = Math.max(6 * dpr, rText * sl.span * 0.9);
-    // Glyphs may grow inward from the rim (taller type)
-    const maxInward = radius * 0.36;
-    // Cap so short names on big slices don't get cartoon-huge
-    const maxFontPx = radius * 0.11;
+    // Sit just inside the outer border / pegs
+    const rimPad = Math.max(5 * dpr, radius * 0.018);
+    const rRim = radius - rimPad;
+    // Use nearly the full outer arc so type can get big
+    const arcLen = Math.max(4 * dpr, rRim * sl.span * 0.94);
+    // Grow inward from the rim (tall type when the slice is wide enough)
+    const maxInward = radius * 0.32;
+    // Absolute ceiling so a 2-slice wheel doesn't eat the whole disc
+    const maxFontPx = radius * 0.2;
 
     ctx.save();
-    // +x = radial out along slice mid
     ctx.rotate(mid);
-    ctx.translate(rText, 0);
+    // Anchor on the rim
+    ctx.translate(rRim, 0);
 
-    // Run text along the arc (tangential). Flip on the left half so it isn't upside-down.
+    // Text along the arc. Flip on left half so it isn't upside-down.
     let a = mid % (Math.PI * 2);
     if (a < 0) a += Math.PI * 2;
     const flip = a > Math.PI / 2 && a < (Math.PI * 3) / 2;
     ctx.rotate(flip ? Math.PI / 2 : -Math.PI / 2);
-    // Nudge slightly toward the hub so text clears border/pegs
-    // flip=false (−90°): +y is radial in → positive y = inward
-    // flip=true  (+90°): +y is radial out → negative y = inward
-    const inset = 3 * dpr;
-    ctx.translate(0, flip ? inset : -inset);
+    // After rot: flip=false → +y = radial IN; flip=true → +y = radial OUT
+    // Stick the outer edge of the glyphs to the rim; grow inward.
+    ctx.textAlign = "center";
+    ctx.textBaseline = flip ? "bottom" : "top";
 
-    // Start from a large base size, then scale up/down to fill the arc
-    const baseFont = Math.max(10 * dpr, maxFontPx);
     ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
     const tw = Math.max(1, ctx.measureText(label).width);
     const th = baseFont;
-    // As large as the outer arc and inward depth allow (may be > 1 for short names)
+    // Scale UP when there's room (short name / wide slice) — no s≤1 cap
     let s = Math.min(arcLen / tw, maxInward / th, maxFontPx / baseFont);
-    // Keep a tiny floor so crowded wheels still show the full name
-    if (s < 0.08) s = 0.08;
-    // If still wider than the arc at floor, squash X only so every letter draws
+    if (!Number.isFinite(s) || s <= 0) s = 0.05;
+    // Never drop letters: if still too wide, squash X only
     let sx = s;
     let sy = s;
     if (tw * sx > arcLen) sx = arcLen / tw;
@@ -845,11 +845,9 @@ export class Wheel {
 
     ctx.scale(sx, sy);
     ctx.fillStyle = this.look.textColor || "#fff";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
     if (!spinFrame) {
       ctx.shadowColor = "rgba(0,0,0,0.85)";
-      ctx.shadowBlur = Math.max(2, 3.5 * dpr / Math.max(sy, 0.15));
+      ctx.shadowBlur = Math.max(2, 3.5 * dpr / Math.max(sy, 0.12));
     }
     ctx.fillText(label, 0, 0);
     ctx.restore();
