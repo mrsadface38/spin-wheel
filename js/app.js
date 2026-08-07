@@ -1699,7 +1699,10 @@ function fillGroupProfileForm(group) {
   setGroupProfileSliderLabels();
   updateGroupImageModeUI();
   if ($("#group-preview-weight-mode")) {
-    $("#group-preview-weight-mode").value = "current";
+    $("#group-preview-weight-mode").value = "custom";
+  }
+  if ($("#group-preview-custom-weight")) {
+    $("#group-preview-custom-weight").value = "100";
   }
   updateGroupPreviewWeightUI();
 }

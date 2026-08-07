@@ -463,15 +463,15 @@
             <label class="field">
               <span>Preview slice size</span>
               <select id="preview-weight-mode">
+                <option value="custom" selected>Custom % of wheel</option>
                 <option value="current">At current weight</option>
-                <option value="custom">Custom % of wheel</option>
               </select>
             </label>
-            <label class="field" id="preview-custom-weight-field" hidden>
+            <label class="field" id="preview-custom-weight-field">
               <span>Custom size</span>
               <div class="slider-with-value">
-                <input type="range" id="preview-custom-weight" min="1" max="100" step="1" value="50" />
-                <span id="preview-custom-weight-label" class="slider-value">50%</span>
+                <input type="range" id="preview-custom-weight" min="1" max="100" step="1" value="100" />
+                <span id="preview-custom-weight-label" class="slider-value">100%</span>
               </div>
               <small>Preview only — % of the full wheel (100% = entire circle). Does not change real weight.</small>
             </label>
