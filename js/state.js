@@ -338,6 +338,10 @@ function migrate(data) {
   if (!data || typeof data !== "object") return base;
   const wasOldSave = !data.look || data.look.resultStyle == null;
   const look = { ...base.look, ...(data.look || {}) };
+  // Older saves: winner text color falls back to wheel text color
+  if (look.winnerTextColor == null || look.winnerTextColor === "") {
+    look.winnerTextColor = look.textColor || base.look.winnerTextColor;
+  }
   const spin = { ...base.spin, ...(data.spin || {}) };
   if (wasOldSave) {
     if (data.spin?.duration == null || data.spin.duration <= 5) {

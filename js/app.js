@@ -3473,6 +3473,9 @@ async function onLookChange() {
   state.look.centerSize = Number($("#center-size").value);
   state.look.borderColor = $("#border-color").value;
   state.look.textColor = $("#text-color").value;
+  if ($("#winner-text-color")) {
+    state.look.winnerTextColor = $("#winner-text-color").value;
+  }
   state.look.showLabels = $("#chk-show-labels").checked;
   state.look.showImages = $("#chk-show-images").checked;
   state.look.resultStyle = $("#result-style").value === "banner" ? "banner" : "center";
@@ -3505,7 +3508,7 @@ async function onLookChange() {
   renderSections();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "chk-show-labels", "chk-show-images", "result-style", "winner-label", "chk-allow-winner-remove", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "result-style", "winner-label", "chk-allow-winner-remove", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
