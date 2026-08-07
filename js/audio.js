@@ -86,8 +86,9 @@ export class AudioManager {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "square";
-    osc.frequency.setValueAtTime(880 * pitchScale, t);
-    osc.frequency.exponentialRampToValueAtTime(440 * pitchScale, t + 0.04);
+    // Lower default pitch (was 880→440 Hz)
+    osc.frequency.setValueAtTime(480 * pitchScale, t);
+    osc.frequency.exponentialRampToValueAtTime(240 * pitchScale, t + 0.04);
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, volume * 0.35), t + 0.005);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
