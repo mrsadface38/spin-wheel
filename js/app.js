@@ -620,6 +620,17 @@ function stopBgmAfterSpin() {
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     if (tab.hidden || tab.classList.contains("hidden")) return;
+    // Persist Secret form before leaving so reverse-group settings aren't lost
+    if (
+      isSecretTabActive() &&
+      tab.dataset.tab !== "secret"
+    ) {
+      try {
+        saveSecretPanel();
+      } catch {
+        /* ignore */
+      }
+    }
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
     tab.classList.add("active");
@@ -637,6 +648,11 @@ document.querySelectorAll(".tab").forEach((tab) => {
       if ($("#secret-reverse-rig-it")) {
         $("#secret-reverse-rig-it").checked = !!sec.reverseRigIt;
       }
+      if ($("#secret-reverse-target-kind")) {
+        $("#secret-reverse-target-kind").value =
+          sec.reverseTargetKind === "group" ? "group" : "section";
+      }
+      updateSecretReverseTargetFields();
       bindSecretDivertSfxUI();
       bindSecretReverseUI();
     }
@@ -3392,63 +3408,75 @@ function ensureSecretState() {
   return state.secret;
 }
 
+/** True when the Secret tab is the active side panel (safe to trust live form fields). */
+function isSecretTabActive() {
+  return !!$("#tab-secret")?.classList.contains("active");
+}
+
 function getRigTargetKind() {
   const s = ensureSecretState();
-  const live = $("#secret-rig-target-kind")?.value;
-  if (live === "group" || live === "section") return live;
+  if (isSecretTabActive()) {
+    const live = $("#secret-rig-target-kind")?.value;
+    if (live === "group" || live === "section") return live;
+  }
   return s.rigTargetKind === "group" ? "group" : "section";
 }
 
 function getReverseTargetKind() {
   const s = ensureSecretState();
-  const live = $("#secret-reverse-target-kind")?.value;
-  if (live === "group" || live === "section") return live;
+  if (isSecretTabActive()) {
+    const live = $("#secret-reverse-target-kind")?.value;
+    if (live === "group" || live === "section") return live;
+  }
   return s.reverseTargetKind === "group" ? "group" : "section";
 }
 
 /** @returns {"reverse-first"|"rig-first"} */
 function getSecretComboOrder() {
   const s = ensureSecretState();
-  // Live dropdown first (user may have just changed it)
-  const live = $("#secret-combo-order")?.value;
-  if (live === "rig-first" || live === "reverse-first") {
-    s.comboOrder = live;
-    return live;
+  if (isSecretTabActive()) {
+    const live = $("#secret-combo-order")?.value;
+    if (live === "rig-first" || live === "reverse-first") {
+      s.comboOrder = live;
+      return live;
+    }
   }
   return s.comboOrder === "rig-first" ? "rig-first" : "reverse-first";
 }
 
 function isRigItActive() {
   const s = ensureSecretState();
-  const rigOn =
-    $("#secret-rig-it") != null
-      ? $("#secret-rig-it").checked === true
-      : !!s.rigIt;
+  const rigOn = isSecretTabActive()
+    ? $("#secret-rig-it")?.checked === true
+    : !!s.rigIt;
   if (!rigOn) return false;
   if (getRigTargetKind() === "group") {
-    const gid =
-      $("#secret-rig-group")?.value || s.targetGroupId || null;
+    const gid = isSecretTabActive()
+      ? $("#secret-rig-group")?.value || s.targetGroupId || null
+      : s.targetGroupId || null;
     return !!(gid && state.groups.some((g) => g.id === gid));
   }
-  const id =
-    $("#secret-rig-section")?.value || s.targetSectionId || null;
+  const id = isSecretTabActive()
+    ? $("#secret-rig-section")?.value || s.targetSectionId || null
+    : s.targetSectionId || null;
   return !!(id && state.sections.some((sec) => sec.id === id));
 }
 
 function isReverseRigActive() {
   const s = ensureSecretState();
-  const revOn =
-    $("#secret-reverse-rig-it") != null
-      ? $("#secret-reverse-rig-it").checked === true
-      : !!s.reverseRigIt;
+  const revOn = isSecretTabActive()
+    ? $("#secret-reverse-rig-it")?.checked === true
+    : !!s.reverseRigIt;
   if (!revOn) return false;
   if (getReverseTargetKind() === "group") {
-    const gid =
-      $("#secret-reverse-group")?.value || s.reverseTargetGroupId || null;
+    const gid = isSecretTabActive()
+      ? $("#secret-reverse-group")?.value || s.reverseTargetGroupId || null
+      : s.reverseTargetGroupId || null;
     return !!(gid && state.groups.some((g) => g.id === gid));
   }
-  const id =
-    $("#secret-reverse-section")?.value || s.reverseTargetSectionId || null;
+  const id = isSecretTabActive()
+    ? $("#secret-reverse-section")?.value || s.reverseTargetSectionId || null
+    : s.reverseTargetSectionId || null;
   return !!(id && state.sections.some((sec) => sec.id === id));
 }
 
@@ -3464,12 +3492,11 @@ function getRigForceSectionId() {
   if (!active.length) return null;
 
   if (getRigTargetKind() === "group") {
-    const gid =
-      $("#secret-rig-group")?.value || s.targetGroupId || null;
+    const gid = isSecretTabActive()
+      ? $("#secret-rig-group")?.value || s.targetGroupId || null
+      : s.targetGroupId || null;
     if (!gid) return null;
-    const pool = active.filter((sec) =>
-      getSectionGroupIds(sec).includes(gid)
-    );
+    const pool = active.filter((sec) => sectionInGroup(sec, gid));
     if (!pool.length) return null;
     // Weighted by section weight (same idea as natural pick)
     let total = 0;
@@ -3500,33 +3527,45 @@ function getReverseAvoidSectionIds() {
   if (!isReverseRigActive()) return [];
   const s = ensureSecretState();
   const kind = getReverseTargetKind();
-  // Use active-on-wheel sections so avoid set matches what the pointer can land on
+  // Sections currently eligible for the wheel (enabled + controlling group active)
   const active = getActiveSections(state);
+  const activeIdSet = new Set(active.map((sec) => sec.id));
+
   if (kind === "group") {
-    const gid =
-      $("#secret-reverse-group")?.value || s.reverseTargetGroupId || null;
+    const gid = isSecretTabActive()
+      ? $("#secret-reverse-group")?.value || s.reverseTargetGroupId || null
+      : s.reverseTargetGroupId || null;
     if (!gid) return [];
-    // Every section that belongs to this group and is currently on the wheel
-    const ids = active
+
+    // 1) Active-on-wheel members of this group
+    const fromActive = active
       .filter((sec) => sectionInGroup(sec, gid))
       .map((sec) => sec.id);
-    // Fallback: enabled members of the group even if activity edge-cases miss them
-    if (!ids.length) {
-      return state.sections
-        .filter(
-          (sec) =>
-            sec.enabled !== false &&
-            sectionInGroup(sec, gid) &&
-            isSectionActiveOnWheel(state, sec)
-        )
-        .map((sec) => sec.id);
-    }
+
+    // 2) Any section in the project that is in this group AND on the wheel
+    const fromAll = state.sections
+      .filter(
+        (sec) =>
+          sectionInGroup(sec, gid) &&
+          sec.enabled !== false &&
+          activeIdSet.has(sec.id)
+      )
+      .map((sec) => sec.id);
+
+    // 3) Display-resolved copies (same ids; keeps groupIds if present)
+    const fromDisplay = getDisplaySections(state)
+      .filter((sec) => sectionInGroup(sec, gid))
+      .map((sec) => sec.id);
+
+    const ids = [...new Set([...fromActive, ...fromAll, ...fromDisplay])];
     return ids;
   }
-  const id =
-    $("#secret-reverse-section")?.value || s.reverseTargetSectionId || null;
+
+  const id = isSecretTabActive()
+    ? $("#secret-reverse-section")?.value || s.reverseTargetSectionId || null
+    : s.reverseTargetSectionId || null;
   if (!id) return [];
-  if (!active.some((sec) => sec.id === id)) return [];
+  if (!activeIdSet.has(id)) return [];
   return [id];
 }
 
@@ -3535,9 +3574,9 @@ function getReverseAvoidGroupId() {
   if (!isReverseRigActive()) return null;
   if (getReverseTargetKind() !== "group") return null;
   const s = ensureSecretState();
-  return (
-    $("#secret-reverse-group")?.value || s.reverseTargetGroupId || null
-  );
+  return isSecretTabActive()
+    ? $("#secret-reverse-group")?.value || s.reverseTargetGroupId || null
+    : s.reverseTargetGroupId || null;
 }
 
 function setResultRiggedVisible(visible) {
@@ -4329,9 +4368,10 @@ function onReverseSteerStart() {
 }
 
 function getSpinRigOptions() {
-  // Always sync live secret form (combo order, rig/reverse targets) before a spin
+  // Only pull live form → state while Secret is open.
+  // Otherwise DOM defaults (kind=section, unchecked boxes) clobber saved reverse group.
   try {
-    if ($("#secret-combo-order") || $("#secret-rig-it") || $("#secret-reverse-rig-it")) {
+    if (isSecretTabActive()) {
       saveSecretPanel();
     }
   } catch {

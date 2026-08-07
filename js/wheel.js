@@ -1026,12 +1026,17 @@ export class Wheel {
       for (const sl of slices) {
         const sec = sl.section;
         if (!sec) continue;
-        const gids = Array.isArray(sec.groupIds)
-          ? sec.groupIds
-          : sec.groupId
-            ? [sec.groupId]
-            : [];
-        if (gids.includes(avoidGroupId)) {
+        let gids = [];
+        if (Array.isArray(sec.groupIds) && sec.groupIds.length) {
+          gids = sec.groupIds.filter(Boolean);
+        } else if (sec.groupId) {
+          gids = [sec.groupId];
+        }
+        // Also accept stringified match (defensive)
+        if (
+          gids.includes(avoidGroupId) ||
+          gids.some((id) => String(id) === String(avoidGroupId))
+        ) {
           avoidIds.add(sec.id);
         }
       }
