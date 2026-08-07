@@ -765,8 +765,9 @@ export class Wheel {
   }
 
   /**
-   * Full label along the slice radius (hub → rim). Never ellipsized.
-   * Scales uniformly so the entire string fits even with many thin slices.
+   * Labels sit near the outer circumference (where the arc is widest) so type
+   * can be as large as possible. Text runs along the arc; full string always
+   * drawn (scaled to fit) — never ellipsized.
    * @param {boolean} spinFrame lighter text (no shadow) while spinning
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
@@ -777,57 +778,79 @@ export class Wheel {
 
     const solid = asSolidDisc || sl.span >= Math.PI * 2 - 1e-4;
     const dpr = this._dpr || 1;
-    const hubSize = this.look.centerSize ?? 0.16;
-    // Start just outside the hub so the hub never covers the name
-    const startR = radius * (solid ? Math.max(0.18, hubSize + 0.04) : Math.max(0.22, hubSize + 0.06));
-    const endR = radius * 0.96;
-    const radialBudget = Math.max(8 * dpr, endR - startR);
-    // How tall the text may be across the wedge at mid radius
-    const midR = (startR + endR) / 2;
-    const tanBudget = solid
-      ? radius * 0.28
-      : Math.max(4 * dpr, midR * sl.span * 0.9);
+    const weight = solid ? 700 : 700;
+
+    // Single full-disc section: large label near the top of the rim
+    if (solid) {
+      ctx.save();
+      const rText = radius * 0.78;
+      const arcLen = radius * 1.6;
+      const maxH = radius * 0.2;
+      const baseFont = Math.max(12 * dpr, radius * 0.09);
+      ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
+      const tw = Math.max(1, ctx.measureText(label).width);
+      const s = Math.min(arcLen / tw, maxH / baseFont, (radius * 0.12) / baseFont);
+      ctx.translate(0, -rText);
+      ctx.scale(s, s);
+      ctx.fillStyle = this.look.textColor || "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      if (!spinFrame) {
+        ctx.shadowColor = "rgba(0,0,0,0.8)";
+        ctx.shadowBlur = 4 * dpr;
+      }
+      ctx.fillText(label, 0, 0);
+      ctx.restore();
+      return;
+    }
+
+    // Just inside the rim — max arc length → biggest readable type
+    const rText = radius * 0.88;
+    const arcLen = Math.max(6 * dpr, rText * sl.span * 0.9);
+    // Glyphs may grow inward from the rim (taller type)
+    const maxInward = radius * 0.36;
+    // Cap so short names on big slices don't get cartoon-huge
+    const maxFontPx = radius * 0.11;
 
     ctx.save();
-    // Local +x = outward along mid-angle; +y = across the wedge
-    ctx.rotate(solid ? 0 : mid);
-    ctx.translate(startR, 0);
+    // +x = radial out along slice mid
+    ctx.rotate(mid);
+    ctx.translate(rText, 0);
 
-    // Comfortable base size, then scale the whole string into the slot
-    const weight = solid ? 700 : 650;
-    const baseFont = Math.min(
-      solid ? 20 * dpr : 15 * dpr,
-      radius * 0.05,
-      Math.max(10 * dpr, tanBudget * 1.4)
-    );
+    // Run text along the arc (tangential). Flip on the left half so it isn't upside-down.
+    let a = mid % (Math.PI * 2);
+    if (a < 0) a += Math.PI * 2;
+    const flip = a > Math.PI / 2 && a < (Math.PI * 3) / 2;
+    ctx.rotate(flip ? Math.PI / 2 : -Math.PI / 2);
+    // Nudge slightly toward the hub so text clears border/pegs
+    // flip=false (−90°): +y is radial in → positive y = inward
+    // flip=true  (+90°): +y is radial out → negative y = inward
+    const inset = 3 * dpr;
+    ctx.translate(0, flip ? inset : -inset);
+
+    // Start from a large base size, then scale up/down to fill the arc
+    const baseFont = Math.max(10 * dpr, maxFontPx);
     ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
-    const metrics = ctx.measureText(label);
-    const textW = Math.max(1, metrics.width);
-    const textH = baseFont; // approximate em box
+    const tw = Math.max(1, ctx.measureText(label).width);
+    const th = baseFont;
+    // As large as the outer arc and inward depth allow (may be > 1 for short names)
+    let s = Math.min(arcLen / tw, maxInward / th, maxFontPx / baseFont);
+    // Keep a tiny floor so crowded wheels still show the full name
+    if (s < 0.08) s = 0.08;
+    // If still wider than the arc at floor, squash X only so every letter draws
+    let sx = s;
+    let sy = s;
+    if (tw * sx > arcLen) sx = arcLen / tw;
+    if (th * sy > maxInward) sy = maxInward / th;
 
-    // Uniform scale so the FULL name is always drawn (no …, no clip by fit logic)
-    let scale = Math.min(1, radialBudget / textW, tanBudget / textH);
-    // Keep a tiny floor so ultra-crowded wheels still show something readable
-    scale = Math.max(scale, 0.15);
-    // If still wider than radial budget at floor, allow extra X squash only
-    let scaleX = scale;
-    let scaleY = scale;
-    if (textW * scaleX > radialBudget) {
-      scaleX = radialBudget / textW;
-    }
-    if (textH * scaleY > tanBudget) {
-      scaleY = tanBudget / textH;
-    }
-
-    ctx.scale(scaleX, scaleY);
+    ctx.scale(sx, sy);
     ctx.fillStyle = this.look.textColor || "#fff";
-    ctx.textAlign = "left";
+    ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     if (!spinFrame) {
-      ctx.shadowColor = "rgba(0,0,0,0.8)";
-      ctx.shadowBlur = Math.max(2, 3 * dpr / Math.max(scaleY, 0.2));
+      ctx.shadowColor = "rgba(0,0,0,0.85)";
+      ctx.shadowBlur = Math.max(2, 3.5 * dpr / Math.max(sy, 0.15));
     }
-    // Draw the complete label — never truncated
     ctx.fillText(label, 0, 0);
     ctx.restore();
   }
