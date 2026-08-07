@@ -513,13 +513,13 @@ function migrate(data) {
           "default", // legacy label → goofy-slip
         ];
         if (p && allowed.includes(p)) {
-          if (p === "default") return "goofy-slip";
+          if (p === "default") return "glass-squeak-2";
           if (p === "synth") return "scp-173";
           return p;
         }
         // Legacy: custom file stored without preset
         if (data.secret?.reverseSlideSfxData) return "custom";
-        return "goofy-slip";
+        return "glass-squeak-2";
       })(),
       reverseSlideSfxData: data.secret?.reverseSlideSfxData || null,
       reverseSlideSfxName: data.secret?.reverseSlideSfxName || null,

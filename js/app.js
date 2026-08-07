@@ -3866,7 +3866,8 @@ function saveSecretPanel() {
   {
     const rp = $("#secret-reverse-slide-sfx-preset")?.value;
     if (rp && REVERSE_SLIDE_PRESET_IDS.has(rp)) {
-      sec.reverseSlideSfxPreset = rp === "default" ? "goofy-slip" : rp;
+      sec.reverseSlideSfxPreset =
+        rp === "default" ? "glass-squeak-2" : rp;
     }
   }
   const revVol = Number($("#secret-reverse-slide-sfx-volume")?.value);
@@ -4101,7 +4102,7 @@ function reverseSlideSfxDisplayName() {
     if (sec.reverseSlideSfxData) return "Custom slide audio";
     return "Custom file (none chosen)";
   }
-  return REVERSE_SLIDE_PRESETS[preset]?.name || "Goofy slip";
+  return REVERSE_SLIDE_PRESETS[preset]?.name || "Glass rub squeak 2";
 }
 
 function getReverseSlideSfxPreset() {
@@ -4109,17 +4110,17 @@ function getReverseSlideSfxPreset() {
   // Prefer live dropdown so UI selection is never ignored
   const live = $("#secret-reverse-slide-sfx-preset")?.value;
   let p = live || sec.reverseSlideSfxPreset;
-  if (p === "default") p = "goofy-slip"; // legacy
+  if (p === "default") p = "glass-squeak-2"; // legacy generic default
   if (p === "synth") p = "scp-173"; // legacy slippery synth → SCP grind
   if (p && REVERSE_SLIDE_PRESET_IDS.has(p)) {
     if (p === "custom" && !sec.reverseSlideSfxData && live !== "custom") {
-      return "goofy-slip";
+      return "glass-squeak-2";
     }
     if (p === "synth") return "scp-173";
     return p;
   }
   if (sec.reverseSlideSfxData) return "custom";
-  return "goofy-slip";
+  return "glass-squeak-2";
 }
 
 /** Unique audio buffer key per reverse-slide preset (avoids playing a stale sample). */
@@ -4127,14 +4128,14 @@ function reverseSlideBufferKey(preset = getReverseSlideSfxPreset()) {
   if (preset === "synth") preset = "scp-173";
   if (preset === "custom") return "rig_reverse_custom";
   if (REVERSE_SLIDE_PRESETS[preset]) return `rig_reverse_${preset}`;
-  return "rig_reverse_goofy-slip";
+  return "rig_reverse_glass-squeak-2";
 }
 
 function updateReverseSlideSfxPresetUI() {
   const sec = ensureSecretState();
   // Prefer saved preset when syncing UI (don't fight a mid-change select)
-  let preset = sec.reverseSlideSfxPreset || "goofy-slip";
-  if (preset === "default") preset = "goofy-slip";
+  let preset = sec.reverseSlideSfxPreset || "glass-squeak-2";
+  if (preset === "default") preset = "glass-squeak-2";
   if (preset === "synth") preset = "scp-173";
   if (!REVERSE_SLIDE_PRESET_IDS.has(preset) || preset === "synth") {
     preset =
@@ -4142,9 +4143,11 @@ function updateReverseSlideSfxPresetUI() {
         ? "scp-173"
         : sec.reverseSlideSfxData
           ? "custom"
-          : "goofy-slip";
+          : "glass-squeak-2";
   }
-  if (preset === "custom" && !sec.reverseSlideSfxData) preset = "goofy-slip";
+  if (preset === "custom" && !sec.reverseSlideSfxData) {
+    preset = "glass-squeak-2";
+  }
   const sel = $("#secret-reverse-slide-sfx-preset");
   if (sel) sel.value = preset;
   const nameEl = $("#secret-reverse-slide-sfx-name");
@@ -4244,7 +4247,8 @@ async function ensureReverseSlideSfxBuffer(bufferKey = null, forceReload = false
       return true;
     }
     const meta =
-      REVERSE_SLIDE_PRESETS[preset] || REVERSE_SLIDE_PRESETS["goofy-slip"];
+      REVERSE_SLIDE_PRESETS[preset] ||
+      REVERSE_SLIDE_PRESETS["glass-squeak-2"];
     if (!meta?.url) return false;
     if (!forceReload && audio.buffers.has(key)) return true;
     // Cache-bust so GH Pages / browsers don't reuse a wrong asset
@@ -4619,9 +4623,9 @@ async function previewReverseSlideSfxNow() {
 $("#secret-reverse-slide-sfx-preset")?.addEventListener("change", async () => {
   const sec = ensureSecretState();
   let v = $("#secret-reverse-slide-sfx-preset")?.value;
-  if (v === "default") v = "goofy-slip";
+  if (v === "default") v = "glass-squeak-2";
   if (v === "synth") v = "scp-173";
-  if (!v || !REVERSE_SLIDE_PRESET_IDS.has(v)) v = "goofy-slip";
+  if (!v || !REVERSE_SLIDE_PRESET_IDS.has(v)) v = "glass-squeak-2";
   if (v === "synth") v = "scp-173";
   sec.reverseSlideSfxPreset = v;
   // Write through immediately so spin / manual preview read the new preset
@@ -4644,7 +4648,7 @@ $("#secret-reverse-slide-sfx-input")?.addEventListener("change", async (e) => {
   e.target.value = "";
   if (!file) {
     if (!ensureSecretState().reverseSlideSfxData) {
-      ensureSecretState().reverseSlideSfxPreset = "goofy-slip";
+      ensureSecretState().reverseSlideSfxPreset = "glass-squeak-2";
     }
     updateReverseSlideSfxPresetUI();
     persist();
@@ -4661,14 +4665,17 @@ $("#secret-reverse-slide-sfx-input")?.addEventListener("change", async (e) => {
 });
 $("#secret-reverse-slide-sfx-clear")?.addEventListener("click", async () => {
   const sec = ensureSecretState();
-  sec.reverseSlideSfxPreset = "goofy-slip";
+  sec.reverseSlideSfxPreset = "glass-squeak-2";
   sec.reverseSlideSfxData = null;
   sec.reverseSlideSfxName = null;
   audio.buffers.delete(reverseSlideBufferKey("custom"));
   updateReverseSlideSfxPresetUI();
   persist();
   try {
-    await ensureReverseSlideSfxBuffer(reverseSlideBufferKey("goofy-slip"), true);
+    await ensureReverseSlideSfxBuffer(
+      reverseSlideBufferKey("glass-squeak-2"),
+      true
+    );
   } catch {
     /* ignore */
   }
