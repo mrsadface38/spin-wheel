@@ -24,6 +24,7 @@ import {
 import { AudioManager } from "./audio.js";
 import { Wheel } from "./wheel.js";
 import { computeFillImageLayout } from "./slice-image-layout.js";
+import { parseImportFile } from "./import-converters.js";
 
 const audio = new AudioManager();
 let state = loadState();
@@ -3369,7 +3370,7 @@ $("#import-file").addEventListener("change", async (e) => {
   if (!file) return;
   try {
     const text = await file.text();
-    const data = JSON.parse(text);
+    const { data, source } = parseImportFile(text, file.name);
     if (!data.sections || !data.groups) throw new Error("Invalid project file");
     checkpoint();
     state = hydrateState(data);
@@ -3377,6 +3378,12 @@ $("#import-file").addEventListener("change", async (e) => {
     bindAll();
     await preloadAudio();
     await refreshWheel();
+    if (source === "wheel-of-names") {
+      // Soft notice — friend should know conversion worked
+      console.info(
+        `Imported ${state.sections.length} section(s) from Wheel of Names`
+      );
+    }
   } catch (err) {
     alert("Import failed: " + (err.message || err));
   }
