@@ -1127,7 +1127,8 @@ export class Wheel {
     const slices = this.getSlices();
     const sl = slices.find((s) => s.section.id === sectionId);
     if (!sl) return null;
-    const pad = sl.span * 0.12;
+    // ~0.5% pad each side → land in middle ~99% of the slice
+    const pad = sl.span * 0.005;
     const landLocal =
       sl.start +
       pad +
@@ -1455,7 +1456,8 @@ export class Wheel {
       winnerIndex = this._pickNaturalWinnerIndex(slices, forceId);
     }
     const winnerSlice = slices[winnerIndex];
-    const pad = winnerSlice.span * 0.15;
+    // ~0.5% pad each side → land in middle ~99% of the slice
+    const pad = winnerSlice.span * 0.005;
     const landLocal =
       winnerSlice.start +
       pad +
