@@ -1202,7 +1202,7 @@ sectionsList.addEventListener("click", async (e) => {
       updateSectionsCount();
       await refreshWheel();
     } else if (act === "del") {
-      if (!confirm(`Delete "${section.label}"?`)) return;
+      // No confirm — Undo restores the section
       checkpoint();
       state.sections = state.sections.filter((s) => s.id !== id);
       if (lastWinnerId === id) {
