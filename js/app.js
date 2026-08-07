@@ -157,7 +157,7 @@ let sectionSearchQuery = "";
 /**
  * Section list sort mode.
  * "manual" = Your order (saved array order; drag to reorder).
- * Other modes are display-only sorts.
+ * Other modes, when selected, rewrite state.sections (and the wheel) to that order.
  */
 const SECTION_SORT_KEY = "spin-wheel-section-sort";
 let sectionSortMode = "manual";
@@ -881,18 +881,18 @@ function cmpLabel(a, b) {
 }
 
 /**
- * Sort a section list for display.
- * "manual" (Your order) keeps state.sections order — drag reorders that array.
- * Other modes are display-only and do not mutate state.
+ * Sort a section list by mode. Does not mutate the input array.
+ * "manual" keeps current order.
  * @param {object[]} list
+ * @param {string} [mode]
  */
-function sortSectionsList(list) {
+function sortSectionsList(list, mode = sectionSortMode) {
   const arr = list.slice();
-  const mode = sectionSortMode || "manual";
-  if (mode === "manual") return arr;
+  const m = mode || "manual";
+  if (m === "manual") return arr;
 
   arr.sort((a, b) => {
-    switch (mode) {
+    switch (m) {
       case "name-asc":
         return cmpLabel(a, b);
       case "name-desc":
@@ -937,6 +937,25 @@ function sortSectionsList(list) {
     }
   });
   return arr;
+}
+
+/**
+ * Apply a sort mode to state.sections so the wheel matches the list.
+ * "manual" is a no-op. Returns true if order changed.
+ * @param {string} mode
+ */
+function applySectionSortToState(mode) {
+  const m = mode || "manual";
+  if (m === "manual" || !Array.isArray(state.sections) || state.sections.length < 2) {
+    return false;
+  }
+  const sorted = sortSectionsList(state.sections, m);
+  const changed = !sorted.every((s, i) => s.id === state.sections[i]?.id);
+  if (!changed) return false;
+  checkpoint();
+  state.sections = sorted;
+  persist();
+  return true;
 }
 
 function updateSectionsCount() {
@@ -2615,14 +2634,41 @@ sectionSearchClear.addEventListener("click", () => {
 const sectionSortSelect = $("#section-sort");
 if (sectionSortSelect) {
   sectionSortSelect.value = sectionSortMode;
-  sectionSortSelect.addEventListener("change", () => {
-    sectionSortMode = sectionSortSelect.value || "manual";
+  sectionSortSelect.addEventListener("change", async () => {
+    const chosen = sectionSortSelect.value || "manual";
     try {
-      localStorage.setItem(SECTION_SORT_KEY, sectionSortMode);
-    } catch {
-      /* ignore */
+      // Non-manual sorts rewrite the wheel order to match
+      if (chosen !== "manual") {
+        const changed = applySectionSortToState(chosen);
+        // Order is now saved — treat as Your order so drag-reorder works
+        sectionSortMode = "manual";
+        sectionSortSelect.value = "manual";
+        try {
+          localStorage.setItem(SECTION_SORT_KEY, "manual");
+        } catch {
+          /* ignore */
+        }
+        renderSections();
+        if (changed) {
+          try {
+            await refreshWheel();
+          } catch (err) {
+            console.warn("refreshWheel after section sort:", err);
+          }
+        }
+        return;
+      }
+      sectionSortMode = "manual";
+      try {
+        localStorage.setItem(SECTION_SORT_KEY, sectionSortMode);
+      } catch {
+        /* ignore */
+      }
+      renderSections();
+    } catch (err) {
+      console.error("Section sort failed:", err);
+      renderSections();
     }
-    renderSections();
   });
 }
 
