@@ -3384,13 +3384,34 @@ function bindSound() {
   syncBgm();
 }
 
-function bindSpinDuration() {
-  const dur = Math.min(30, Math.max(1, Number(state.spin.duration) || 9));
-  state.spin.duration = dur;
+/** Spin duration: slider is 1–30 for quick scrub; number input allows any value. */
+const SPIN_DURATION_MIN = 0.1;
+const SPIN_DURATION_MAX = 600;
+const SPIN_SLIDER_MIN = 1;
+const SPIN_SLIDER_MAX = 30;
+
+function clampSpinDuration(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 9;
+  return Math.min(SPIN_DURATION_MAX, Math.max(SPIN_DURATION_MIN, v));
+}
+
+/** Sync slider + number field from state (slider clamps to its 1–30 range only). */
+function syncSpinDurationUI(dur = state.spin.duration) {
+  const d = clampSpinDuration(dur);
+  state.spin.duration = d;
   const slider = $("#spin-duration");
-  const label = $("#spin-duration-label");
-  if (slider) slider.value = String(dur);
-  if (label) label.textContent = `${dur}s`;
+  const num = $("#spin-duration-input");
+  if (num) num.value = String(d);
+  if (slider) {
+    // Show position on the 1–30 scrub bar; values outside sit at the ends
+    const scrub = Math.min(SPIN_SLIDER_MAX, Math.max(SPIN_SLIDER_MIN, d));
+    slider.value = String(scrub);
+  }
+}
+
+function bindSpinDuration() {
+  syncSpinDurationUI(state.spin.duration ?? 9);
 }
 
 $("#chk-sound").addEventListener("change", () => {
@@ -3432,16 +3453,57 @@ $("#land-sfx-volume").addEventListener("input", () => {
 });
 $("#land-sfx-volume").addEventListener("change", () => endContinuous());
 
-$("#spin-duration").addEventListener("input", () => {
+$("#spin-duration")?.addEventListener("input", () => {
   checkpointContinuous();
-  state.spin.duration = Math.min(
-    30,
-    Math.max(1, Number($("#spin-duration").value) || 9)
-  );
-  $("#spin-duration-label").textContent = `${state.spin.duration}s`;
+  // Slider only covers 1–30; writing it sets duration in that range
+  state.spin.duration = clampSpinDuration($("#spin-duration").value);
+  syncSpinDurationUI(state.spin.duration);
   persist();
 });
-$("#spin-duration").addEventListener("change", () => endContinuous());
+$("#spin-duration")?.addEventListener("change", () => endContinuous());
+
+function applyDurationFromNumberInput(commit) {
+  const raw = $("#spin-duration-input")?.value;
+  const d = clampSpinDuration(raw);
+  if (commit) checkpoint();
+  else checkpointContinuous();
+  state.spin.duration = d;
+  syncSpinDurationUI(d);
+  persist();
+  if (commit) endContinuous();
+}
+
+$("#spin-duration-input")?.addEventListener("input", () => {
+  // Live type: don't fight empty/partial input mid-edit
+  const raw = $("#spin-duration-input")?.value;
+  if (raw === "" || raw === "-" || raw === ".") return;
+  const v = Number(raw);
+  if (!Number.isFinite(v)) return;
+  checkpointContinuous();
+  state.spin.duration = clampSpinDuration(v);
+  // Update slider only; leave the number field as the user typed
+  const slider = $("#spin-duration");
+  if (slider) {
+    const scrub = Math.min(
+      SPIN_SLIDER_MAX,
+      Math.max(SPIN_SLIDER_MIN, state.spin.duration)
+    );
+    slider.value = String(scrub);
+  }
+  persist();
+});
+
+$("#spin-duration-input")?.addEventListener("change", () => {
+  applyDurationFromNumberInput(true);
+});
+
+$("#spin-duration-input")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    applyDurationFromNumberInput(true);
+    e.target.blur();
+  }
+});
 
 $("#spin-sfx-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
@@ -3635,10 +3697,7 @@ async function doSpin() {
   if (!(await beginSpinSession())) return;
   try {
     const rig = getSpinRigOptions();
-    const win = await wheel.spin(
-      Math.min(30, Math.max(1, Number(state.spin.duration) || 9)),
-      rig
-    );
+    const win = await wheel.spin(clampSpinDuration(state.spin.duration), rig);
     // null = grab-interrupted mid-spin (user took over with drag)
     if (win) showResult(win, { rigged: !!rig.forceSectionId });
   } finally {

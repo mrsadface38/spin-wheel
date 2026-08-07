@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#31</span>
+        <span class="app-version" id="app-version" title="Update number">#32</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -141,10 +141,13 @@
             <label class="field">
               <span>Duration</span>
               <div class="slider-with-value">
-                <input type="range" id="spin-duration" min="1" max="30" step="0.5" value="9" />
-                <span id="spin-duration-label" class="slider-value">9s</span>
+                <input type="range" id="spin-duration" min="1" max="30" step="0.5" value="9" title="Quick scrub 1–30s" />
+                <span class="slider-value-edit" title="Click to type any duration">
+                  <input type="number" id="spin-duration-input" min="0.1" max="600" step="any" value="9" />
+                  <span class="slider-value-unit">s</span>
+                </span>
               </div>
-              <small>How long the wheel spins before landing.</small>
+              <small>Slider: 1–30s. Click the number to type any length (e.g. 45 or 0.5).</small>
             </label>
           </div>
 

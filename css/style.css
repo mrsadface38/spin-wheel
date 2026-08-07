@@ -1374,6 +1374,53 @@ body.group-drag-cursor * {
   font-size: 0.9rem;
 }
 
+/* Clickable numeric value next to a range slider */
+.slider-value-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 3.6rem;
+  justify-content: flex-end;
+}
+
+.slider-value-edit input[type="number"] {
+  width: 3.4rem;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--accent-2);
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+  text-align: right;
+  color-scheme: dark;
+}
+
+.slider-value-edit input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(108, 140, 255, 0.25);
+}
+
+/* Hide spinner arrows for cleaner look */
+.slider-value-edit input[type="number"]::-webkit-outer-spin-button,
+.slider-value-edit input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.slider-value-edit input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.slider-value-unit {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .toggle-row {
   display: flex;
   align-items: center;
