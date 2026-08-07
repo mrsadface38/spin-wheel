@@ -3366,15 +3366,23 @@ function getRigForceSectionId() {
 function getReverseAvoidSectionIds() {
   if (!isReverseRigActive()) return [];
   const s = ensureSecretState();
+  // Prefer live form values (in case state lagged) then fall back to secret state
+  const kind =
+    $("#secret-reverse-target-kind")?.value === "group" ||
+    s.reverseTargetKind === "group"
+      ? $("#secret-reverse-target-kind")?.value || s.reverseTargetKind
+      : "section";
   const active = getActiveSections(state);
-  if (s.reverseTargetKind === "group") {
-    const gid = s.reverseTargetGroupId;
+  if (kind === "group") {
+    const gid =
+      $("#secret-reverse-group")?.value || s.reverseTargetGroupId || null;
     if (!gid) return [];
     return active
       .filter((sec) => getSectionGroupIds(sec).includes(gid))
       .map((sec) => sec.id);
   }
-  const id = s.reverseTargetSectionId;
+  const id =
+    $("#secret-reverse-section")?.value || s.reverseTargetSectionId || null;
   if (!id) return [];
   if (!active.some((sec) => sec.id === id)) return [];
   return [id];
@@ -3677,6 +3685,7 @@ function bindSecretReverseUI() {
       sec.reverseTargetKind === "group" ? "group" : "section";
   }
   fillSecretReverseSelects();
+  updateSecretReverseTargetFields();
   let speed = Number(sec.reverseSlideSpeed);
   if (!Number.isFinite(speed)) speed = 2;
   speed = Math.min(10, Math.max(1, Math.round(speed)));
@@ -4619,7 +4628,13 @@ async function doSpin() {
     const rig = getSpinRigOptions();
     const win = await wheel.spin(clampSpinDuration(state.spin.duration), rig);
     // null = grab-interrupted mid-spin (user took over with drag)
-    if (win) showResult(win, { rigged: !!rig.forceSectionId });
+    if (win) {
+      showResult(win, {
+        rigged:
+          !!rig.forceSectionId ||
+          !!(rig.avoidSectionIds && rig.avoidSectionIds.length),
+      });
+    }
   } finally {
     endSpinSession();
   }

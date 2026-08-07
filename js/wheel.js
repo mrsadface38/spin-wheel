@@ -1013,6 +1013,59 @@ export class Wheel {
   }
 
   /**
+   * Weighted pick among slices whose section id is in includeSet.
+   * @param {Array<{section: {id: string, weight?: number}}>} slices
+   * @param {Set<string>} includeSet
+   * @returns {number} index into slices
+   */
+  _pickIndexAmongIds(slices, includeSet) {
+    if (!slices.length) return 0;
+    const pool = slices
+      .map((sl, i) => ({ sl, i }))
+      .filter(({ sl }) => includeSet.has(sl.section.id));
+    if (!pool.length) return this._pickNaturalWinnerIndex(slices, null);
+    let total = 0;
+    for (const { sl } of pool) {
+      total += Math.max(0.1, sl.section.weight || 1);
+    }
+    let r = Math.random() * total;
+    for (const { sl, i } of pool) {
+      r -= Math.max(0.1, sl.section.weight || 1);
+      if (r <= 0) return i;
+    }
+    return pool[pool.length - 1].i;
+  }
+
+  /**
+   * Pick a non-avoided section to slide onto — prefer a visibly longer glide.
+   * @param {Array<{section: {id: string}}>} slices
+   * @param {Set<string>} avoidIds
+   * @param {number} fromRot
+   * @returns {string|null}
+   */
+  _pickEscapeSectionId(slices, avoidIds, fromRot) {
+    const candidates = slices.filter((sl) => !avoidIds.has(sl.section.id));
+    if (!candidates.length) return null;
+    let bestId = candidates[0].section.id;
+    let bestDist = -1;
+    for (const sl of candidates) {
+      const target = this.targetRotationForSection(
+        sl.section.id,
+        fromRot,
+        "shortest"
+      );
+      const dist = Math.abs(target - fromRot);
+      // Slight weight randomness so it isn't always the same neighbor
+      const score = dist + Math.random() * 0.15;
+      if (score > bestDist) {
+        bestDist = score;
+        bestId = sl.section.id;
+      }
+    }
+    return bestId;
+  }
+
+  /**
    * Rotation that lands the pointer on a section.
    * @param {string} sectionId
    * @param {number} [fromRot]
@@ -1095,12 +1148,25 @@ export class Wheel {
     this.draw({ spinFrame: false });
 
     // Natural winner first (rig steers only in the last 0.1s).
-    // When rigging, never aim the natural land at the rigged section so the
-    // divert is always a real move onto it.
-    // Reverse-rig intentionally CAN natural-land on avoided ids so it can slide off.
+    // Forward rig: never aim natural land at the forced section.
+    // Reverse rig: aim natural land ON an avoided section so slide-off always runs.
     const forceId = opts.forceSectionId || null;
     const avoidIds = this._asIdSet(opts.avoidSectionIds);
-    const winnerIndex = this._pickNaturalWinnerIndex(slices, forceId);
+    const canForce =
+      !!forceId && slices.some((s) => s.section.id === forceId);
+    const canReverse =
+      avoidIds.size > 0 &&
+      slices.length > 1 &&
+      slices.some((s) => avoidIds.has(s.section.id)) &&
+      slices.some((s) => !avoidIds.has(s.section.id));
+
+    let winnerIndex;
+    if (canReverse) {
+      // Always almost-land on an avoided slice so reverse slide-off is reliable
+      winnerIndex = this._pickIndexAmongIds(slices, avoidIds);
+    } else {
+      winnerIndex = this._pickNaturalWinnerIndex(slices, forceId);
+    }
     const winnerSlice = slices[winnerIndex];
     const naturalId = winnerSlice.section.id;
     const pad = winnerSlice.span * 0.15;
@@ -1150,12 +1216,7 @@ export class Wheel {
       400,
       Math.min(12000, Number(opts.reverseSteerMs) || forceSteerMs)
     );
-    const canForce =
-      !!forceId && slices.some((s) => s.section.id === forceId);
-    const canReverse =
-      avoidIds.size > 0 &&
-      slices.length > 1 &&
-      slices.some((s) => !avoidIds.has(s.section.id));
+    // Reverse takes priority when natural was aimed at an avoid target
     const willReverse = canReverse && avoidIds.has(naturalId);
     const willForce = canForce && !willReverse;
     const needsLateSteer = willReverse || willForce;
@@ -1186,6 +1247,43 @@ export class Wheel {
         if (res) res(win);
       };
 
+      const beginReverseSteer = (now) => {
+        const escapeId =
+          this._pickEscapeSectionId(slices, avoidIds, this.rotation) ||
+          slices[this._pickNaturalWinnerIndex(slices, avoidIds)].section.id;
+        steering = true;
+        steerStart = now;
+        steerFrom = this.rotation;
+        activeSteerMs = reverseSteerMs;
+        steerTarget = this.targetRotationForSection(
+          escapeId,
+          steerFrom,
+          "shortest"
+        );
+        try {
+          opts.onReverseSteerStart?.();
+        } catch {
+          /* ignore sound errors */
+        }
+      };
+
+      const beginForceSteer = (now) => {
+        steering = true;
+        steerStart = now;
+        steerFrom = this.rotation;
+        activeSteerMs = forceSteerMs;
+        steerTarget = this.targetRotationForSection(
+          forceId,
+          steerFrom,
+          "shortest"
+        );
+        try {
+          opts.onSteerStart?.();
+        } catch {
+          /* ignore sound errors */
+        }
+      };
+
       const frame = (now) => {
         // Aborted by grab / cancelAnimatedSpin
         if (!this.spinning) return;
@@ -1193,37 +1291,17 @@ export class Wheel {
         const elapsed = now - startTime;
 
         if (needsLateSteer && !steering && elapsed >= divertAt) {
-          steering = true;
-          steerStart = now;
-          steerFrom = this.rotation;
-          if (willReverse) {
-            // Almost landed on avoided section/group — slowly crawl off to another
-            const escapeIndex = this._pickNaturalWinnerIndex(slices, avoidIds);
-            const escapeId = slices[escapeIndex].section.id;
-            activeSteerMs = reverseSteerMs;
-            steerTarget = this.targetRotationForSection(
-              escapeId,
-              steerFrom,
-              "shortest"
-            );
-            try {
-              opts.onReverseSteerStart?.();
-            } catch {
-              /* ignore sound errors */
-            }
-          } else {
-            // Almost landed on the natural winner — slowly pull to rigged pick
-            activeSteerMs = forceSteerMs;
-            steerTarget = this.targetRotationForSection(
-              forceId,
-              steerFrom,
-              "shortest"
-            );
-            try {
-              opts.onSteerStart?.();
-            } catch {
-              /* ignore sound errors */
-            }
+          // Prefer reverse if pointer is on (or natural was) an avoided slice
+          const underId = this.sectionAtPointer()?.id || null;
+          if (
+            canReverse &&
+            (willReverse || (underId && avoidIds.has(underId)))
+          ) {
+            beginReverseSteer(now);
+          } else if (willForce || (canForce && underId !== forceId)) {
+            beginForceSteer(now);
+          } else if (canForce) {
+            beginForceSteer(now);
           }
         }
 
@@ -1269,8 +1347,15 @@ export class Wheel {
         if (elapsed < divertAt || !needsLateSteer) {
           if (t < 1) this._raf = requestAnimationFrame(frame);
           else {
-            this.rotation = target;
-            finish(this.sectionAtPointer());
+            // Safety: reverse if we somehow still stopped on an avoided slice
+            const underId = this.sectionAtPointer()?.id || null;
+            if (canReverse && underId && avoidIds.has(underId)) {
+              beginReverseSteer(now);
+              this._raf = requestAnimationFrame(frame);
+            } else {
+              this.rotation = target;
+              finish(this.sectionAtPointer());
+            }
           }
         } else {
           // divertAt reached; next frame starts steering
@@ -1547,8 +1632,9 @@ export class Wheel {
       };
 
       const startReverseSteer = (now) => {
-        const escapeIndex = this._pickNaturalWinnerIndex(slices, avoidIds);
-        const escapeId = slices[escapeIndex].section.id;
+        const escapeId =
+          this._pickEscapeSectionId(slices, avoidIds, this.rotation) ||
+          slices[this._pickNaturalWinnerIndex(slices, avoidIds)].section.id;
         steering = true;
         steerStart = now;
         steerFrom = this.rotation;
