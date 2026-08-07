@@ -359,7 +359,7 @@ export function defaultState() {
        * "goofy-slip" | "cartoon-slip" | "slide-slip" | "glass-squeak-3" |
        * "glass-squeak-2" | "scp-173" | "custom"  ("synth" legacy → scp-173)
        */
-      reverseSlideSfxPreset: "goofy-slip",
+      reverseSlideSfxPreset: "glass-squeak-2",
       reverseSlideSfxData: null,
       reverseSlideSfxName: null,
       reverseSlideSfxVolume: 0.4,

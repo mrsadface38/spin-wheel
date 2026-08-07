@@ -3389,7 +3389,7 @@ function ensureSecretState() {
       reverseTargetSectionId: null,
       reverseTargetGroupId: null,
       reverseSlideSpeed: 2,
-      reverseSlideSfxPreset: "goofy-slip",
+      reverseSlideSfxPreset: "glass-squeak-2",
       reverseSlideSfxData: null,
       reverseSlideSfxName: null,
       reverseSlideSfxVolume: 0.4,
