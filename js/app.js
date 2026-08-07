@@ -3974,7 +3974,7 @@ function bindLook() {
 function getWinnerLabel() {
   const raw = state.look?.winnerLabel;
   if (raw == null || String(raw).trim() === "") return "Winner";
-  return String(raw).trim().slice(0, 40);
+  return String(raw).trim().slice(0, 300);
 }
 
 function updateWinnerLabelDisplay() {
@@ -5483,7 +5483,7 @@ async function onLookChange() {
   }
   state.look.resultStyle = $("#result-style").value === "banner" ? "banner" : "center";
   {
-    const wl = ($("#winner-label")?.value || "").trim().slice(0, 40);
+    const wl = ($("#winner-label")?.value || "").trim().slice(0, 300);
     state.look.winnerLabel = wl || "Winner";
   }
   state.look.allowWinnerRemove = $("#chk-allow-winner-remove").checked;
