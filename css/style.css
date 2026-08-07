@@ -684,7 +684,8 @@ body.focus-mode .stage-panel {
   object-fit: cover;
   object-position: center;
   display: block;
-  transform: translate(-50%, -50%) scale(var(--fill-scale, 1));
+  transform: translate(-50%, -50%) scale(var(--fill-scale, 1))
+    rotate(calc(var(--slice-orient, 0deg) + var(--image-rotation, 0deg)));
   transform-origin: center center;
   user-select: none;
   -webkit-user-drag: none;
@@ -704,6 +705,8 @@ body.focus-mode .stage-panel {
   object-fit: cover;
   object-position: center;
   display: block;
+  transform: rotate(var(--image-rotation, 0deg));
+  transform-origin: center center;
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -2129,6 +2132,17 @@ dialog.modal:not([open]) {
   /* reuse wheel wedge styles; positioned by JS */
 }
 
+/* Labels / border / hub above images — matches main wheel overlay */
+.section-live-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 3;
+  pointer-events: none;
+}
+
 .section-live-pointer {
   position: absolute;
   top: 8px;
@@ -2144,22 +2158,9 @@ dialog.modal:not([open]) {
   pointer-events: none;
 }
 
+/* Old DOM labels unused — radial text is canvas-drawn */
 .section-live-label {
-  position: absolute;
-  left: 50%;
-  top: 38%;
-  transform: translate(-50%, -50%);
-  z-index: 5;
-  max-width: 70%;
-  text-align: center;
-  font-weight: 800;
-  font-size: 1.05rem;
-  line-height: 1.15;
-  color: #fff;
-  text-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.5),
-    0 4px 12px rgba(0, 0, 0, 0.65);
-  word-break: break-word;
+  display: none !important;
   pointer-events: none;
 }
 

@@ -3,7 +3,16 @@
  * Section / center / background media use DOM <img> so GIFs animate.
  */
 
-import { computeFillImageLayout } from "./slice-image-layout.js";
+import {
+  computeFillImageLayout,
+  normalizeImageLayoutMode,
+} from "./slice-image-layout.js";
+import {
+  measureLabelWidth,
+  wrapLabelLines,
+  wrapLabelLinesMax,
+  drawSliceLabel,
+} from "./slice-labels.js";
 
 function easeOutQuart(t) {
   return 1 - Math.pow(1 - t, 4);
@@ -376,7 +385,9 @@ export class Wheel {
     const key =
       this.sections
         .map((s) => this._sectionMediaSig(s))
-        .join("|") + `|show:${this.look.showImages !== false}`;
+        .join("|") +
+      `|show:${this.look.showImages !== false}` +
+      `|layout:${normalizeImageLayoutMode(this.look.imageLayoutMode)}`;
     this._sectionMediaKey = key;
     rotator.innerHTML = "";
 
@@ -425,6 +436,7 @@ export class Wheel {
       s.imageTileScale ?? 1,
       s.imageTileOffsetX ?? 0,
       s.imageTileOffsetY ?? 0,
+      s.imageRotation ?? 0,
     ].join(":");
   }
 
@@ -433,8 +445,17 @@ export class Wheel {
    * Uses real <img> tags so GIFs keep animating in each cell.
    * @param {number} offsetXPct -100..100 (% of one tile)
    * @param {number} offsetYPct -100..100 (% of one tile)
+   * @param {number|null} [sliceMid] when set, rotate pattern with wedge mid-angle
    */
-  _fillTileGrid(wedge, src, radius, tileScale, offsetXPct = 0, offsetYPct = 0) {
+  _fillTileGrid(
+    wedge,
+    src,
+    radius,
+    tileScale,
+    offsetXPct = 0,
+    offsetYPct = 0,
+    sliceMid = null
+  ) {
     const grid = wedge.querySelector(".slice-bg-tile-grid");
     if (!grid || !src) return;
 
@@ -479,8 +500,25 @@ export class Wheel {
     }
 
     // Anchor so one full tile sits past the top-left; offset shifts the pattern
-    grid.style.left = `${-tilePx + ox}px`;
-    grid.style.top = `${-tilePx + oy}px`;
+    const left = -tilePx + ox;
+    const top = -tilePx + oy;
+    grid.style.left = `${left}px`;
+    grid.style.top = `${top}px`;
+
+    // Follow-slice: spin the whole pattern around the hub with the wedge
+    if (sliceMid != null && Number.isFinite(Number(sliceMid))) {
+      const delta = Number(sliceMid) - -Math.PI / 2;
+      const orientDeg = (delta * 180) / Math.PI;
+      const originX = radius - left;
+      const originY = radius - top;
+      grid.style.transformOrigin = `${originX}px ${originY}px`;
+      grid.style.transform = `rotate(${orientDeg}deg)`;
+      wedge.style.setProperty("--slice-orient", `${orientDeg}deg`);
+    } else {
+      grid.style.transformOrigin = "";
+      grid.style.transform = "";
+      wedge.style.setProperty("--slice-orient", "0deg");
+    }
   }
 
   _layoutSliceMedia(slices, radius) {
@@ -506,6 +544,10 @@ export class Wheel {
       wedge.style.clipPath = wedgeClipPath(sl.start, sl.end, radius);
       wedge.style.webkitClipPath = wedge.style.clipPath;
 
+      const rot = Number(sl.section.imageRotation) || 0;
+      wedge.style.setProperty("--image-rotation", `${rot}deg`);
+
+      const layoutMode = normalizeImageLayoutMode(this.look.imageLayoutMode);
       const mode =
         wedge.dataset.imageMode ||
         (sl.section.imageMode === "tile" ? "tile" : "fill");
@@ -516,7 +558,8 @@ export class Wheel {
           radius,
           sl.section.imageTileScale ?? 1,
           sl.section.imageTileOffsetX ?? 0,
-          sl.section.imageTileOffsetY ?? 0
+          sl.section.imageTileOffsetY ?? 0,
+          layoutMode === "slice" ? sl.mid : null
         );
       } else if (mode === "fill") {
         this._layoutFillImage(wedge, sl, radius);
@@ -525,17 +568,24 @@ export class Wheel {
   }
 
   /**
-   * Place full-slice image in fixed wheel space (matches editor preview framing).
-   * Slice only clips; position does not re-center on each wedge mid-angle.
+   * Place full-slice image.
+   * fixed  → top-oriented frame (matches section editor)
+   * slice  → rotated to wedge mid so editor framing maps to the real slice
    */
   _layoutFillImage(wedge, sl, radius) {
+    const layoutMode = normalizeImageLayoutMode(this.look.imageLayoutMode);
     const layout = computeFillImageLayout({
       radius,
       fillScale: sl.section.imageFillScale,
       offsetXPct: sl.section.imageFillOffsetX,
       offsetYPct: sl.section.imageFillOffsetY,
+      midAngle: sl.mid,
+      mode: layoutMode,
     });
     wedge.style.setProperty("--fill-scale", String(layout.fillScale));
+    wedge.style.setProperty("--slice-orient", `${layout.orientDeg || 0}deg`);
+    const rot = Number(sl.section.imageRotation) || 0;
+    wedge.style.setProperty("--image-rotation", `${rot}deg`);
 
     const img = wedge.querySelector("img.slice-bg-fill");
     if (!img) return;
@@ -622,7 +672,8 @@ export class Wheel {
       if (this.look.showImages !== false) {
         const mediaKey =
           this.sections.map((s) => this._sectionMediaSig(s)).join("|") +
-          `|show:${this.look.showImages !== false}`;
+          `|show:${this.look.showImages !== false}` +
+          `|layout:${normalizeImageLayoutMode(this.look.imageLayoutMode)}`;
         if (mediaKey !== this._sectionMediaKey) {
           this._rebuildSliceMedia();
         } else {
@@ -822,302 +873,35 @@ export class Wheel {
   }
 
   /**
-   * Word-wrap so each line fits maxWidth (full text, no ellipsis).
-   * @returns {string[]}
-   */
-  _wrapLabelLines(ctx, label, maxWidth) {
-    const text = String(label || "").trim();
-    if (!text) return [];
-    const maxW = Math.max(1, Number(maxWidth) || 1);
-    const words = text.split(/\s+/);
-    const lines = [];
-    let line = "";
-    for (const word of words) {
-      const trial = line ? `${line} ${word}` : word;
-      if (this._measureWidth(ctx, trial) <= maxW || !line) {
-        line = trial;
-      } else {
-        lines.push(line);
-        line = word;
-      }
-    }
-    if (line) lines.push(line);
-    // Hard-break overlong tokens so every character still draws
-    const out = [];
-    for (const ln of lines) {
-      if (this._measureWidth(ctx, ln) <= maxW) {
-        out.push(ln);
-        continue;
-      }
-      let chunk = "";
-      for (const ch of ln) {
-        const t = chunk + ch;
-        if (this._measureWidth(ctx, t) <= maxW || !chunk) chunk = t;
-        else {
-          out.push(chunk);
-          chunk = ch;
-        }
-      }
-      if (chunk) out.push(chunk);
-    }
-    return out;
-  }
-
-  /**
-   * Wrap into at most maxLines by widening the line budget if needed.
-   * Still hard-breaks tokens; never drops characters.
-   * @returns {string[]}
-   */
-  _wrapLabelLinesMax(ctx, label, maxWidth, maxLines) {
-    const cap = Math.max(1, Math.min(12, Math.floor(maxLines) || 1));
-    let w = Math.max(1, Number(maxWidth) || 1);
-    let lines = this._wrapLabelLines(ctx, label, w);
-    if (lines.length <= cap) return lines;
-    // Grow width until we fit in cap lines (binary-ish expansion)
-    const full = this._measureWidth(ctx, String(label || "").trim()) || w;
-    let lo = w;
-    let hi = Math.max(w * 2, full + 1);
-    for (let i = 0; i < 16; i++) {
-      const mid = (lo + hi) / 2;
-      lines = this._wrapLabelLines(ctx, label, mid);
-      if (lines.length <= cap) hi = mid;
-      else lo = mid;
-    }
-    lines = this._wrapLabelLines(ctx, label, hi);
-    if (lines.length <= cap) return lines;
-    // Last resort: pack into `cap` strips by character count
-    const text = String(label || "").trim();
-    if (!text) return [];
-    const n = Math.ceil(text.length / cap);
-    const packed = [];
-    for (let i = 0; i < cap; i++) {
-      const chunk = text.slice(i * n, (i + 1) * n);
-      if (chunk) packed.push(chunk);
-    }
-    return packed.length ? packed : [text];
-  }
-
-  /**
-   * Safe text width (never throws / never undefined).
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {string} text
-   */
-  _measureWidth(ctx, text) {
-    try {
-      const m = ctx.measureText(String(text ?? ""));
-      const w = m && typeof m.width === "number" ? m.width : 0;
-      return Number.isFinite(w) ? w : 0;
-    } catch {
-      return String(text ?? "").length * 8;
-    }
-  }
-
-  /**
-   * Radial labels: text runs inside → outside (along the radius).
-   * Long names wrap to new lines (stacked across the wedge) when there is room,
-   * instead of disappearing. Never ellipsized.
+   * Radial labels (shared with editor preview — see slice-labels.js).
    * @param {boolean} spinFrame lighter text (no shadow) while spinning
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
-    if (this.look.showLabels === false) return;
-    if (!ctx || !sl) return;
-    try {
-      const mid = Number(sl.mid) || 0;
-      const span = Math.max(0.001, Number(sl.span) || 0.001);
-      const label = String(sl.section?.label || "").trim();
-      if (!label) return;
+    drawSliceLabel(ctx, {
+      radius,
+      mid: sl?.mid,
+      span: sl?.span,
+      label: sl?.section?.label,
+      textColor: sl?.section?.textColor,
+      fallbackTextColor: this.look.textColor || "#fff",
+      centerSize: this.look.centerSize ?? 0.16,
+      dpr: this._dpr || 1,
+      showLabels: this.look.showLabels !== false,
+      asSolidDisc,
+      spinFrame,
+    });
+  }
 
-      // Wrap only when there is more than one word; single tokens stay one line
-      const wordCount = label.split(/\s+/).filter(Boolean).length;
-      const allowWrap = wordCount > 1;
+  _measureWidth(ctx, text) {
+    return measureLabelWidth(ctx, text);
+  }
 
-      const solid = asSolidDisc || span >= Math.PI * 2 - 1e-4;
-      const dpr = this._dpr || 1;
-      const weight = 700;
-      // Fixed measure size; scale freely afterward (may be > 1)
-      const baseFont = Math.max(16, 48 * dpr);
-      const lineGap = 1.12;
+  _wrapLabelLines(ctx, label, maxWidth) {
+    return wrapLabelLines(ctx, label, maxWidth);
+  }
 
-      ctx.save();
-      // Per-section text color (from resolve) → Look default
-      ctx.fillStyle =
-        sl.section?.textColor || this.look.textColor || "#fff";
-      ctx.textBaseline = "middle";
-      if (!spinFrame) {
-        ctx.shadowColor = "rgba(0,0,0,0.85)";
-        ctx.shadowBlur = 4 * dpr;
-      }
-      ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
-      // Glyph height — don't overestimate or short labels stay too small
-      let th = baseFont * 1.05;
-      try {
-        const m = ctx.measureText(label);
-        const asc = m.actualBoundingBoxAscent || 0;
-        const desc = m.actualBoundingBoxDescent || 0;
-        if (asc + desc > 1) th = Math.max(baseFont * 0.95, (asc + desc) * 1.02);
-      } catch {
-        /* keep estimate */
-      }
-      const lineH = th * lineGap;
-
-      // ——— Full-wheel single section: horizontal near top rim (multi-line only if multi-word) ———
-      if (solid) {
-        const maxBlockH = radius * 0.28;
-        const maxW = radius * 1.55;
-        const maxLines = allowWrap
-          ? Math.max(1, Math.min(6, Math.floor(maxBlockH / (th * 0.35))))
-          : 1;
-        const layoutSolid = (s) => {
-          if (!(s > 0) || !Number.isFinite(s)) return null;
-          const maxWm = maxW / s;
-          const maxLinesS = allowWrap
-            ? Math.max(
-                1,
-                Math.min(maxLines, Math.floor(maxBlockH / (lineH * s)))
-              )
-            : 1;
-          const lines = allowWrap
-            ? this._wrapLabelLinesMax(ctx, label, maxWm, maxLinesS)
-            : [label];
-          if (!lines.length) return null;
-          const longest = Math.max(
-            ...lines.map((ln) => this._measureWidth(ctx, ln)),
-            1
-          );
-          if (longest * s > maxW + 0.5) return null;
-          if (lines.length * lineH * s > maxBlockH + 0.5) return null;
-          return { lines, longest, s };
-        };
-        let lo = 0;
-        let hi = Math.min(0.45, (radius * 0.18) / baseFont);
-        if (!Number.isFinite(hi) || hi <= 0) hi = 0.12;
-        hi *= 1.1;
-        for (let i = 0; i < 28; i++) {
-          const midS = (lo + hi) / 2;
-          if (layoutSolid(midS)) lo = midS;
-          else hi = midS;
-        }
-        const best = layoutSolid(lo) || layoutSolid(0.06);
-        if (!best || best.s * baseFont < 5 * dpr) {
-          ctx.restore();
-          return;
-        }
-        const { lines, s } = best;
-        const blockH = lines.length * lineH * s;
-        const rText = radius - 10 * dpr - blockH / 2;
-        ctx.textAlign = "center";
-        ctx.translate(0, -rText);
-        ctx.scale(s, s);
-        for (let i = 0; i < lines.length; i++) {
-          const y = (i - (lines.length - 1) / 2) * lineH;
-          ctx.fillText(lines[i], 0, y);
-        }
-        ctx.restore();
-        return;
-      }
-
-      // ——— Multi-slice: radial inside → outside; wrap across the wedge ———
-      const rimPad = Math.max(4 * dpr, radius * 0.012);
-      const outerR = radius - rimPad;
-      const hubR =
-        radius * Math.max(0.12, (this.look.centerSize ?? 0.16) + 0.015);
-      const maxRadial = Math.max(8 * dpr, outerR - hubR);
-
-      // Chord height at r (full usable height across mid-line)
-      const chordH = (r) => {
-        if (!(r > 0)) return 0;
-        const half = r * Math.sin(Math.min(Math.PI / 2, span / 2));
-        const pad = Math.max(0.75 * dpr, half * 0.08);
-        return Math.max(0, (half - pad) * 2);
-      };
-
-      const maxFontPx = radius * 0.3;
-      const maxLinesCap = allowWrap ? 8 : 1;
-
-      /**
-       * @param {number} s
-       * @returns {{ lines: string[], longest: number, s: number }|null}
-       */
-      const layoutAt = (s) => {
-        if (!(s > 0) || !Number.isFinite(s)) return null;
-        const maxWm = maxRadial / s;
-        const chordOuter = chordH(outerR);
-        // Single-word labels never wrap — stay one line and scale to fit
-        const maxLinesS = allowWrap
-          ? Math.max(
-              1,
-              Math.min(maxLinesCap, Math.floor((chordOuter + 0.5) / (lineH * s)))
-            )
-          : 1;
-        const lines = allowWrap
-          ? this._wrapLabelLinesMax(ctx, label, maxWm, maxLinesS)
-          : [label];
-        if (!lines.length || lines.length > maxLinesS) return null;
-        const longest = Math.max(
-          ...lines.map((ln) => this._measureWidth(ctx, ln)),
-          1
-        );
-        const w = longest * s;
-        if (w > maxRadial + 0.5) return null;
-        const rInner = outerR - w;
-        if (rInner < hubR - 0.5) return null;
-        const blockH = lines.length * lineH * s;
-        if (blockH > chordOuter + 0.5) return null;
-        if (blockH > chordH(Math.max(rInner, hubR)) + 0.5) return null;
-        return { lines, longest, s };
-      };
-
-      let lo = 0;
-      let hi = Math.max(
-        maxFontPx / baseFont,
-        chordH(outerR) / th,
-        maxRadial / Math.max(8, label.length * baseFont * 0.35)
-      );
-      if (!Number.isFinite(hi) || hi <= 0) hi = 0.1;
-      hi *= 1.05;
-      for (let i = 0; i < 28; i++) {
-        const midS = (lo + hi) / 2;
-        if (layoutAt(midS)) lo = midS;
-        else hi = midS;
-      }
-      let best = layoutAt(lo);
-      // Prefer multi-line over hiding: try a few smaller still-readable scales
-      if (!best || best.s * baseFont < 5.5 * dpr) {
-        for (const px of [8, 6.5, 5.5, 4.8]) {
-          const sTry = (px * dpr) / baseFont;
-          const lay = layoutAt(sTry);
-          if (lay) {
-            best = lay;
-            break;
-          }
-        }
-      }
-      if (!best || best.s * baseFont < 4.2 * dpr) {
-        ctx.restore();
-        return;
-      }
-
-      const { lines, longest, s } = best;
-      const textW = longest * s;
-
-      // +x = radial out. Longest line ends on the rim; extra lines stack on +y.
-      ctx.rotate(mid);
-      ctx.translate(outerR - textW, 0);
-      ctx.textAlign = "left";
-      ctx.scale(s, s);
-      for (let i = 0; i < lines.length; i++) {
-        const y = (i - (lines.length - 1) / 2) * lineH;
-        ctx.fillText(lines[i], 0, y);
-      }
-      ctx.restore();
-    } catch (err) {
-      try {
-        ctx.restore();
-      } catch {
-        /* ignore */
-      }
-      console.warn("Label draw skipped:", sl?.section?.label, err);
-    }
+  _wrapLabelLinesMax(ctx, label, maxWidth, maxLines) {
+    return wrapLabelLinesMax(ctx, label, maxWidth, maxLines);
   }
 
   /** Peg index for tick sounds (slice boundaries, or rim pegs when only one section). */

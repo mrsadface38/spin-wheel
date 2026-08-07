@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#93</span>
+        <span class="app-version" id="app-version" title="Update number">#98</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -237,6 +237,17 @@
             <label class="toggle-row">
               <input type="checkbox" id="chk-show-images" checked />
               <span>Show section images</span>
+            </label>
+            <label class="field">
+              <span>Section image layout</span>
+              <select id="image-layout-mode">
+                <option value="fixed">Fixed (editor-style / upright)</option>
+                <option value="slice">Follow each slice angle</option>
+              </select>
+              <small>
+                Fixed keeps photos upright like the section editor (framed as if the slice were on top).
+                Follow slice rotates each image with its real wedge so framing matches the wheel.
+              </small>
             </label>
             <label class="toggle-row">
               <input type="checkbox" id="chk-pointer-locked" checked />
@@ -710,7 +721,7 @@
         <div class="section-edit-fields">
           <label class="field">
             <span>Label</span>
-            <input type="text" id="section-label" required maxlength="300" placeholder="Prize name" />
+            <input type="text" id="section-label" maxlength="300" placeholder="Unnamed 1" />
           </label>
 
           <label class="field">
@@ -761,6 +772,14 @@
                 <option value="tile">Tiled / looped (small repeats)</option>
               </select>
               <small>Full slice fills the whole wedge. Tiled repeats the same image in a pattern.</small>
+            </label>
+            <label class="field" id="section-image-rotation-field">
+              <span>Image rotation</span>
+              <div class="slider-with-value">
+                <input type="range" id="section-image-rotation" min="0" max="360" step="1" value="0" />
+                <span id="section-image-rotation-label" class="slider-value">0°</span>
+              </div>
+              <small>Rotate the image 0°–360°. Works for full-slice and tiled styles.</small>
             </label>
             <div id="section-fill-options">
               <label class="field" id="section-fill-scale-field">
@@ -982,6 +1001,14 @@
                   <option value="fill">Full slice (one big image)</option>
                   <option value="tile">Tiled / looped (small repeats)</option>
                 </select>
+              </label>
+              <label class="field" id="group-image-rotation-field">
+                <span>Image rotation</span>
+                <div class="slider-with-value">
+                  <input type="range" id="group-image-rotation" min="0" max="360" step="1" value="0" />
+                  <span id="group-image-rotation-label" class="slider-value">0°</span>
+                </div>
+                <small>Rotate the image 0°–360°. Works for full-slice and tiled styles.</small>
               </label>
               <div id="group-fill-options">
                 <label class="field">

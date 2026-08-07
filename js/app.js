@@ -18,6 +18,7 @@ import {
   groupHasAnyOverride,
   normalizeWeight,
   formatWeight,
+  clampImageRotation,
 } from "./state.js";
 import {
   loadLibrary,
@@ -32,7 +33,11 @@ import {
 } from "./wheels.js";
 import { AudioManager } from "./audio.js";
 import { Wheel } from "./wheel.js";
-import { computeFillImageLayout } from "./slice-image-layout.js";
+import {
+  computeFillImageLayout,
+  normalizeImageLayoutMode,
+} from "./slice-image-layout.js";
+import { drawSliceLabel } from "./slice-labels.js";
 import { parseImportFile } from "./import-converters.js";
 import {
   WHEEL_PRESETS,
@@ -1308,6 +1313,7 @@ function cloneSectionForDuplicate(section) {
     imageTileScale: section.imageTileScale,
     imageTileOffsetX: section.imageTileOffsetX,
     imageTileOffsetY: section.imageTileOffsetY,
+    imageRotation: section.imageRotation,
     landSfxData: section.landSfxData || null,
     landSfxName: section.landSfxName || null,
     landSfxVolume: section.landSfxVolume,
@@ -1343,6 +1349,7 @@ function cloneGroupForDuplicate(group) {
     imageTileScale: group.imageTileScale,
     imageTileOffsetX: group.imageTileOffsetX,
     imageTileOffsetY: group.imageTileOffsetY,
+    imageRotation: group.imageRotation,
     landSfxData: group.landSfxData || null,
     landSfxName: group.landSfxName || null,
     winEffect: group.winEffect || null,
@@ -2209,6 +2216,20 @@ window.addEventListener("blur", () => {
   }
 });
 
+/**
+ * Next free default label: Unnamed 1, Unnamed 2, …
+ * Skips numbers already used (case-insensitive).
+ */
+function nextUnnamedLabel(sections = state.sections) {
+  const re = /^unnamed\s+(\d+)$/i;
+  let max = 0;
+  for (const s of sections || []) {
+    const m = String(s.label || "").trim().match(re);
+    if (m) max = Math.max(max, Number(m[1]) || 0);
+  }
+  return `Unnamed ${max + 1}`;
+}
+
 $("#btn-add-section").addEventListener("click", () => {
   openSectionModal(null);
 });
@@ -2292,6 +2313,8 @@ function setGroupProfileSliderLabels() {
   const tileScale = Number($("#group-tile-scale")?.value) || 1;
   const ox = Number($("#group-tile-offset-x")?.value) || 0;
   const oy = Number($("#group-tile-offset-y")?.value) || 0;
+  const rotRaw = Number($("#group-image-rotation")?.value);
+  const rot = Number.isFinite(rotRaw) ? Math.min(360, Math.max(0, rotRaw)) : 0;
   const set = (id, text) => {
     const el = $(id);
     if (el) el.textContent = text;
@@ -2302,6 +2325,7 @@ function setGroupProfileSliderLabels() {
   set("#group-tile-scale-label", `${Math.round(tileScale * 100)}%`);
   set("#group-tile-offset-x-label", `${Math.round(ox)}%`);
   set("#group-tile-offset-y-label", `${Math.round(oy)}%`);
+  set("#group-image-rotation-label", `${Math.round(rot)}°`);
 }
 
 /** Read profile fields currently shown in the group modal. */
@@ -2321,6 +2345,7 @@ function readGroupProfileFromForm() {
     imageTileScale: Number($("#group-tile-scale")?.value) || 1,
     imageTileOffsetX: Number($("#group-tile-offset-x")?.value) || 0,
     imageTileOffsetY: Number($("#group-tile-offset-y")?.value) || 0,
+    imageRotation: clampImageRotation($("#group-image-rotation")?.value),
     landSfxData: pendingGroupSfx,
     landSfxName: pendingGroupSfxName,
     winEffect: (() => {
@@ -2418,6 +2443,9 @@ function fillGroupProfileForm(group) {
   $("#group-tile-scale").value = g.imageTileScale ?? 1;
   $("#group-tile-offset-x").value = g.imageTileOffsetX ?? 0;
   $("#group-tile-offset-y").value = g.imageTileOffsetY ?? 0;
+  if ($("#group-image-rotation")) {
+    $("#group-image-rotation").value = clampImageRotation(g.imageRotation);
+  }
   setImgPreview($("#group-img-preview"), pendingGroupImage);
   updateGroupSfxPresetUI();
   setGroupProfileSliderLabels();
@@ -2616,6 +2644,7 @@ for (const id of [
   "group-tile-scale",
   "group-tile-offset-x",
   "group-tile-offset-y",
+  "group-image-rotation",
 ]) {
   $(`#${id}`)?.addEventListener("input", () => {
     setGroupProfileSliderLabels();
@@ -3006,7 +3035,9 @@ function updateSectionImageModeUI() {
 /** Draft values from the open section form (for live preview). */
 function getSectionDraft() {
   return {
-    label: ($("#section-label")?.value || "").trim() || "Untitled",
+    label:
+      ($("#section-label")?.value || "").trim() ||
+      nextUnnamedLabel(),
     color: $("#section-color")?.value || "#4a6cf7",
     textColor: $("#section-text-color")?.value || state.look?.textColor || "#ffffff",
     imageData: pendingSectionImage,
@@ -3035,6 +3066,7 @@ function getSectionDraft() {
       100,
       Math.max(-100, Number($("#section-tile-offset-y")?.value) || 0)
     ),
+    imageRotation: clampImageRotation($("#section-image-rotation")?.value),
   };
 }
 
@@ -3229,21 +3261,38 @@ function updateGroupPreviewWeightUI() {
 
 /**
  * Shared live slice drawer (section editor + group profile editor).
+ * Matches real wheel layering: color under images; labels/border/hub on top.
  */
 function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, metrics }) {
-  if (!stage || !canvas || !media || !labelEl || !draft || !metrics) return;
+  if (!stage || !canvas || !media || !draft || !metrics) return;
 
   const rect = stage.getBoundingClientRect();
   const cssSize = Math.max(120, Math.floor(Math.min(rect.width, rect.height) || 280));
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.floor(cssSize * dpr);
-  canvas.height = Math.floor(cssSize * dpr);
+  const px = Math.floor(cssSize * dpr);
+
+  canvas.width = px;
+  canvas.height = px;
   canvas.style.width = `${cssSize}px`;
   canvas.style.height = `${cssSize}px`;
 
+  // Overlay above images (labels, dim, border, hub) — same as main wheel
+  let overlay = stage.querySelector("canvas.section-live-overlay");
+  if (!overlay) {
+    overlay = document.createElement("canvas");
+    overlay.className = "section-live-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    media.insertAdjacentElement("afterend", overlay);
+  }
+  overlay.width = px;
+  overlay.height = px;
+  overlay.style.width = `${cssSize}px`;
+  overlay.style.height = `${cssSize}px`;
+
   const ctx = canvas.getContext("2d");
-  const w = canvas.width;
-  const h = canvas.height;
+  const octx = overlay.getContext("2d");
+  const w = px;
+  const h = px;
   const cx = w / 2;
   const cy = h / 2;
   const radius = Math.min(w, h) * 0.42;
@@ -3254,6 +3303,8 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
   const half = metrics.span / 2;
   const start = fullDisc ? 0 : mid - half;
   const end = fullDisc ? Math.PI * 2 : mid + half;
+  const hasImg =
+    !!(draft.imageData && state.look.showImages !== false);
 
   if (metaEl) {
     if (metrics.mode === "custom") {
@@ -3270,6 +3321,7 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
     }
   }
 
+  // --- Back: color fill only ---
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
@@ -3290,34 +3342,11 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
     ctx.closePath();
     ctx.fillStyle = draft.color;
     ctx.fill();
-
-    ctx.strokeStyle = "rgba(0,0,0,0.35)";
-    ctx.lineWidth = 1.5 * dpr;
-    for (const a of [start, end]) {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
-      ctx.stroke();
-    }
   }
 
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-  ctx.strokeStyle = state.look.borderColor || "#f0d78c";
-  ctx.lineWidth = 5 * dpr;
-  ctx.stroke();
-
-  const hubR = radius * (state.look.centerSize ?? 0.16);
-  ctx.beginPath();
-  ctx.arc(cx, cy, hubR, 0, Math.PI * 2);
-  ctx.fillStyle = state.look.centerColor || "#1a1f35";
-  ctx.fill();
-  ctx.strokeStyle = state.look.borderColor || "#f0d78c";
-  ctx.lineWidth = 3 * dpr;
-  ctx.stroke();
-
+  // --- DOM image layer ---
   media.innerHTML = "";
-  if (draft.imageData && state.look.showImages !== false) {
+  if (hasImg) {
     const mode = draft.imageMode === "tile" ? "tile" : "fill";
     const wedge = document.createElement("div");
     wedge.className = `slice-bg-wedge mode-${mode}`;
@@ -3331,6 +3360,8 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
       : previewWedgeClip(start, end, radiusCss);
     wedge.style.clipPath = clip;
     wedge.style.webkitClipPath = clip;
+    const rot = clampImageRotation(draft.imageRotation);
+    wedge.style.setProperty("--image-rotation", `${rot}deg`);
 
     if (mode === "tile") {
       const grid = document.createElement("div");
@@ -3368,7 +3399,6 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
       img.src = draft.imageData;
       img.alt = "";
       img.draggable = false;
-      // Fixed wheel-space framing — identical to main wheel fill layout
       const layout = computeFillImageLayout({
         radius: radiusCss,
         fillScale: draft.imageFillScale,
@@ -3385,28 +3415,73 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
     }
 
     media.appendChild(wedge);
-
-    ctx.beginPath();
-    if (fullDisc) {
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    } else {
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, radius, start, end);
-      ctx.closePath();
-    }
-    ctx.fillStyle = "rgba(0,0,0,0.2)";
-    ctx.fill();
   }
 
-  labelEl.textContent = draft.label;
-  labelEl.style.color =
-    draft.textColor || state.look?.textColor || "#fff";
-  const labelMid = fullDisc ? -Math.PI / 2 : mid;
-  const labelDist = fullDisc ? 0.45 : 0.58;
-  const lx = 50 + Math.cos(labelMid) * labelDist * 42;
-  const ly = 50 + Math.sin(labelMid) * labelDist * 42;
-  labelEl.style.left = `${lx}%`;
-  labelEl.style.top = `${ly}%`;
+  // --- Front overlay: dim, separators, border, hub, radial label ---
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  octx.clearRect(0, 0, w, h);
+
+  if (hasImg) {
+    octx.beginPath();
+    if (fullDisc) {
+      octx.arc(cx, cy, radius, 0, Math.PI * 2);
+    } else {
+      octx.moveTo(cx, cy);
+      octx.arc(cx, cy, radius, start, end);
+      octx.closePath();
+    }
+    octx.fillStyle = "rgba(0,0,0,0.22)";
+    octx.fill();
+  }
+
+  if (!fullDisc) {
+    octx.strokeStyle = "rgba(0,0,0,0.35)";
+    octx.lineWidth = 1.5 * dpr;
+    for (const a of [start, end]) {
+      octx.beginPath();
+      octx.moveTo(cx, cy);
+      octx.lineTo(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
+      octx.stroke();
+    }
+  }
+
+  octx.beginPath();
+  octx.arc(cx, cy, radius, 0, Math.PI * 2);
+  octx.strokeStyle = state.look.borderColor || "#f0d78c";
+  octx.lineWidth = 5 * dpr;
+  octx.stroke();
+
+  const hubR = radius * (state.look.centerSize ?? 0.16);
+  octx.beginPath();
+  octx.arc(cx, cy, hubR, 0, Math.PI * 2);
+  octx.fillStyle = state.look.centerColor || "#1a1f35";
+  octx.fill();
+  octx.strokeStyle = state.look.borderColor || "#f0d78c";
+  octx.lineWidth = 3 * dpr;
+  octx.stroke();
+
+  if (labelEl) {
+    labelEl.textContent = "";
+    labelEl.style.display = "none";
+  }
+  if (state.look?.showLabels !== false) {
+    octx.save();
+    octx.translate(cx, cy);
+    drawSliceLabel(octx, {
+      radius,
+      mid,
+      span: metrics.span,
+      label: draft.label,
+      textColor: draft.textColor,
+      fallbackTextColor: state.look?.textColor || "#fff",
+      centerSize: state.look?.centerSize ?? 0.16,
+      dpr,
+      showLabels: true,
+      asSolidDisc: fullDisc,
+      spinFrame: false,
+    });
+    octx.restore();
+  }
 }
 
 function updateSectionLivePreview() {
@@ -3499,7 +3574,7 @@ function openSectionModal(section) {
 
   $("#section-modal-title").textContent = section ? "Edit section" : "Add section";
   $("#section-edit-id").value = section?.id || "";
-  $("#section-label").value = section?.label || "";
+  $("#section-label").value = section?.label || nextUnnamedLabel();
   $("#section-weight").value = section?.weight ?? 1;
   $("#section-color").value =
     colorSrc?.color || nextPaletteColor(state);
@@ -3548,6 +3623,13 @@ function openSectionModal(section) {
   $("#section-tile-offset-x-label").textContent = `${Math.round(ox)}%`;
   $("#section-tile-offset-y").value = oy;
   $("#section-tile-offset-y-label").textContent = `${Math.round(oy)}%`;
+  const rot = clampImageRotation(imgModeSrc?.imageRotation);
+  if ($("#section-image-rotation")) {
+    $("#section-image-rotation").value = rot;
+    if ($("#section-image-rotation-label")) {
+      $("#section-image-rotation-label").textContent = `${Math.round(rot)}°`;
+    }
+  }
   setImgPreview($("#section-img-preview"), pendingSectionImage);
   // For custom channel, only the section's own file counts as custom
   if (!sectionEditCustom.sfx) {
@@ -3684,6 +3766,15 @@ $("#section-tile-offset-y")?.addEventListener("input", () => {
   markSectionDirty("image");
   const v = Number($("#section-tile-offset-y").value) || 0;
   $("#section-tile-offset-y-label").textContent = `${Math.round(v)}%`;
+  scheduleSectionLivePreview();
+});
+$("#section-image-rotation")?.addEventListener("input", () => {
+  markSectionDirty("image");
+  const raw = Number($("#section-image-rotation").value);
+  const v = Number.isFinite(raw) ? Math.min(360, Math.max(0, raw)) : 0;
+  if ($("#section-image-rotation-label")) {
+    $("#section-image-rotation-label").textContent = `${Math.round(v)}°`;
+  }
   scheduleSectionLivePreview();
 });
 
@@ -3926,6 +4017,7 @@ $("#section-form").addEventListener("submit", async (e) => {
       100,
       Math.max(-100, Number($("#section-tile-offset-y").value) || 0)
     ),
+    imageRotation: clampImageRotation($("#section-image-rotation")?.value),
   };
   // Only persist image slider values when section owns the image
   if (!customImage && sectionEditDirty.image) {
@@ -3938,6 +4030,7 @@ $("#section-form").addEventListener("submit", async (e) => {
       imageTileScale: 1,
       imageTileOffsetX: 0,
       imageTileOffsetY: 0,
+      imageRotation: 0,
     });
   } else if (!customImage && existing && !sectionEditDirty.image) {
     // Keep stored raw fields; display still inherits
@@ -3950,11 +4043,12 @@ $("#section-form").addEventListener("submit", async (e) => {
       imageTileScale: existing.imageTileScale ?? 1,
       imageTileOffsetX: existing.imageTileOffsetX ?? 0,
       imageTileOffsetY: existing.imageTileOffsetY ?? 0,
+      imageRotation: existing.imageRotation ?? 0,
     });
   }
 
   const payload = {
-    label: $("#section-label").value.trim() || "Untitled",
+    label: $("#section-label").value.trim() || nextUnnamedLabel(),
     weight: normalizeWeight($("#section-weight").value),
     color: customColor
       ? $("#section-color").value
@@ -4113,6 +4207,7 @@ $("#bulk-form").addEventListener("submit", async (e) => {
       imageTileScale: 1,
       imageTileOffsetX: 0,
       imageTileOffsetY: 0,
+      imageRotation: 0,
       landSfxData: null,
       landSfxName: null,
       landSfxVolume: state.sound.landVolume ?? 0.4,
@@ -4141,6 +4236,11 @@ function bindLook() {
   updateWinnerTextOverrideButton();
   $("#chk-show-labels").checked = state.look.showLabels !== false;
   $("#chk-show-images").checked = state.look.showImages !== false;
+  if ($("#image-layout-mode")) {
+    $("#image-layout-mode").value = normalizeImageLayoutMode(
+      state.look.imageLayoutMode
+    );
+  }
   if ($("#chk-pointer-locked")) {
     $("#chk-pointer-locked").checked = state.look.pointerLocked !== false;
   }
@@ -6348,6 +6448,11 @@ async function onLookChange() {
   // forceWinnerTextColor is toggled by the Override button, not these fields
   state.look.showLabels = $("#chk-show-labels").checked;
   state.look.showImages = $("#chk-show-images").checked;
+  if ($("#image-layout-mode")) {
+    state.look.imageLayoutMode = normalizeImageLayoutMode(
+      $("#image-layout-mode").value
+    );
+  }
   if ($("#chk-pointer-locked")) {
     state.look.pointerLocked = $("#chk-pointer-locked").checked;
   }
@@ -6408,7 +6513,7 @@ async function onLookChange() {
   renderSections();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {

@@ -14,6 +14,7 @@
  *   imageTileScale: number,
  *   imageTileOffsetX: number,
  *   imageTileOffsetY: number,
+ *   imageRotation: number,
  *   landSfxData: string|null,
  *   landSfxName: string|null
  * }} Group */
@@ -32,6 +33,7 @@
  *   imageTileScale: number,
  *   imageTileOffsetX: number,
  *   imageTileOffsetY: number,
+ *   imageRotation: number,
  *   landSfxData: string|null,
  *   landSfxName: string|null,
  *   landSfxVolume: number
@@ -58,6 +60,7 @@ export const PROFILE_KEYS = [
   "imageTileScale",
   "imageTileOffsetX",
   "imageTileOffsetY",
+  "imageRotation",
   "landSfxData",
   "landSfxName",
   "winEffect",
@@ -77,6 +80,7 @@ export const IMAGE_KEYS = [
   "imageTileScale",
   "imageTileOffsetX",
   "imageTileOffsetY",
+  "imageRotation",
 ];
 export const SFX_KEYS = ["landSfxData", "landSfxName"];
 export const WIN_EFFECT_KEYS = ["winEffect", "winEffectData", "winEffectName"];
@@ -112,6 +116,7 @@ export function defaultGroupProfile() {
     imageTileScale: 1,
     imageTileOffsetX: 0,
     imageTileOffsetY: 0,
+    imageRotation: 0,
     landSfxData: null,
     landSfxName: null,
     /** null = do not set a group win effect (sections use Look / own) */
@@ -159,6 +164,14 @@ function clampOffset(n) {
   return Math.min(100, Math.max(-100, Number(n) || 0));
 }
 
+/** Image rotation in degrees, 0–360 (360 wraps to 0). */
+export function clampImageRotation(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 0;
+  const wrapped = ((v % 360) + 360) % 360;
+  return wrapped === 0 ? 0 : Math.round(wrapped * 10) / 10;
+}
+
 /** Normalize profile image/sfx/color fields onto a plain object */
 export function normalizeProfileFields(src = {}) {
   return {
@@ -176,6 +189,7 @@ export function normalizeProfileFields(src = {}) {
     imageTileScale: clampScale(src.imageTileScale),
     imageTileOffsetX: clampOffset(src.imageTileOffsetX),
     imageTileOffsetY: clampOffset(src.imageTileOffsetY),
+    imageRotation: clampImageRotation(src.imageRotation),
     landSfxData: src.landSfxData || null,
     landSfxName: src.landSfxName || null,
     winEffect:
@@ -347,6 +361,12 @@ export function defaultState() {
       forceWinnerTextColor: false,
       showLabels: true,
       showImages: true,
+      /**
+       * How section/group fill images sit on the wheel:
+       * - "fixed" — upright, editor-style top frame (default)
+       * - "slice" — rotate each image with its wedge so framing matches the real slice
+       */
+      imageLayoutMode: "fixed",
       resultStyle: "center",
       winnerLabel: "Winner",
       allowWinnerRemove: true,
@@ -526,6 +546,8 @@ function migrate(data) {
   }
   look.keyboardSpin = look.keyboardSpin !== false;
   look.allowWinnerHide = look.allowWinnerHide !== false;
+  look.imageLayoutMode =
+    look.imageLayoutMode === "slice" ? "slice" : "fixed";
   look.winEffectData = look.winEffectData || null;
   look.winEffectName = look.winEffectName || null;
   if (look.winEffect === "custom" && !look.winEffectData) {
