@@ -828,12 +828,13 @@ export class Wheel {
   _wrapLabelLines(ctx, label, maxWidth) {
     const text = String(label || "").trim();
     if (!text) return [];
+    const maxW = Math.max(1, Number(maxWidth) || 1);
     const words = text.split(/\s+/);
     const lines = [];
     let line = "";
     for (const word of words) {
       const trial = line ? `${line} ${word}` : word;
-      if (ctx.measureText(trial).width <= maxWidth || !line) {
+      if (this._measureWidth(ctx, trial) <= maxW || !line) {
         line = trial;
       } else {
         lines.push(line);
@@ -844,14 +845,14 @@ export class Wheel {
     // Hard-break overlong tokens so every character still draws
     const out = [];
     for (const ln of lines) {
-      if (ctx.measureText(ln).width <= maxWidth) {
+      if (this._measureWidth(ctx, ln) <= maxW) {
         out.push(ln);
         continue;
       }
       let chunk = "";
       for (const ch of ln) {
         const t = chunk + ch;
-        if (ctx.measureText(t).width <= maxWidth || !chunk) chunk = t;
+        if (this._measureWidth(ctx, t) <= maxW || !chunk) chunk = t;
         else {
           out.push(chunk);
           chunk = ch;
@@ -860,6 +861,40 @@ export class Wheel {
       if (chunk) out.push(chunk);
     }
     return out;
+  }
+
+  /**
+   * Wrap into at most maxLines by widening the line budget if needed.
+   * Still hard-breaks tokens; never drops characters.
+   * @returns {string[]}
+   */
+  _wrapLabelLinesMax(ctx, label, maxWidth, maxLines) {
+    const cap = Math.max(1, Math.min(12, Math.floor(maxLines) || 1));
+    let w = Math.max(1, Number(maxWidth) || 1);
+    let lines = this._wrapLabelLines(ctx, label, w);
+    if (lines.length <= cap) return lines;
+    // Grow width until we fit in cap lines (binary-ish expansion)
+    const full = this._measureWidth(ctx, String(label || "").trim()) || w;
+    let lo = w;
+    let hi = Math.max(w * 2, full + 1);
+    for (let i = 0; i < 16; i++) {
+      const mid = (lo + hi) / 2;
+      lines = this._wrapLabelLines(ctx, label, mid);
+      if (lines.length <= cap) hi = mid;
+      else lo = mid;
+    }
+    lines = this._wrapLabelLines(ctx, label, hi);
+    if (lines.length <= cap) return lines;
+    // Last resort: pack into `cap` strips by character count
+    const text = String(label || "").trim();
+    if (!text) return [];
+    const n = Math.ceil(text.length / cap);
+    const packed = [];
+    for (let i = 0; i < cap; i++) {
+      const chunk = text.slice(i * n, (i + 1) * n);
+      if (chunk) packed.push(chunk);
+    }
+    return packed.length ? packed : [text];
   }
 
   /**
@@ -879,8 +914,8 @@ export class Wheel {
 
   /**
    * Radial labels: text runs inside → outside (along the radius).
-   * Packed against the outer rim and scaled as large as the wedge allows.
-   * Never ellipsized. Guarded so a bad label cannot crash the whole UI.
+   * Long names wrap to new lines (stacked across the wedge) when there is room,
+   * instead of disappearing. Never ellipsized.
    * @param {boolean} spinFrame lighter text (no shadow) while spinning
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
@@ -897,6 +932,7 @@ export class Wheel {
       const weight = 700;
       // Fixed measure size; scale freely afterward (may be > 1)
       const baseFont = Math.max(16, 48 * dpr);
+      const lineGap = 1.12;
 
       ctx.save();
       // Per-section text color (from resolve) → Look default
@@ -908,7 +944,6 @@ export class Wheel {
         ctx.shadowBlur = 4 * dpr;
       }
       ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
-      const tw = Math.max(1, this._measureWidth(ctx, label));
       // Glyph height — don't overestimate or short labels stay too small
       let th = baseFont * 1.05;
       try {
@@ -919,27 +954,64 @@ export class Wheel {
       } catch {
         /* keep estimate */
       }
+      const lineH = th * lineGap;
 
-      // ——— Full-wheel single section: horizontal near top rim ———
+      // ——— Full-wheel single section: horizontal near top rim (multi-line OK) ———
       if (solid) {
-        const maxH = radius * 0.22;
-        const maxW = radius * 1.6;
-        let s = Math.min(maxW / tw, maxH / th, (radius * 0.16) / baseFont);
-        if (!Number.isFinite(s) || s <= 0) s = 0.1;
-        const textH = th * s;
-        const rText = radius - 10 * dpr - textH / 2;
+        const maxBlockH = radius * 0.28;
+        const maxW = radius * 1.55;
+        const maxLines = Math.max(
+          1,
+          Math.min(6, Math.floor(maxBlockH / (th * 0.35)))
+        );
+        const layoutSolid = (s) => {
+          if (!(s > 0) || !Number.isFinite(s)) return null;
+          const maxWm = maxW / s;
+          const maxLinesS = Math.max(
+            1,
+            Math.min(maxLines, Math.floor(maxBlockH / (lineH * s)))
+          );
+          const lines = this._wrapLabelLinesMax(ctx, label, maxWm, maxLinesS);
+          if (!lines.length) return null;
+          const longest = Math.max(
+            ...lines.map((ln) => this._measureWidth(ctx, ln)),
+            1
+          );
+          if (longest * s > maxW + 0.5) return null;
+          if (lines.length * lineH * s > maxBlockH + 0.5) return null;
+          return { lines, longest, s };
+        };
+        let lo = 0;
+        let hi = Math.min(0.45, (radius * 0.18) / baseFont);
+        if (!Number.isFinite(hi) || hi <= 0) hi = 0.12;
+        hi *= 1.1;
+        for (let i = 0; i < 28; i++) {
+          const midS = (lo + hi) / 2;
+          if (layoutSolid(midS)) lo = midS;
+          else hi = midS;
+        }
+        const best = layoutSolid(lo) || layoutSolid(0.06);
+        if (!best || best.s * baseFont < 5 * dpr) {
+          ctx.restore();
+          return;
+        }
+        const { lines, s } = best;
+        const blockH = lines.length * lineH * s;
+        const rText = radius - 10 * dpr - blockH / 2;
         ctx.textAlign = "center";
         ctx.translate(0, -rText);
         ctx.scale(s, s);
-        ctx.fillText(label, 0, 0);
+        for (let i = 0; i < lines.length; i++) {
+          const y = (i - (lines.length - 1) / 2) * lineH;
+          ctx.fillText(lines[i], 0, y);
+        }
         ctx.restore();
         return;
       }
 
-      // ——— Multi-slice: radial inside → outside, packed to the rim ———
+      // ——— Multi-slice: radial inside → outside; wrap across the wedge ———
       const rimPad = Math.max(4 * dpr, radius * 0.012);
       const outerR = radius - rimPad;
-      // Thin hub clear — use almost all of the radius for the string
       const hubR =
         radius * Math.max(0.12, (this.look.centerSize ?? 0.16) + 0.015);
       const maxRadial = Math.max(8 * dpr, outerR - hubR);
@@ -948,59 +1020,83 @@ export class Wheel {
       const chordH = (r) => {
         if (!(r > 0)) return 0;
         const half = r * Math.sin(Math.min(Math.PI / 2, span / 2));
-        // Tiny neighbor gap only
         const pad = Math.max(0.75 * dpr, half * 0.08);
         return Math.max(0, (half - pad) * 2);
       };
 
-      // Allow short names on big slices to get very large
       const maxFontPx = radius * 0.3;
+      const maxLinesCap = 8;
 
-      // Binary-search the largest UNIFORM scale that fits the wedge
-      // (outer end on rim; height OK at outer + at inner end; no hub overlap)
-      const fits = (s) => {
-        if (!(s > 0) || !Number.isFinite(s)) return false;
-        const h = th * s;
-        const w = tw * s;
-        if (w > maxRadial + 0.5) return false;
+      /**
+       * @param {number} s
+       * @returns {{ lines: string[], longest: number, s: number }|null}
+       */
+      const layoutAt = (s) => {
+        if (!(s > 0) || !Number.isFinite(s)) return null;
+        const maxWm = maxRadial / s;
+        const chordOuter = chordH(outerR);
+        const maxLinesS = Math.max(
+          1,
+          Math.min(maxLinesCap, Math.floor((chordOuter + 0.5) / (lineH * s)))
+        );
+        const lines = this._wrapLabelLinesMax(ctx, label, maxWm, maxLinesS);
+        if (!lines.length || lines.length > maxLinesS) return null;
+        const longest = Math.max(
+          ...lines.map((ln) => this._measureWidth(ctx, ln)),
+          1
+        );
+        const w = longest * s;
+        if (w > maxRadial + 0.5) return null;
         const rInner = outerR - w;
-        if (rInner < hubR - 0.5) return false;
-        if (h > chordH(outerR) + 0.5) return false;
-        if (h > chordH(Math.max(rInner, hubR)) + 0.5) return false;
-        return true;
+        if (rInner < hubR - 0.5) return null;
+        const blockH = lines.length * lineH * s;
+        if (blockH > chordOuter + 0.5) return null;
+        if (blockH > chordH(Math.max(rInner, hubR)) + 0.5) return null;
+        return { lines, longest, s };
       };
 
       let lo = 0;
       let hi = Math.max(
         maxFontPx / baseFont,
         chordH(outerR) / th,
-        maxRadial / tw
+        maxRadial / Math.max(8, label.length * baseFont * 0.35)
       );
       if (!Number.isFinite(hi) || hi <= 0) hi = 0.1;
-      // A bit of headroom so binary search can find the true max
       hi *= 1.05;
       for (let i = 0; i < 28; i++) {
         const midS = (lo + hi) / 2;
-        if (fits(midS)) lo = midS;
+        if (layoutAt(midS)) lo = midS;
         else hi = midS;
       }
-      let s = lo;
-      if (!Number.isFinite(s) || s <= 0) s = 0.04;
-
-      // Skip only if truly unreadable (no skew ever)
-      if (s * baseFont < 5.5 * dpr) {
+      let best = layoutAt(lo);
+      // Prefer multi-line over hiding: try a few smaller still-readable scales
+      if (!best || best.s * baseFont < 5.5 * dpr) {
+        for (const px of [8, 6.5, 5.5, 4.8]) {
+          const sTry = (px * dpr) / baseFont;
+          const lay = layoutAt(sTry);
+          if (lay) {
+            best = lay;
+            break;
+          }
+        }
+      }
+      if (!best || best.s * baseFont < 4.2 * dpr) {
         ctx.restore();
         return;
       }
 
-      const textW = tw * s;
+      const { lines, longest, s } = best;
+      const textW = longest * s;
 
-      // +x = radial out. LAST char on the rim; first char fills toward hub.
+      // +x = radial out. Longest line ends on the rim; extra lines stack on +y.
       ctx.rotate(mid);
       ctx.translate(outerR - textW, 0);
       ctx.textAlign = "left";
       ctx.scale(s, s);
-      ctx.fillText(label, 0, 0);
+      for (let i = 0; i < lines.length; i++) {
+        const y = (i - (lines.length - 1) / 2) * lineH;
+        ctx.fillText(lines[i], 0, y);
+      }
       ctx.restore();
     } catch (err) {
       try {
