@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#8</span>
+        <span class="app-version" id="app-version" title="Update number">#9</span>
       </div>
       <div class="top-actions">
         <button type="button" id="btn-undo" class="btn ghost" title="Undo last change (Ctrl+Z)" disabled>Undo</button>
@@ -88,7 +88,10 @@
           <div class="panel-toolbar">
             <button type="button" id="btn-add-section" class="btn small">+ Add section</button>
             <button type="button" id="btn-add-many" class="btn small ghost">+ Bulk add</button>
-            <span id="sections-count" class="count-badge" title="Total sections">0</span>
+            <span class="sections-count-pill" id="sections-count" title="Total sections">
+              <strong class="sections-count-num">0</strong>
+              <span class="sections-count-label">sections</span>
+            </span>
           </div>
           <div class="sections-filters">
             <label class="search-field sections-search-grow">

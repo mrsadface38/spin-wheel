@@ -450,9 +450,14 @@ function sortSectionsList(list) {
 function updateSectionsCount() {
   const el = $("#sections-count");
   if (!el) return;
-  const n = state.sections.length;
-  el.textContent = String(n);
+  const n = state.sections?.length || 0;
+  const num = el.querySelector(".sections-count-num");
+  const lab = el.querySelector(".sections-count-label");
+  if (num) num.textContent = String(n);
+  else el.textContent = String(n);
+  if (lab) lab.textContent = n === 1 ? "section" : "sections";
   el.title = n === 1 ? "1 section" : `${n} sections`;
+  el.setAttribute("data-count", String(n));
 }
 
 function renderSections() {

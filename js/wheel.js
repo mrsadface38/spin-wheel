@@ -723,7 +723,7 @@ export class Wheel {
   }
 
   /**
-   * Word-wrap label to fit maxWidth; never truncates with ellipsis.
+   * Word-wrap so each line fits maxWidth (full text, no ellipsis).
    * @returns {string[]}
    */
   _wrapLabelLines(ctx, label, maxWidth) {
@@ -742,7 +742,7 @@ export class Wheel {
       }
     }
     if (line) lines.push(line);
-    // Extremely long single tokens: hard-break by measured width
+    // Hard-break overlong tokens so every character still draws
     const out = [];
     for (const ln of lines) {
       if (ctx.measureText(ln).width <= maxWidth) {
@@ -764,70 +764,85 @@ export class Wheel {
   }
 
   /**
+   * Labels run along the radius (center → rim). That gives long names room
+   * even on thin slices; we only shrink/wrap — never truncate with "…".
    * @param {boolean} spinFrame lighter text (no shadow) while spinning
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
     if (this.look.showLabels === false) return;
     const { mid, section } = sl;
-    const label = section.label || "";
+    const label = String(section.label || "").trim();
     if (!label) return;
 
     const solid = asSolidDisc || sl.span >= Math.PI * 2 - 1e-4;
-    const hasImg = section.imageData && this.look.showImages !== false;
+    const dpr = this._dpr || 1;
 
     ctx.save();
-    const labelAngle = solid ? 0 : mid;
-    ctx.rotate(labelAngle);
-    const textR = radius * (hasImg ? 0.62 : solid ? 0.55 : 0.62);
-    ctx.translate(textR, 0);
-    // Labels stay fixed to the slice — no upright flip when inverted
+    // Local +x = outward along slice mid-angle (radial)
+    // Local +y = tangential (across the wedge)
+    ctx.rotate(solid ? 0 : mid);
 
-    // Fit full label: wrap + shrink font so nothing is cut with "…"
-    const maxFont =
-      Math.max(10, Math.min(solid ? 20 : 16, radius * (solid ? 0.055 : 0.045) / this._dpr)) *
-      this._dpr;
-    const minFont = Math.max(7, 8 * this._dpr);
-    // Tangential width ≈ arc length at label radius (pad edges of wedge)
-    const arcW = solid
-      ? radius * 1.1
-      : Math.max(radius * 0.12, textR * sl.span * 0.88);
-    const maxWidth = arcW;
-    // Radial budget for multi-line stack
-    const maxHeight = solid
-      ? radius * 0.45
-      : Math.max(radius * 0.1, radius * Math.min(0.4, 0.12 + sl.span * 0.35));
+    const hubR = radius * (solid ? 0.2 : 0.26);
+    const outerR = radius * 0.94;
+    const radialBudget = Math.max(24 * dpr, outerR - hubR);
+    const midR = (hubR + outerR) / 2;
+    ctx.translate(midR, 0);
+
+    // Font height must fit across the wedge (tangential)
+    const tanBudget = solid
+      ? radius * 0.35
+      : Math.max(8 * dpr, midR * sl.span * 0.92);
+
+    const maxFont = Math.min(
+      solid ? 22 * dpr : 16 * dpr,
+      tanBudget * 0.95,
+      radius * 0.055
+    );
+    const minFont = Math.max(5 * dpr, 5);
 
     const weight = solid ? 700 : 600;
-    let fontSize = maxFont;
-    let lines = [];
-    let lineH = fontSize * 1.15;
-    for (let attempt = 0; attempt < 24; attempt++) {
+    let fontSize = Math.max(minFont, maxFont);
+    let lines = [label];
+    let lineH = fontSize * 1.12;
+
+    for (let attempt = 0; attempt < 30; attempt++) {
       ctx.font = `${weight} ${fontSize}px system-ui,sans-serif`;
-      lines = this._wrapLabelLines(ctx, label, maxWidth);
-      lineH = fontSize * 1.15;
+      // Prefer one line along the radius; wrap only if still too long at small size
+      const oneW = ctx.measureText(label).width;
+      if (oneW <= radialBudget) {
+        lines = [label];
+      } else if (fontSize <= minFont * 1.15) {
+        lines = this._wrapLabelLines(ctx, label, radialBudget);
+      } else {
+        lines = [label];
+      }
+      lineH = fontSize * 1.12;
       const blockH = lines.length * lineH;
       const widest = lines.reduce(
         (m, ln) => Math.max(m, ctx.measureText(ln).width),
         0
       );
-      if (
-        (blockH <= maxHeight && widest <= maxWidth + 0.5) ||
-        fontSize <= minFont + 0.01
-      ) {
-        break;
-      }
-      fontSize = Math.max(minFont, fontSize * 0.88);
+      const fits =
+        widest <= radialBudget + 0.5 && blockH <= tanBudget + 0.5;
+      if (fits || fontSize <= minFont + 0.01) break;
+      fontSize = Math.max(minFont, fontSize * 0.9);
     }
 
+    // Last resort: wrap at min font so every character is drawn
     ctx.font = `${weight} ${fontSize}px system-ui,sans-serif`;
+    if (lines.length === 1 && ctx.measureText(lines[0]).width > radialBudget) {
+      lines = this._wrapLabelLines(ctx, label, radialBudget);
+      lineH = fontSize * 1.12;
+    }
+
     ctx.fillStyle = this.look.textColor || "#fff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    // shadowBlur is very expensive — only when idle
     if (!spinFrame) {
       ctx.shadowColor = "rgba(0,0,0,0.75)";
-      ctx.shadowBlur = 5 * this._dpr;
+      ctx.shadowBlur = 4 * dpr;
     }
+
     const blockH = lines.length * lineH;
     let y = -blockH / 2 + lineH / 2;
     for (const ln of lines) {
