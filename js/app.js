@@ -4358,10 +4358,19 @@ function hideResults() {
 let resultShowsRigged = false;
 
 /**
+ * After-win visual effect (Look → After-win effect dropdown).
+ */
+function playWinEffect() {
+  const effect = state.look?.winEffect || "confetti";
+  if (effect === "none") return;
+  if (effect === "confetti") fireConfetti();
+  // Future effects: else if (effect === "…") …
+}
+
+/**
  * Lightweight confetti burst over the stage (no dependency).
  */
 function fireConfetti() {
-  if (state.look?.confettiOnWin === false) return;
   try {
     let layer = document.getElementById("confetti-layer");
     if (!layer) {
@@ -4390,34 +4399,45 @@ function fireConfetti() {
       "#3ecf8e",
       "#e8eaf2",
       "#c9a84c",
+      "#b388ff",
+      "#ff9f43",
     ];
-    const n = 90;
+    // Big burst: more pieces, longer hang, wider spawn
+    const n = 260;
     const parts = [];
     for (let i = 0; i < n; i++) {
+      // Stagger waves so it keeps raining for longer
+      const wave = i / n;
       parts.push({
-        x: w * 0.5 + (Math.random() - 0.5) * w * 0.35,
-        y: h * 0.35 + (Math.random() - 0.5) * 40,
-        vx: (Math.random() - 0.5) * 12,
-        vy: -Math.random() * 10 - 4,
-        g: 0.22 + Math.random() * 0.12,
-        size: 4 + Math.random() * 6,
-        rot: Math.random() * Math.PI,
-        vr: (Math.random() - 0.5) * 0.3,
+        x: w * 0.5 + (Math.random() - 0.5) * w * 0.7,
+        y: h * (0.18 + Math.random() * 0.22) - wave * 30,
+        vx: (Math.random() - 0.5) * 14,
+        vy: -Math.random() * 11 - 3,
+        g: 0.11 + Math.random() * 0.08,
+        size: 4 + Math.random() * 8,
+        rot: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 0.35,
         color: colors[i % colors.length],
+        // Delay + longer life so pieces fade out over the full duration
+        delay: wave * 0.35,
         life: 1,
       });
     }
     const start = performance.now();
-    const dur = 2200;
+    const dur = 5200;
     const frame = (now) => {
       const t = (now - start) / dur;
       ctx.clearRect(0, 0, w, h);
       for (const p of parts) {
+        if (t < p.delay) continue;
+        const localT = Math.min(1, (t - p.delay) / Math.max(0.001, 1 - p.delay));
         p.vy += p.g;
         p.x += p.vx;
         p.y += p.vy;
         p.rot += p.vr;
-        p.life = Math.max(0, 1 - t);
+        // Hold full opacity longer, then ease out
+        p.life = localT < 0.55 ? 1 : Math.max(0, 1 - (localT - 0.55) / 0.45);
+        if (p.life <= 0) continue;
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.rot);
@@ -4467,7 +4487,7 @@ function showResult(section, opts = {}) {
       pendingEliminateId = null;
       pendingEliminateMode = null;
     }
-    fireConfetti();
+    playWinEffect();
     const label = section.label || "Winner";
     // Resolve inherited group image if the section itself has no image
     const raw =
@@ -5673,8 +5693,9 @@ async function onLookChange() {
     state.look.eliminateAfterWin =
       v === "hide" || v === "remove" ? v : "off";
   }
-  if ($("#chk-confetti-on-win")) {
-    state.look.confettiOnWin = $("#chk-confetti-on-win").checked;
+  if ($("#win-effect")) {
+    const v = $("#win-effect").value;
+    state.look.winEffect = v === "none" ? "none" : "confetti";
   }
   if ($("#chk-keyboard-spin")) {
     state.look.keyboardSpin = $("#chk-keyboard-spin").checked;
@@ -5703,7 +5724,7 @@ async function onLookChange() {
   renderSections();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-remove", "eliminate-after-win", "chk-confetti-on-win", "chk-keyboard-spin", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
