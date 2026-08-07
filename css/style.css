@@ -62,8 +62,9 @@ select optgroup {
   backdrop-filter: blur(8px);
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 50;
   flex-wrap: wrap;
+  pointer-events: auto;
 }
 
 .wheel-switcher {
@@ -670,6 +671,8 @@ select optgroup {
 
 /* Editor */
 .editor-panel {
+  position: relative;
+  z-index: 30;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -679,6 +682,7 @@ select optgroup {
   max-height: calc(100vh - 5.5rem);
   overflow: hidden;
   box-shadow: var(--shadow);
+  pointer-events: auto;
 }
 
 .tabs {
@@ -1495,6 +1499,12 @@ body.group-drag-cursor * {
 .btn.ghost.danger:hover {
   border-color: var(--danger);
   background: rgba(232, 93, 108, 0.1);
+}
+
+/* Modal — closed dialogs must never intercept clicks */
+dialog.modal:not([open]) {
+  display: none !important;
+  pointer-events: none !important;
 }
 
 /* Modal */

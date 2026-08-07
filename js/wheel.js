@@ -670,10 +670,18 @@ export class Wheel {
 
     // Labels last (on top of hub/separators) — full name, scaled to fit
     for (const sl of slices) {
-      this._drawSliceLabel(front, sl, radius, single, spinFrame);
+      try {
+        this._drawSliceLabel(front, sl, radius, single, spinFrame);
+      } catch (err) {
+        console.warn("Label draw failed:", err);
+      }
     }
 
-    front.restore();
+    try {
+      front.restore();
+    } catch {
+      /* ignore unbalanced save/restore */
+    }
   }
 
   /**
@@ -765,96 +773,107 @@ export class Wheel {
   }
 
   /**
-   * Labels sit on the outer rim (along the arc), sized as large as the slice
-   * allows. Full string always drawn — never ellipsized.
+   * Safe text width (never throws / never undefined).
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {string} text
+   */
+  _measureWidth(ctx, text) {
+    try {
+      const m = ctx.measureText(String(text ?? ""));
+      const w = m && typeof m.width === "number" ? m.width : 0;
+      return Number.isFinite(w) ? w : 0;
+    } catch {
+      return String(text ?? "").length * 8;
+    }
+  }
+
+  /**
+   * Labels sit near the outer rim, along the arc, as large as the slice allows.
+   * Never ellipsized. Guarded so a bad label cannot crash the whole UI.
    * @param {boolean} spinFrame lighter text (no shadow) while spinning
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
     if (this.look.showLabels === false) return;
-    const { mid, section } = sl;
-    const label = String(section.label || "").trim();
-    if (!label) return;
+    if (!ctx || !sl) return;
+    try {
+      const mid = Number(sl.mid) || 0;
+      const span = Math.max(0.001, Number(sl.span) || 0.001);
+      const label = String(sl.section?.label || "").trim();
+      if (!label) return;
 
-    const solid = asSolidDisc || sl.span >= Math.PI * 2 - 1e-4;
-    const dpr = this._dpr || 1;
-    const weight = 700;
-    // Fixed size for measuring; we scale freely after (can be > 1)
-    const baseFont = 48 * dpr;
+      const solid = asSolidDisc || span >= Math.PI * 2 - 1e-4;
+      const dpr = this._dpr || 1;
+      const weight = 700;
+      const baseFont = Math.max(12, 40 * dpr);
 
-    ctx.save();
-    ctx.fillStyle = this.look.textColor || "#fff";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    if (!spinFrame) {
-      ctx.shadowColor = "rgba(0,0,0,0.85)";
-      ctx.shadowBlur = 4 * dpr;
-    }
-
-    // ——— Full-wheel single section ———
-    if (solid) {
-      const maxH = radius * 0.22;
-      const arcLen = radius * 1.7;
+      ctx.save();
+      ctx.fillStyle = this.look.textColor || "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      if (!spinFrame) {
+        ctx.shadowColor = "rgba(0,0,0,0.85)";
+        ctx.shadowBlur = 4 * dpr;
+      }
       ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
-      const tw = Math.max(1, ctx.measureText(label).width);
-      let s = Math.min(arcLen / tw, maxH / baseFont);
-      if (!Number.isFinite(s) || s <= 0) s = 0.1;
-      const textH = baseFont * s;
-      // Center of text just inside the rim
-      const rText = radius - 8 * dpr - textH / 2;
-      ctx.translate(0, -rText);
-      ctx.scale(s, s);
-      ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
+
+      // ——— Full-wheel single section ———
+      if (solid) {
+        const maxH = radius * 0.2;
+        const arcLen = radius * 1.6;
+        const tw = Math.max(1, this._measureWidth(ctx, label));
+        let s = Math.min(arcLen / tw, maxH / baseFont);
+        if (!Number.isFinite(s) || s <= 0) s = 0.1;
+        const textH = baseFont * s;
+        const rText = Math.max(radius * 0.5, radius - 10 * dpr - textH / 2);
+        ctx.translate(0, -rText);
+        ctx.scale(s, s);
+        ctx.fillText(label, 0, 0);
+        ctx.restore();
+        return;
+      }
+
+      // ——— Multi-slice: text along outer arc ———
+      const maxH = radius * 0.24;
+      const maxFontPx = radius * 0.16;
+      const tw = Math.max(1, this._measureWidth(ctx, label));
+
+      // Place text center close to the rim
+      let sGuess = Math.min(maxH / baseFont, maxFontPx / baseFont);
+      if (!Number.isFinite(sGuess) || sGuess <= 0) sGuess = 0.1;
+      const textHGuess = baseFont * sGuess;
+      const rimPad = Math.max(6 * dpr, radius * 0.02);
+      const rText = Math.max(
+        radius * 0.5,
+        radius - rimPad - textHGuess / 2
+      );
+      const arcLen = Math.max(4 * dpr, rText * span * 0.92);
+
+      let s = Math.min(maxH / baseFont, maxFontPx / baseFont, arcLen / tw);
+      if (!Number.isFinite(s) || s <= 0) s = 0.05;
+      let sx = s;
+      let sy = s;
+      if (tw * sx > arcLen) sx = arcLen / tw;
+
+      ctx.rotate(mid);
+      ctx.translate(rText, 0);
+
+      // Along the arc; flip on left half so text stays readable
+      let a = mid % (Math.PI * 2);
+      if (a < 0) a += Math.PI * 2;
+      const onLeft = a > Math.PI / 2 && a < (Math.PI * 3) / 2;
+      ctx.rotate(onLeft ? Math.PI / 2 : -Math.PI / 2);
+
+      ctx.scale(sx, sy);
       ctx.fillText(label, 0, 0);
       ctx.restore();
-      return;
+    } catch (err) {
+      try {
+        ctx.restore();
+      } catch {
+        /* ignore */
+      }
+      console.warn("Label draw skipped:", sl?.section?.label, err);
     }
-
-    // ——— Multi-slice: text along the outer arc ———
-    // How tall glyphs may be (inward from rim)
-    const maxH = radius * 0.26;
-    // Hard cap on final pixel height
-    const maxFontPx = radius * 0.18;
-
-    ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
-    const tw = Math.max(1, ctx.measureText(label).width);
-    // Measure arc at the radius where the text center will sit (~rim)
-    // First pass estimate, then refine after we know text height
-    let s = Math.min(maxH / baseFont, maxFontPx / baseFont);
-    // provisional arc at ~0.93 r
-    let rEst = radius * 0.93;
-    let arcLen = Math.max(4 * dpr, rEst * sl.span * 0.92);
-    s = Math.min(s, arcLen / tw);
-    if (!Number.isFinite(s) || s <= 0) s = 0.05;
-
-    const textH = baseFont * s;
-    // Outer edge of glyphs stays just inside border; center sits textH/2 inward
-    const rimPad = Math.max(5 * dpr, 6 * dpr);
-    const rText = Math.max(radius * 0.55, radius - rimPad - textH / 2);
-    // Recompute arc at the real radius so scale uses full outer width
-    arcLen = Math.max(4 * dpr, rText * sl.span * 0.92);
-    s = Math.min(maxH / baseFont, maxFontPx / baseFont, arcLen / tw);
-    if (!Number.isFinite(s) || s <= 0) s = 0.05;
-    // Keep full name: allow X squash only if still too wide
-    let sx = s;
-    let sy = s;
-    if (tw * sx > arcLen) sx = arcLen / tw;
-
-    // +x = radial out at slice mid
-    ctx.rotate(mid);
-    ctx.translate(rText, 0);
-
-    // Tangential: rotate so +x runs along the arc.
-    // Flip 180° on the left half of the wheel so text isn't upside-down.
-    let a = mid % (Math.PI * 2);
-    if (a < 0) a += Math.PI * 2;
-    const onLeft = a > Math.PI / 2 && a < (Math.PI * 3) / 2;
-    // -90° → text reads CCW; +90° on left → still tangential but upright
-    ctx.rotate(onLeft ? Math.PI / 2 : -Math.PI / 2);
-
-    ctx.scale(sx, sy);
-    ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
-    ctx.fillText(label, 0, 0);
-    ctx.restore();
   }
 
   /** Peg index for tick sounds (slice boundaries, or rim pegs when only one section). */

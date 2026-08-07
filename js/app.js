@@ -38,10 +38,26 @@ import { APP_UPDATE } from "./version.js";
 
 const audio = new AudioManager();
 /** @type {import("./wheels.js").WheelLibrary | ReturnType<typeof loadLibrary>} */
-let library = loadLibrary();
-let state = hydrateState(
-  JSON.parse(JSON.stringify(getActiveSlot(library).data))
-);
+let library;
+let state;
+try {
+  library = loadLibrary();
+  const slot = getActiveSlot(library);
+  state = hydrateState(
+    JSON.parse(JSON.stringify(slot?.data || defaultState()))
+  );
+} catch (err) {
+  console.error("Failed to load saved wheels — starting fresh:", err);
+  library = loadLibrary();
+  try {
+    // If library itself is corrupt, force a blank one via default state write
+    state = defaultState();
+    library = writeActiveState(library, state);
+    saveLibrary(library);
+  } catch {
+    state = defaultState();
+  }
+}
 /** True while a timed spin / fling session owns the wheel */
 let spinBusy = false;
 
@@ -3632,60 +3648,140 @@ function bindAll() {
 }
 
 // --- Boot ---
+/** Clear anything that can swallow clicks (stuck overlays / dialogs / drag). */
+function forceUiInteractive() {
+  try {
+    document
+      .querySelectorAll("dialog[open]")
+      .forEach((d) => {
+        try {
+          d.close();
+        } catch {
+          d.removeAttribute("open");
+        }
+      });
+  } catch {
+    /* ignore */
+  }
+  try {
+    resultBanner?.classList?.add("hidden");
+    resultCenter?.classList?.add("hidden");
+    resultActionsBar?.classList?.add("hidden");
+  } catch {
+    /* ignore */
+  }
+  try {
+    document.body.classList.remove("group-drag-cursor");
+    document.querySelectorAll(".group-drag-ghost").forEach((g) => g.remove());
+    groupsList?.classList?.remove("is-reordering");
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (wheel) {
+      wheel._dragging = false;
+      wheel._dragPointerId = null;
+      if (wheel._dragEl) wheel._dragEl.style.cursor = "grab";
+    }
+  } catch {
+    /* ignore */
+  }
+  spinBusy = false;
+}
+
 async function init() {
   const verEl = $("#app-version");
   if (verEl) {
     verEl.textContent = `#${APP_UPDATE}`;
     verEl.title = `Update #${APP_UPDATE}`;
   }
-  fillWheelSelect();
-  bindAll();
-  updateSectionsCount();
-  updateUndoButton();
-  wheel.resize();
-  await preloadAudio();
-  await refreshWheel();
+  forceUiInteractive();
+  try {
+    fillWheelSelect();
+  } catch (err) {
+    console.warn("fillWheelSelect:", err);
+  }
+  try {
+    bindAll();
+  } catch (err) {
+    console.warn("bindAll:", err);
+  }
+  try {
+    updateSectionsCount();
+    updateUndoButton();
+  } catch {
+    /* ignore */
+  }
+  try {
+    wheel.resize();
+  } catch (err) {
+    console.warn("wheel.resize:", err);
+  }
+  try {
+    await preloadAudio();
+  } catch (err) {
+    console.warn("preloadAudio:", err);
+  }
+  try {
+    await refreshWheel();
+  } catch (err) {
+    console.warn("refreshWheel:", err);
+  }
+  forceUiInteractive();
   updateSectionsCount();
   fillWheelSelect();
   // Continuous BGM waits for a user gesture (browser autoplay rules);
   // first SPIN / Sound interaction will start it via syncBgm / startBgmForSpin.
-  syncBgm();
+  try {
+    syncBgm();
+  } catch {
+    /* ignore */
+  }
   const stage = $("#stage");
   const spinTarget = stage || wheelCanvas;
-  // Double-click: timed random spin (ignore UI chrome / rigged badge)
-  spinTarget.addEventListener("dblclick", (e) => {
-    if (
-      e.target.closest?.(
-        "#result-rigged, .result-actions-bar, .result-center-inner, .result-banner, .btn-toggle-sidebar, button, a, input, select, textarea"
-      )
-    ) {
-      return;
-    }
-    doSpin();
-  });
-  // Drag to aim; grab mid-spin to stop; release quickly to fling
-  wheel.enablePointerDrag(spinTarget, {
-    canStart: () =>
-      !wheel._dragging && getActiveSections(state).length > 0,
-    onDragStart: ({ interrupted } = {}) => {
-      audio.ensure();
-      hideResults();
-      // Grabbed during spin — stop spin SFX / divert immediately
-      if (interrupted) {
-        stopSpinLoop();
-        audio.stopDivert();
-        endRigDivertAudio();
+  if (spinTarget) {
+    // Double-click: timed random spin (ignore UI chrome / rigged badge)
+    spinTarget.addEventListener("dblclick", (e) => {
+      if (
+        e.target.closest?.(
+          "#result-rigged, .result-actions-bar, .result-center-inner, .result-banner, .btn-toggle-sidebar, button, a, input, select, textarea"
+        )
+      ) {
+        return;
       }
-    },
-    onFling: (vel) => {
-      doFling(vel);
-    },
-    onDragEndIdle: () => {
-      // Left the wheel parked without a fling after a grab
-      stopSpinLoop();
-      stopBgmAfterSpin();
-    },
-  });
+      doSpin();
+    });
+    // Drag to aim; grab mid-spin to stop; release quickly to fling
+    try {
+      wheel.enablePointerDrag(spinTarget, {
+        canStart: () =>
+          !wheel._dragging && getActiveSections(state).length > 0,
+        onDragStart: ({ interrupted } = {}) => {
+          audio.ensure();
+          hideResults();
+          // Grabbed during spin — stop spin SFX / divert immediately
+          if (interrupted) {
+            stopSpinLoop();
+            audio.stopDivert();
+            endRigDivertAudio();
+          }
+        },
+        onFling: (vel) => {
+          doFling(vel);
+        },
+        onDragEndIdle: () => {
+          // Left the wheel parked without a fling after a grab
+          stopSpinLoop();
+          stopBgmAfterSpin();
+        },
+      });
+    } catch (err) {
+      console.warn("enablePointerDrag:", err);
+    }
+  }
 }
 
-init();
+init().catch((err) => {
+  console.error("App init failed:", err);
+  forceUiInteractive();
+});
