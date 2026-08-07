@@ -832,22 +832,22 @@ export class Wheel {
       }
       ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
       const tw = Math.max(1, this._measureWidth(ctx, label));
-      // Real glyph height is taller than font-size (ascenders/descenders)
-      let th = baseFont * 1.2;
+      // Glyph height — don't overestimate or short labels stay too small
+      let th = baseFont * 1.05;
       try {
         const m = ctx.measureText(label);
         const asc = m.actualBoundingBoxAscent || 0;
         const desc = m.actualBoundingBoxDescent || 0;
-        if (asc + desc > 0) th = Math.max(th, (asc + desc) * 1.05);
+        if (asc + desc > 1) th = Math.max(baseFont * 0.95, (asc + desc) * 1.02);
       } catch {
         /* keep estimate */
       }
 
       // ——— Full-wheel single section: horizontal near top rim ———
       if (solid) {
-        const maxH = radius * 0.18;
-        const maxW = radius * 1.5;
-        let s = Math.min(maxW / tw, maxH / th, (radius * 0.12) / baseFont);
+        const maxH = radius * 0.22;
+        const maxW = radius * 1.6;
+        let s = Math.min(maxW / tw, maxH / th, (radius * 0.16) / baseFont);
         if (!Number.isFinite(s) || s <= 0) s = 0.1;
         const textH = th * s;
         const rText = radius - 10 * dpr - textH / 2;
@@ -860,72 +860,65 @@ export class Wheel {
       }
 
       // ——— Multi-slice: radial inside → outside, packed to the rim ———
-      // Outer tip of the text sits just inside the border
       const rimPad = Math.max(4 * dpr, radius * 0.012);
       const outerR = radius - rimPad;
-      // Only a thin clear zone around the hub (fill as much of the radius as possible)
+      // Thin hub clear — use almost all of the radius for the string
       const hubR =
-        radius * Math.max(0.14, (this.look.centerSize ?? 0.16) + 0.02);
+        radius * Math.max(0.12, (this.look.centerSize ?? 0.16) + 0.015);
       const maxRadial = Math.max(8 * dpr, outerR - hubR);
 
-      // Usable chord height at radius r (across the mid-line)
+      // Chord height at r (full usable height across mid-line)
       const chordH = (r) => {
-        const half = Math.max(
-          0,
-          r * Math.sin(Math.min(Math.PI / 2, span / 2))
-        );
-        // Small edge gap so neighbors don't touch, but still fill the wedge
-        const pad = Math.max(1 * dpr, half * 0.12);
+        if (!(r > 0)) return 0;
+        const half = r * Math.sin(Math.min(Math.PI / 2, span / 2));
+        // Tiny neighbor gap only
+        const pad = Math.max(0.75 * dpr, half * 0.08);
         return Math.max(0, (half - pad) * 2);
       };
 
-      // High ceiling — short names on wide slices can get big
-      const maxFontPx = radius * 0.22;
+      // Allow short names on big slices to get very large
+      const maxFontPx = radius * 0.3;
 
-      // UNIFORM scale only — never squash/skew.
-      // Maximize s so the label is as large as possible while:
-      //  - still fitting inside the wedge at its INNER end (no clip/bleed)
-      //  - outer end stays on the rim (uses the empty space toward the hub)
-      let s = Math.min(
+      // Binary-search the largest UNIFORM scale that fits the wedge
+      // (outer end on rim; height OK at outer + at inner end; no hub overlap)
+      const fits = (s) => {
+        if (!(s > 0) || !Number.isFinite(s)) return false;
+        const h = th * s;
+        const w = tw * s;
+        if (w > maxRadial + 0.5) return false;
+        const rInner = outerR - w;
+        if (rInner < hubR - 0.5) return false;
+        if (h > chordH(outerR) + 0.5) return false;
+        if (h > chordH(Math.max(rInner, hubR)) + 0.5) return false;
+        return true;
+      };
+
+      let lo = 0;
+      let hi = Math.max(
         maxFontPx / baseFont,
         chordH(outerR) / th,
         maxRadial / tw
       );
-      if (!Number.isFinite(s) || s <= 0) s = 0.04;
-
-      for (let i = 0; i < 16; i++) {
-        const h = th * s;
-        const w = tw * s;
-        const rInner = outerR - w;
-        if (rInner < hubR) {
-          const next = maxRadial / tw;
-          if (next >= s - 1e-9) break;
-          s = next;
-          continue;
-        }
-        // Must fit height at the tightest radius the string occupies
-        const need = Math.min(chordH(outerR), chordH(rInner));
-        if (need > 0 && h > need) {
-          const next = need / th;
-          if (next >= s - 1e-9) break;
-          s = next;
-          continue;
-        }
-        break;
+      if (!Number.isFinite(hi) || hi <= 0) hi = 0.1;
+      // A bit of headroom so binary search can find the true max
+      hi *= 1.05;
+      for (let i = 0; i < 28; i++) {
+        const midS = (lo + hi) / 2;
+        if (fits(midS)) lo = midS;
+        else hi = midS;
       }
+      let s = lo;
       if (!Number.isFinite(s) || s <= 0) s = 0.04;
 
-      // Skip only if truly unreadable (avoid smear; no skew)
-      const minReadable = (6 * dpr) / baseFont;
-      if (s < minReadable * 0.5) {
+      // Skip only if truly unreadable (no skew ever)
+      if (s * baseFont < 5.5 * dpr) {
         ctx.restore();
         return;
       }
 
       const textW = tw * s;
 
-      // +x = radial out. LAST character at outerR (near circumference).
-      // First char further in → fills toward the middle. Reading = inside → outside.
+      // +x = radial out. LAST char on the rim; first char fills toward hub.
       ctx.rotate(mid);
       ctx.translate(outerR - textW, 0);
       ctx.textAlign = "left";
