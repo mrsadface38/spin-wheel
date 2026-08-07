@@ -357,7 +357,7 @@ export function defaultState() {
       /**
        * Bundled reverse slide presets + custom:
        * "goofy-slip" | "cartoon-slip" | "slide-slip" | "glass-squeak-3" |
-       * "glass-squeak-2" | "synth" | "custom"
+       * "glass-squeak-2" | "scp-173" | "custom"  ("synth" legacy → scp-173)
        */
       reverseSlideSfxPreset: "goofy-slip",
       reverseSlideSfxData: null,

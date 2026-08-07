@@ -4039,16 +4039,17 @@ const REVERSE_SLIDE_PRESETS = {
     url: "assets/sounds/reverse-glass-squeak-2.mp3",
     name: "Glass rub squeak 2",
   },
-  synth: {
-    id: "synth",
-    url: null,
-    name: "Built-in slippery synth",
+  "scp-173": {
+    id: "scp-173",
+    url: "assets/sounds/divert-default.mp3",
+    name: "scp-173 grind",
   },
 };
 
 const REVERSE_SLIDE_PRESET_IDS = new Set([
   ...Object.keys(REVERSE_SLIDE_PRESETS),
   "custom",
+  "synth", // legacy → scp-173
 ]);
 
 function reverseSlideSfxDisplayName() {
