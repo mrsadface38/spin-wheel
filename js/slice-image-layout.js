@@ -4,11 +4,11 @@
  * Wedge box is 2r×2r with the wheel center at (r, r).
  *
  * Modes (look.imageLayoutMode):
- * - "fixed" (default): frame is always top-oriented (mid = -π/2), matching the
- *   section/group editor preview. Offsets stay in screen X/Y; images stay upright
- *   on the wheel (each wedge only clips the shared frame).
- * - "slice": frame is rotated to the wedge mid-angle so what you edit at the top
- *   maps onto the real slice position (photo + offsets rotate with the wedge).
+ * - "slice" (default): frame is rotated to the wedge mid-angle so what you edit
+ *   at the top maps onto the real slice position (photo + offsets rotate with
+ *   the wedge).
+ * - "fixed": frame is always top-oriented (mid = -π/2). Offsets stay in screen
+ *   X/Y; images stay upright on the wheel (each wedge only clips the shared frame).
  */
 
 /** Editor / fixed-frame mid angle (top of the wheel). */
@@ -30,7 +30,7 @@ export function computeFillImageLayout({
   offsetXPct = 0,
   offsetYPct = 0,
   midAngle = FILL_EDITOR_MID,
-  mode = "fixed",
+  mode = "slice",
 }) {
   const r = Math.max(1, Number(radius) || 1);
   const scale = Math.min(3, Math.max(0.1, Number(fillScale) || 1));
@@ -71,7 +71,7 @@ export function computeFillImageLayout({
   };
 }
 
-/** Normalize Look image layout mode. */
+/** Normalize Look image layout mode (default: follow each slice). */
 export function normalizeImageLayoutMode(v) {
-  return v === "slice" ? "slice" : "fixed";
+  return v === "fixed" ? "fixed" : "slice";
 }

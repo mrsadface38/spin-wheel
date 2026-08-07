@@ -241,12 +241,12 @@
             <label class="field">
               <span>Section image layout</span>
               <select id="image-layout-mode">
+                <option value="slice" selected>Follow each slice angle</option>
                 <option value="fixed">Fixed (editor-style / upright)</option>
-                <option value="slice">Follow each slice angle</option>
               </select>
               <small>
-                Fixed keeps photos upright like the section editor (framed as if the slice were on top).
                 Follow slice rotates each image with its real wedge so framing matches the wheel.
+                Fixed keeps photos upright like the section editor (framed as if the slice were on top).
               </small>
             </label>
             <label class="toggle-row">
@@ -684,6 +684,7 @@
           <div class="section-live-stage" id="section-live-stage">
             <canvas id="section-live-canvas" width="280" height="280"></canvas>
             <div id="section-live-media" class="section-live-media" aria-hidden="true"></div>
+            <canvas class="section-live-overlay" width="280" height="280" aria-hidden="true"></canvas>
             <div class="section-live-pointer" aria-hidden="true"></div>
             <div id="section-live-label" class="section-live-label"></div>
           </div>
@@ -912,6 +913,7 @@
           <div class="section-live-stage" id="group-live-stage">
             <canvas id="group-live-canvas" width="280" height="280"></canvas>
             <div id="group-live-media" class="section-live-media" aria-hidden="true"></div>
+            <canvas class="section-live-overlay" width="280" height="280" aria-hidden="true"></canvas>
             <div class="section-live-pointer" aria-hidden="true"></div>
             <div id="group-live-label" class="section-live-label"></div>
           </div>

@@ -3284,10 +3284,15 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
     overlay.setAttribute("aria-hidden", "true");
     media.insertAdjacentElement("afterend", overlay);
   }
+  // Keep overlay after media in DOM and above it in paint order
+  if (overlay.previousElementSibling !== media) {
+    media.insertAdjacentElement("afterend", overlay);
+  }
   overlay.width = px;
   overlay.height = px;
   overlay.style.width = `${cssSize}px`;
   overlay.style.height = `${cssSize}px`;
+  overlay.style.zIndex = "5";
 
   const ctx = canvas.getContext("2d");
   const octx = overlay.getContext("2d");

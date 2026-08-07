@@ -363,10 +363,10 @@ export function defaultState() {
       showImages: true,
       /**
        * How section/group fill images sit on the wheel:
-       * - "fixed" — upright, editor-style top frame (default)
-       * - "slice" — rotate each image with its wedge so framing matches the real slice
+       * - "slice" — rotate each image with its wedge (default)
+       * - "fixed" — upright, editor-style top frame
        */
-      imageLayoutMode: "fixed",
+      imageLayoutMode: "slice",
       resultStyle: "center",
       winnerLabel: "Winner",
       allowWinnerRemove: true,
@@ -546,8 +546,9 @@ function migrate(data) {
   }
   look.keyboardSpin = look.keyboardSpin !== false;
   look.allowWinnerHide = look.allowWinnerHide !== false;
+  // Default follow-slice; only stay fixed if explicitly saved as fixed
   look.imageLayoutMode =
-    look.imageLayoutMode === "slice" ? "slice" : "fixed";
+    look.imageLayoutMode === "fixed" ? "fixed" : "slice";
   look.winEffectData = look.winEffectData || null;
   look.winEffectName = look.winEffectName || null;
   if (look.winEffect === "custom" && !look.winEffectData) {

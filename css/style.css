@@ -2111,7 +2111,9 @@ dialog.modal:not([open]) {
   box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.35);
 }
 
-.section-live-stage canvas {
+/* Base color canvas under images. Do not apply this z-index to the overlay. */
+.section-live-stage > canvas#section-live-canvas,
+.section-live-stage > canvas#group-live-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -2132,14 +2134,14 @@ dialog.modal:not([open]) {
   /* reuse wheel wedge styles; positioned by JS */
 }
 
-/* Labels / border / hub above images — matches main wheel overlay */
-.section-live-overlay {
+/* Labels / border / hub above images — must beat .section-live-media (z-index 2) */
+.section-live-stage > canvas.section-live-overlay {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
-  z-index: 3;
+  z-index: 5;
   pointer-events: none;
 }
 
@@ -2153,7 +2155,7 @@ dialog.modal:not([open]) {
   border-left: 10px solid transparent;
   border-right: 10px solid transparent;
   border-top: 16px solid var(--accent-2);
-  z-index: 4;
+  z-index: 6;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
   pointer-events: none;
 }
