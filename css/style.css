@@ -1306,7 +1306,9 @@ body.group-drag-cursor * {
 }
 
 /* Author display:flex would otherwise override the native [hidden] attribute */
-.field[hidden] {
+.field[hidden],
+div.field[hidden],
+label.field[hidden] {
   display: none !important;
 }
 

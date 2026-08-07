@@ -1126,6 +1126,7 @@ export class Wheel {
    *   onReverseSteerStart?: () => void,
    *   steerMs?: number,
    *   reverseSteerMs?: number,
+   *   comboOrder?: "reverse-first"|"rig-first",
    * }} [opts]
    */
   spin(durationSec = 5, opts = {}) {
@@ -1147,11 +1148,10 @@ export class Wheel {
     // Ensure media is laid out once before we stop reflowing it
     this.draw({ spinFrame: false });
 
-    // Natural winner first (rig steers only in the last 0.1s).
-    // Forward rig: never aim natural land at the forced section.
-    // Reverse rig: aim natural land ON an avoided section so slide-off always runs.
     const forceId = opts.forceSectionId || null;
     const avoidIds = this._asIdSet(opts.avoidSectionIds);
+    const comboOrder =
+      opts.comboOrder === "rig-first" ? "rig-first" : "reverse-first";
     const canForce =
       !!forceId && slices.some((s) => s.section.id === forceId);
     const canReverse =
@@ -1160,15 +1160,16 @@ export class Wheel {
       slices.some((s) => avoidIds.has(s.section.id)) &&
       slices.some((s) => !avoidIds.has(s.section.id));
 
+    // Natural aim:
+    // - reverse-first (or reverse only): land on an avoided slice so slide-off is visible
+    // - rig-first / force only: never natural-land on the forced section
     let winnerIndex;
-    if (canReverse) {
-      // Always almost-land on an avoided slice so reverse slide-off is reliable
+    if (canReverse && (comboOrder === "reverse-first" || !canForce)) {
       winnerIndex = this._pickIndexAmongIds(slices, avoidIds);
     } else {
       winnerIndex = this._pickNaturalWinnerIndex(slices, forceId);
     }
     const winnerSlice = slices[winnerIndex];
-    const naturalId = winnerSlice.section.id;
     const pad = winnerSlice.span * 0.15;
     const landLocal =
       winnerSlice.start +
@@ -1181,7 +1182,6 @@ export class Wheel {
     while (target <= current) target += Math.PI * 2;
     target += extraSpins * Math.PI * 2;
 
-    // Single section: still do a full long spin so it feels like a real roll
     const isSingle = this._spinSingle;
     const spins = isSingle
       ? Math.max(8, Math.round(durationSec * 1.4) + Math.floor(Math.random() * 4))
@@ -1200,28 +1200,19 @@ export class Wheel {
     }
     const startRot = current;
     const delta = target - startRot;
-    // Honor the UI duration (1–30s); do not force a longer minimum
     const duration = Math.max(0.5, durationSec) * 1000;
     const startTime = performance.now();
-    // 0.1s before natural land → start slow divert / reverse slide
     const divertMs = 100;
     const divertAt = Math.max(0, duration - divertMs);
-    // Glide duration after almost-land (from secret Divert speed slider)
     const forceSteerMs = Math.max(
       250,
       Math.min(8000, Number(opts.steerMs) || 1100)
     );
-    // Reverse slide-off is intentionally allowed to be very slow
     const reverseSteerMs = Math.max(
       400,
       Math.min(12000, Number(opts.reverseSteerMs) || forceSteerMs)
     );
-    // Reverse takes priority when natural was aimed at an avoid target
-    const willReverse = canReverse && avoidIds.has(naturalId);
-    const willForce = canForce && !willReverse;
-    const needsLateSteer = willReverse || willForce;
-
-    // Min gap between tick SFX (ms) — avoids audio thrash when many boundaries cross
+    const needsLateSteer = canReverse || canForce;
     const minTickGapMs = 28;
 
     return new Promise((resolve) => {
@@ -1231,6 +1222,10 @@ export class Wheel {
       let steerFrom = 0;
       let steerTarget = 0;
       let activeSteerMs = forceSteerMs;
+      /** @type {"reverse"|"force"|null} */
+      let activePhase = null;
+      /** After current phase, optionally run the other */
+      let pendingSecondPhase = null;
 
       const finish = (win) => {
         this.spinning = false;
@@ -1252,6 +1247,7 @@ export class Wheel {
           this._pickEscapeSectionId(slices, avoidIds, this.rotation) ||
           slices[this._pickNaturalWinnerIndex(slices, avoidIds)].section.id;
         steering = true;
+        activePhase = "reverse";
         steerStart = now;
         steerFrom = this.rotation;
         activeSteerMs = reverseSteerMs;
@@ -1268,7 +1264,9 @@ export class Wheel {
       };
 
       const beginForceSteer = (now) => {
+        if (!forceId) return;
         steering = true;
+        activePhase = "force";
         steerStart = now;
         steerFrom = this.rotation;
         activeSteerMs = forceSteerMs;
@@ -1284,25 +1282,66 @@ export class Wheel {
         }
       };
 
+      /** Start first late-steer phase based on combo order */
+      const beginFirstLatePhase = (now) => {
+        const underId = this.sectionAtPointer()?.id || null;
+        if (comboOrder === "rig-first") {
+          if (canForce) {
+            pendingSecondPhase = canReverse ? "reverse" : null;
+            beginForceSteer(now);
+            return;
+          }
+          if (canReverse) {
+            pendingSecondPhase = null;
+            beginReverseSteer(now);
+          }
+          return;
+        }
+        // reverse-first (default)
+        if (canReverse) {
+          pendingSecondPhase = canForce ? "force" : null;
+          beginReverseSteer(now);
+          return;
+        }
+        if (canForce) {
+          pendingSecondPhase = null;
+          beginForceSteer(now);
+        }
+        // unused underId kept for future pointer checks
+        void underId;
+      };
+
+      const onPhaseComplete = (now) => {
+        this.rotation = steerTarget;
+        steering = false;
+        activePhase = null;
+        if (pendingSecondPhase === "force" && canForce) {
+          pendingSecondPhase = null;
+          beginForceSteer(now);
+          this._raf = requestAnimationFrame(frame);
+          return;
+        }
+        if (pendingSecondPhase === "reverse" && canReverse) {
+          pendingSecondPhase = null;
+          const underId = this.sectionAtPointer()?.id || null;
+          // Only reverse if we ended on an avoided slice (e.g. rig landed on avoid group)
+          if (underId && avoidIds.has(underId)) {
+            beginReverseSteer(now);
+            this._raf = requestAnimationFrame(frame);
+            return;
+          }
+        }
+        pendingSecondPhase = null;
+        finish(this.sectionAtPointer());
+      };
+
       const frame = (now) => {
-        // Aborted by grab / cancelAnimatedSpin
         if (!this.spinning) return;
 
         const elapsed = now - startTime;
 
-        if (needsLateSteer && !steering && elapsed >= divertAt) {
-          // Prefer reverse if pointer is on (or natural was) an avoided slice
-          const underId = this.sectionAtPointer()?.id || null;
-          if (
-            canReverse &&
-            (willReverse || (underId && avoidIds.has(underId)))
-          ) {
-            beginReverseSteer(now);
-          } else if (willForce || (canForce && underId !== forceId)) {
-            beginForceSteer(now);
-          } else if (canForce) {
-            beginForceSteer(now);
-          }
+        if (needsLateSteer && !steering && elapsed >= divertAt && !activePhase) {
+          beginFirstLatePhase(now);
         }
 
         if (steering) {
@@ -1321,10 +1360,7 @@ export class Wheel {
           this.draw({ spinFrame: true });
           this.onFrame(t);
           if (t < 1) this._raf = requestAnimationFrame(frame);
-          else {
-            this.rotation = steerTarget;
-            finish(this.sectionAtPointer());
-          }
+          else onPhaseComplete(now);
           return;
         }
 
@@ -1347,10 +1383,13 @@ export class Wheel {
         if (elapsed < divertAt || !needsLateSteer) {
           if (t < 1) this._raf = requestAnimationFrame(frame);
           else {
-            // Safety: reverse if we somehow still stopped on an avoided slice
             const underId = this.sectionAtPointer()?.id || null;
             if (canReverse && underId && avoidIds.has(underId)) {
+              pendingSecondPhase = canForce ? "force" : null;
               beginReverseSteer(now);
+              this._raf = requestAnimationFrame(frame);
+            } else if (canForce && underId !== forceId) {
+              beginForceSteer(now);
               this._raf = requestAnimationFrame(frame);
             } else {
               this.rotation = target;
@@ -1358,7 +1397,6 @@ export class Wheel {
             }
           }
         } else {
-          // divertAt reached; next frame starts steering
           this._raf = requestAnimationFrame(frame);
         }
       };
@@ -1591,11 +1629,14 @@ export class Wheel {
     const stopSpeed = 0.35; // rad/s
     // |v| such that ~0.1s remains until stop under exp decay
     const vDivert = stopSpeed * Math.exp(friction * 0.1);
+    const comboOrder =
+      opts.comboOrder === "rig-first" ? "rig-first" : "reverse-first";
     const canForce =
       !!forceId && slices.some((s) => s.section.id === forceId);
     const canReverse =
       avoidIds.size > 0 &&
       slices.length > 1 &&
+      slices.some((s) => avoidIds.has(s.section.id)) &&
       slices.some((s) => !avoidIds.has(s.section.id));
     const minTickGapMs = 28;
     const forceSteerMs = Math.max(
@@ -1615,6 +1656,8 @@ export class Wheel {
       let steerFrom = 0;
       let steerTarget = 0;
       let activeSteerMs = forceSteerMs;
+      let activePhase = null;
+      let pendingSecondPhase = null;
 
       const finish = (win) => {
         this.spinning = false;
@@ -1636,6 +1679,7 @@ export class Wheel {
           this._pickEscapeSectionId(slices, avoidIds, this.rotation) ||
           slices[this._pickNaturalWinnerIndex(slices, avoidIds)].section.id;
         steering = true;
+        activePhase = "reverse";
         steerStart = now;
         steerFrom = this.rotation;
         activeSteerMs = reverseSteerMs;
@@ -1652,7 +1696,9 @@ export class Wheel {
       };
 
       const startForceSteer = (now) => {
+        if (!forceId) return;
         steering = true;
+        activePhase = "force";
         steerStart = now;
         steerFrom = this.rotation;
         activeSteerMs = forceSteerMs;
@@ -1668,6 +1714,66 @@ export class Wheel {
         }
       };
 
+      const onFlingPhaseComplete = (now) => {
+        this.rotation = steerTarget;
+        steering = false;
+        activePhase = null;
+        if (pendingSecondPhase === "force" && canForce) {
+          pendingSecondPhase = null;
+          startForceSteer(now);
+          this._raf = requestAnimationFrame(frame);
+          return;
+        }
+        if (pendingSecondPhase === "reverse" && canReverse) {
+          pendingSecondPhase = null;
+          const underId = this.sectionAtPointer()?.id || null;
+          if (underId && avoidIds.has(underId)) {
+            startReverseSteer(now);
+            this._raf = requestAnimationFrame(frame);
+            return;
+          }
+        }
+        pendingSecondPhase = null;
+        finish(this.sectionAtPointer());
+      };
+
+      const beginFlingFirstPhase = (now, underId) => {
+        if (comboOrder === "rig-first") {
+          if (canForce) {
+            if (underId === forceId && slices.length > 1) {
+              // Kick past force so divert is visible
+              const kick = Math.max(1.8, vDivert * 3);
+              v = (Math.sign(v) || 1) * kick;
+              return false;
+            }
+            pendingSecondPhase = canReverse ? "reverse" : null;
+            startForceSteer(now);
+            return true;
+          }
+          if (canReverse && underId && avoidIds.has(underId)) {
+            startReverseSteer(now);
+            return true;
+          }
+          return false;
+        }
+        // reverse-first
+        if (canReverse && underId && avoidIds.has(underId)) {
+          pendingSecondPhase = canForce ? "force" : null;
+          startReverseSteer(now);
+          return true;
+        }
+        if (canForce) {
+          if (underId === forceId && slices.length > 1) {
+            const kick = Math.max(1.8, vDivert * 3);
+            v = (Math.sign(v) || 1) * kick;
+            return false;
+          }
+          startForceSteer(now);
+          return true;
+        }
+        return false;
+      };
+
       const frame = (now) => {
         if (!this.spinning) return;
 
@@ -1675,22 +1781,8 @@ export class Wheel {
         last = now;
 
         if (!steering && Math.abs(v) <= vDivert) {
-          const under = this.sectionAtPointer();
-          const underId = under?.id || null;
-
-          // Reverse: about to stop on an avoided slice → slowly crawl off
-          if (canReverse && underId && avoidIds.has(underId)) {
-            startReverseSteer(now);
-          } else if (canForce) {
-            // Must not "land" on the rigged section before divert — kick past it.
-            if (underId === forceId && slices.length > 1) {
-              const kick = Math.max(1.8, vDivert * 3);
-              v = (Math.sign(v) || 1) * kick;
-            } else {
-              // ~0.1s before natural stop — slowly move to rigged section
-              startForceSteer(now);
-            }
-          }
+          const underId = this.sectionAtPointer()?.id || null;
+          beginFlingFirstPhase(now, underId);
         }
 
         if (steering) {
@@ -1711,8 +1803,7 @@ export class Wheel {
           if (t < 1) {
             this._raf = requestAnimationFrame(frame);
           } else {
-            this.rotation = steerTarget;
-            finish(this.sectionAtPointer());
+            onFlingPhaseComplete(now);
           }
           return;
         }
@@ -1737,16 +1828,13 @@ export class Wheel {
           this._raf = requestAnimationFrame(frame);
         } else {
           const underId = this.sectionAtPointer()?.id || null;
-          if (canReverse && underId && avoidIds.has(underId)) {
-            // Full stop still on avoided — reverse slide off
-            startReverseSteer(now);
+          if (beginFlingFirstPhase(now, underId)) {
             this._raf = requestAnimationFrame(frame);
           } else if (
             canForce &&
             slices.length > 1 &&
             underId === forceId
           ) {
-            // Still on rigged at full stop — kick and keep going until decoy land
             v = (Math.sign(v) || 1) * 1.8;
             this._raf = requestAnimationFrame(frame);
           } else {

@@ -339,6 +339,11 @@ export function defaultState() {
       /** Mute spin tick / loop SFX only during the last-moment divert */
       muteSpinTicksOnRig: true,
       /**
+       * When both Rig and Reverse are armed:
+       * "reverse-first" | "rig-first"
+       */
+      comboOrder: "reverse-first",
+      /**
        * Reverse rig: if the wheel would land on the chosen section/group,
        * slowly slide off it to another slice.
        */
@@ -352,6 +357,10 @@ export function defaultState() {
       reverseSlideSfxData: null,
       reverseSlideSfxName: null,
       reverseSlideSfxVolume: 0.4,
+      /** Mute BGM during reverse slide-off */
+      reverseMuteMusic: true,
+      /** Mute spin ticks during reverse slide-off */
+      reverseMuteSpinTicks: true,
     },
   };
 }
@@ -469,6 +478,8 @@ function migrate(data) {
         data.secret && "muteSpinTicksOnRig" in data.secret
           ? !!data.secret.muteSpinTicksOnRig
           : true,
+      comboOrder:
+        data.secret?.comboOrder === "rig-first" ? "rig-first" : "reverse-first",
       reverseRigIt: !!(data.secret && data.secret.reverseRigIt),
       reverseTargetKind:
         data.secret?.reverseTargetKind === "group" ? "group" : "section",
@@ -492,6 +503,14 @@ function migrate(data) {
               Math.max(0, Number(data.secret.reverseSlideSfxVolume))
             )
           : 0.4,
+      reverseMuteMusic:
+        data.secret && "reverseMuteMusic" in data.secret
+          ? !!data.secret.reverseMuteMusic
+          : true,
+      reverseMuteSpinTicks:
+        data.secret && "reverseMuteSpinTicks" in data.secret
+          ? !!data.secret.reverseMuteSpinTicks
+          : true,
     },
   };
 }

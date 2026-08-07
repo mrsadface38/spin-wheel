@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#51</span>
+        <span class="app-version" id="app-version" title="Update number">#52</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -402,15 +402,15 @@
                 <option value="group">Group (random member each spin)</option>
               </select>
             </label>
-            <label class="field" id="secret-rig-section-field">
+            <div id="secret-rig-section-field" class="field">
               <span>Rigged section</span>
               <select id="secret-rig-section"></select>
-            </label>
-            <label class="field" id="secret-rig-group-field" hidden>
+            </div>
+            <div id="secret-rig-group-field" class="field" hidden>
               <span>Rigged group</span>
               <select id="secret-rig-group"></select>
               <small>Each spin picks a random section from this group that is on the wheel</small>
-            </label>
+            </div>
             <label class="field">
               <span>Divert speed</span>
               <div class="slider-with-value">
@@ -426,6 +426,14 @@
             <label class="toggle-row">
               <input type="checkbox" id="secret-mute-spin-ticks-rig" checked />
               <span>Mute spin ticks during divert</span>
+            </label>
+            <label class="field">
+              <span>When both Rig + Reverse are on</span>
+              <select id="secret-combo-order">
+                <option value="reverse-first">Reverse first, then Rig</option>
+                <option value="rig-first">Rig first, then Reverse</option>
+              </select>
+              <small>Controls which last-moment move runs first when both features are armed</small>
             </label>
           </div>
           <div class="form-block">
@@ -464,14 +472,14 @@
                 <option value="group">Group</option>
               </select>
             </label>
-            <label class="field" id="secret-reverse-section-field">
+            <div id="secret-reverse-section-field" class="field">
               <span>Avoid section</span>
               <select id="secret-reverse-section"></select>
-            </label>
-            <label class="field" id="secret-reverse-group-field" hidden>
+            </div>
+            <div id="secret-reverse-group-field" class="field" hidden>
               <span>Avoid group</span>
               <select id="secret-reverse-group"></select>
-            </label>
+            </div>
             <label class="field">
               <span>Slide-off speed</span>
               <div class="slider-with-value">
@@ -479,6 +487,14 @@
                 <span id="secret-reverse-slide-speed-label" class="slider-value">2</span>
               </div>
               <small>Slow ← → Fast — how slowly it crawls off the avoided slice (default is very slow)</small>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="secret-reverse-mute-music" checked />
+              <span>Mute music during slide-off</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="secret-reverse-mute-spin-ticks" checked />
+              <span>Mute spin ticks during slide-off</span>
             </label>
           </div>
           <div class="form-block">

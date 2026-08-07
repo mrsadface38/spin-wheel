@@ -633,6 +633,11 @@ document.querySelectorAll(".tab").forEach((tab) => {
       fillSecretReverseSelects();
       const sec = ensureSecretState();
       if ($("#secret-rig-it")) $("#secret-rig-it").checked = !!sec.rigIt;
+      if ($("#secret-rig-target-kind")) {
+        $("#secret-rig-target-kind").value =
+          sec.rigTargetKind === "group" ? "group" : "section";
+      }
+      updateSecretRigTargetFields();
       if ($("#secret-reverse-rig-it")) {
         $("#secret-reverse-rig-it").checked = !!sec.reverseRigIt;
       }
@@ -3322,6 +3327,9 @@ function ensureSecretState() {
       rigTargetKind: "section",
       targetSectionId: null,
       targetGroupId: null,
+      muteMusicOnDivert: true,
+      muteSpinTicksOnRig: true,
+      comboOrder: "reverse-first",
       reverseRigIt: false,
       reverseTargetKind: "section",
       reverseTargetSectionId: null,
@@ -3330,7 +3338,17 @@ function ensureSecretState() {
       reverseSlideSfxData: null,
       reverseSlideSfxName: null,
       reverseSlideSfxVolume: 0.4,
+      reverseMuteMusic: true,
+      reverseMuteSpinTicks: true,
     };
+  } else {
+    // Backfill fields added in later versions
+    if (state.secret.rigTargetKind == null) state.secret.rigTargetKind = "section";
+    if (state.secret.comboOrder == null) state.secret.comboOrder = "reverse-first";
+    if (state.secret.reverseMuteMusic == null) state.secret.reverseMuteMusic = true;
+    if (state.secret.reverseMuteSpinTicks == null) {
+      state.secret.reverseMuteSpinTicks = true;
+    }
   }
   return state.secret;
 }
@@ -3342,9 +3360,28 @@ function getRigTargetKind() {
   return s.rigTargetKind === "group" ? "group" : "section";
 }
 
+function getReverseTargetKind() {
+  const s = ensureSecretState();
+  const live = $("#secret-reverse-target-kind")?.value;
+  if (live === "group" || live === "section") return live;
+  return s.reverseTargetKind === "group" ? "group" : "section";
+}
+
+/** @returns {"reverse-first"|"rig-first"} */
+function getSecretComboOrder() {
+  const s = ensureSecretState();
+  const live = $("#secret-combo-order")?.value;
+  if (live === "rig-first" || live === "reverse-first") return live;
+  return s.comboOrder === "rig-first" ? "rig-first" : "reverse-first";
+}
+
 function isRigItActive() {
   const s = ensureSecretState();
-  if (!s.rigIt) return false;
+  const rigOn =
+    $("#secret-rig-it") != null
+      ? $("#secret-rig-it").checked === true
+      : !!s.rigIt;
+  if (!rigOn) return false;
   if (getRigTargetKind() === "group") {
     const gid =
       $("#secret-rig-group")?.value || s.targetGroupId || null;
@@ -3357,14 +3394,19 @@ function isRigItActive() {
 
 function isReverseRigActive() {
   const s = ensureSecretState();
-  if (!s.reverseRigIt) return false;
-  if (s.reverseTargetKind === "group") {
-    return !!(s.reverseTargetGroupId && state.groups.some((g) => g.id === s.reverseTargetGroupId));
+  const revOn =
+    $("#secret-reverse-rig-it") != null
+      ? $("#secret-reverse-rig-it").checked === true
+      : !!s.reverseRigIt;
+  if (!revOn) return false;
+  if (getReverseTargetKind() === "group") {
+    const gid =
+      $("#secret-reverse-group")?.value || s.reverseTargetGroupId || null;
+    return !!(gid && state.groups.some((g) => g.id === gid));
   }
-  return !!(
-    s.reverseTargetSectionId &&
-    state.sections.some((sec) => sec.id === s.reverseTargetSectionId)
-  );
+  const id =
+    $("#secret-reverse-section")?.value || s.reverseTargetSectionId || null;
+  return !!(id && state.sections.some((sec) => sec.id === id));
 }
 
 /**
@@ -3413,12 +3455,7 @@ function getRigForceSectionId() {
 function getReverseAvoidSectionIds() {
   if (!isReverseRigActive()) return [];
   const s = ensureSecretState();
-  // Prefer live form values (in case state lagged) then fall back to secret state
-  const kind =
-    $("#secret-reverse-target-kind")?.value === "group" ||
-    s.reverseTargetKind === "group"
-      ? $("#secret-reverse-target-kind")?.value || s.reverseTargetKind
-      : "section";
+  const kind = getReverseTargetKind();
   const active = getActiveSections(state);
   if (kind === "group") {
     const gid =
@@ -3561,11 +3598,21 @@ function fillSecretSectionSelect() {
 }
 
 function updateSecretRigTargetFields() {
-  const kind = getRigTargetKind();
+  const kindEl = $("#secret-rig-target-kind");
+  const kind =
+    kindEl?.value === "group" || kindEl?.value === "section"
+      ? kindEl.value
+      : getRigTargetKind();
   const secField = $("#secret-rig-section-field");
   const grpField = $("#secret-rig-group-field");
-  if (secField) secField.hidden = kind !== "section";
-  if (grpField) grpField.hidden = kind !== "group";
+  if (secField) {
+    secField.hidden = kind !== "section";
+    secField.style.display = kind === "section" ? "" : "none";
+  }
+  if (grpField) {
+    grpField.hidden = kind !== "group";
+    grpField.style.display = kind === "group" ? "" : "none";
+  }
 }
 
 function fillSecretReverseSelects() {
@@ -3615,16 +3662,20 @@ function fillSecretReverseSelects() {
 }
 
 function updateSecretReverseTargetFields() {
+  const kindEl = $("#secret-reverse-target-kind");
   const kind =
-    $("#secret-reverse-target-kind")?.value === "group" ? "group" : "section";
+    kindEl?.value === "group" || kindEl?.value === "section"
+      ? kindEl.value
+      : getReverseTargetKind();
   const secField = $("#secret-reverse-section-field");
   const grpField = $("#secret-reverse-group-field");
-  // Only show the control that matches Avoid type
   if (secField) {
     secField.hidden = kind !== "section";
+    secField.style.display = kind === "section" ? "" : "none";
   }
   if (grpField) {
     grpField.hidden = kind !== "group";
+    grpField.style.display = kind === "group" ? "" : "none";
   }
 }
 
@@ -3673,9 +3724,16 @@ function saveSecretPanel() {
   const sec = ensureSecretState();
   sec.unlocked = true;
   sec.rigIt = $("#secret-rig-it")?.checked === true;
+  sec.rigTargetKind =
+    $("#secret-rig-target-kind")?.value === "group" ? "group" : "section";
   sec.targetSectionId = $("#secret-rig-section")?.value || null;
+  sec.targetGroupId = $("#secret-rig-group")?.value || null;
   sec.muteMusicOnDivert = $("#secret-mute-music-divert")?.checked === true;
   sec.muteSpinTicksOnRig = $("#secret-mute-spin-ticks-rig")?.checked === true;
+  sec.comboOrder =
+    $("#secret-combo-order")?.value === "rig-first"
+      ? "rig-first"
+      : "reverse-first";
   const vol = Number($("#secret-divert-sfx-volume")?.value);
   if (Number.isFinite(vol)) {
     sec.divertSfxVolume = Math.min(1, Math.max(0, vol));
@@ -3693,6 +3751,9 @@ function saveSecretPanel() {
   if (Number.isFinite(revVol)) {
     sec.reverseSlideSfxVolume = Math.min(1, Math.max(0, revVol));
   }
+  sec.reverseMuteMusic = $("#secret-reverse-mute-music")?.checked === true;
+  sec.reverseMuteSpinTicks =
+    $("#secret-reverse-mute-spin-ticks")?.checked === true;
   // divert / reverse SFX data+name set by file input handlers
   persist();
   const resultOpen = !$("#result-actions-bar")?.classList.contains("hidden");
@@ -3758,6 +3819,10 @@ function bindSecretDivertSfxUI() {
   if ($("#secret-mute-spin-ticks-rig")) {
     $("#secret-mute-spin-ticks-rig").checked = !!sec.muteSpinTicksOnRig;
   }
+  if ($("#secret-combo-order")) {
+    $("#secret-combo-order").value =
+      sec.comboOrder === "rig-first" ? "rig-first" : "reverse-first";
+  }
 }
 
 function bindSecretReverseUI() {
@@ -3791,6 +3856,13 @@ function bindSecretReverseUI() {
   }
   if ($("#secret-reverse-slide-sfx-volume-label")) {
     $("#secret-reverse-slide-sfx-volume-label").textContent = `${Math.round(vol * 100)}%`;
+  }
+  if ($("#secret-reverse-mute-music")) {
+    $("#secret-reverse-mute-music").checked = sec.reverseMuteMusic !== false;
+  }
+  if ($("#secret-reverse-mute-spin-ticks")) {
+    $("#secret-reverse-mute-spin-ticks").checked =
+      sec.reverseMuteSpinTicks !== false;
   }
 }
 
@@ -3938,16 +4010,33 @@ function onRigSteerStart() {
   playRigDivertSfx();
 }
 
+function muteMusicForReverseIfNeeded() {
+  const sec = ensureSecretState();
+  if (sec.reverseMuteMusic === false) return;
+  if (!audio.isBgmPlaying) return;
+  audio.stopBgm();
+  bgmMutedForDivert = true;
+}
+
 function onReverseSteerStart() {
   rigDivertActive = true;
-  if (ensureSecretState().muteSpinTicksOnRig) {
+  const sec = ensureSecretState();
+  if (sec.reverseMuteSpinTicks !== false) {
     stopSpinLoop();
   }
-  muteMusicForDivertIfNeeded();
+  muteMusicForReverseIfNeeded();
   playReverseSlideSfx();
 }
 
 function getSpinRigOptions() {
+  // Persist any live secret form state so spin always sees current toggles
+  if ($("#tab-secret") && !$("#tab-secret").hidden) {
+    try {
+      saveSecretPanel();
+    } catch {
+      /* ignore */
+    }
+  }
   const forceId = getRigForceSectionId();
   const avoidIds = getReverseAvoidSectionIds();
   return {
@@ -3955,6 +4044,7 @@ function getSpinRigOptions() {
     avoidSectionIds: avoidIds.length ? avoidIds : null,
     steerMs: getDivertSteerMs(),
     reverseSteerMs: getReverseSteerMs(),
+    comboOrder: getSecretComboOrder(),
     onSteerStart: forceId ? () => onRigSteerStart() : undefined,
     onReverseSteerStart: avoidIds.length
       ? () => onReverseSteerStart()
@@ -4009,7 +4099,21 @@ $("#secret-rig-it")?.addEventListener("change", () => {
   saveSecretPanel();
 });
 
+$("#secret-rig-target-kind")?.addEventListener("change", () => {
+  fillSecretSectionSelect();
+  updateSecretRigTargetFields();
+  saveSecretPanel();
+});
+
 $("#secret-rig-section")?.addEventListener("change", () => {
+  saveSecretPanel();
+});
+
+$("#secret-rig-group")?.addEventListener("change", () => {
+  saveSecretPanel();
+});
+
+$("#secret-combo-order")?.addEventListener("change", () => {
   saveSecretPanel();
 });
 
@@ -4085,6 +4189,7 @@ $("#secret-reverse-rig-it")?.addEventListener("change", () => {
   saveSecretPanel();
 });
 $("#secret-reverse-target-kind")?.addEventListener("change", () => {
+  fillSecretReverseSelects();
   updateSecretReverseTargetFields();
   saveSecretPanel();
 });
@@ -4092,6 +4197,12 @@ $("#secret-reverse-section")?.addEventListener("change", () => {
   saveSecretPanel();
 });
 $("#secret-reverse-group")?.addEventListener("change", () => {
+  saveSecretPanel();
+});
+$("#secret-reverse-mute-music")?.addEventListener("change", () => {
+  saveSecretPanel();
+});
+$("#secret-reverse-mute-spin-ticks")?.addEventListener("change", () => {
   saveSecretPanel();
 });
 $("#secret-reverse-slide-speed")?.addEventListener("input", () => {
