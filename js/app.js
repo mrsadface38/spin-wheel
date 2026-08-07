@@ -1311,6 +1311,10 @@ function cloneSectionForDuplicate(section) {
     landSfxData: section.landSfxData || null,
     landSfxName: section.landSfxName || null,
     landSfxVolume: section.landSfxVolume,
+    customWinEffect: section.customWinEffect === true,
+    winEffect: section.winEffect || null,
+    winEffectData: section.winEffectData || null,
+    winEffectName: section.winEffectName || null,
   };
   return raw;
 }
@@ -1327,6 +1331,7 @@ function cloneGroupForDuplicate(group) {
     overrideWinnerTextColor: group.overrideWinnerTextColor === true,
     overrideImage: group.overrideImage === true,
     overrideSfx: group.overrideSfx === true,
+    overrideWinEffect: group.overrideWinEffect === true,
     color: group.color,
     textColor: group.textColor,
     winnerTextColor: group.winnerTextColor,
@@ -1340,6 +1345,9 @@ function cloneGroupForDuplicate(group) {
     imageTileOffsetY: group.imageTileOffsetY,
     landSfxData: group.landSfxData || null,
     landSfxName: group.landSfxName || null,
+    winEffect: group.winEffect || null,
+    winEffectData: group.winEffectData || null,
+    winEffectName: group.winEffectName || null,
   });
 }
 
@@ -2259,6 +2267,10 @@ let pendingGroupImage = null;
 let pendingGroupSfx = null;
 /** @type {string|null} */
 let pendingGroupSfxName = null;
+/** @type {string|null} */
+let pendingGroupWinEffectData = null;
+/** @type {string|null} */
+let pendingGroupWinEffectName = null;
 
 function updateGroupImageModeUI() {
   const mode = $("#group-image-mode")?.value || "fill";
@@ -2311,6 +2323,13 @@ function readGroupProfileFromForm() {
     imageTileOffsetY: Number($("#group-tile-offset-y")?.value) || 0,
     landSfxData: pendingGroupSfx,
     landSfxName: pendingGroupSfxName,
+    winEffect: (() => {
+      const v = $("#group-win-effect")?.value;
+      if (v === "none" || v === "confetti" || v === "custom") return v;
+      return null;
+    })(),
+    winEffectData: pendingGroupWinEffectData,
+    winEffectName: pendingGroupWinEffectName,
   });
 }
 
@@ -2322,6 +2341,7 @@ function readOverridePartsFromForm() {
       $("#group-override-winner-text-color")?.checked === true,
     overrideImage: $("#group-override-image")?.checked === true,
     overrideSfx: $("#group-override-sfx")?.checked === true,
+    overrideWinEffect: $("#group-override-win-effect")?.checked === true,
   };
 }
 
@@ -2332,6 +2352,7 @@ function readApplyPartsFromForm() {
     winnerTextColor: $("#group-apply-winner-text-color")?.checked === true,
     image: $("#group-apply-image")?.checked === true,
     sfx: $("#group-apply-sfx")?.checked === true,
+    winEffect: $("#group-apply-win-effect")?.checked === true,
   };
 }
 
@@ -2353,6 +2374,9 @@ function fillGroupProfileForm(group) {
   if ($("#group-override-sfx")) {
     $("#group-override-sfx").checked = g.overrideSfx === true;
   }
+  if ($("#group-override-win-effect")) {
+    $("#group-override-win-effect").checked = g.overrideWinEffect === true;
+  }
   // Apply chips: default image+color+text on, SFX off (so you don't wipe audio by accident)
   if ($("#group-apply-color")) $("#group-apply-color").checked = true;
   if ($("#group-apply-text-color")) $("#group-apply-text-color").checked = true;
@@ -2361,6 +2385,7 @@ function fillGroupProfileForm(group) {
   }
   if ($("#group-apply-image")) $("#group-apply-image").checked = true;
   if ($("#group-apply-sfx")) $("#group-apply-sfx").checked = false;
+  if ($("#group-apply-win-effect")) $("#group-apply-win-effect").checked = false;
   $("#group-color").value = g.color || "#4a6cf7";
   if ($("#group-text-color")) {
     $("#group-text-color").value = g.textColor || "#ffffff";
@@ -2375,6 +2400,17 @@ function fillGroupProfileForm(group) {
   pendingGroupImage = g.imageData || null;
   pendingGroupSfx = g.landSfxData || null;
   pendingGroupSfxName = g.landSfxName || null;
+  pendingGroupWinEffectData = g.winEffectData || null;
+  pendingGroupWinEffectName = g.winEffectName || null;
+  if ($("#group-win-effect")) {
+    $("#group-win-effect").value =
+      g.winEffect === "none" ||
+      g.winEffect === "confetti" ||
+      g.winEffect === "custom"
+        ? g.winEffect
+        : "look";
+  }
+  updateGroupWinEffectCustomUI();
   $("#group-image-mode").value = g.imageMode === "tile" ? "tile" : "fill";
   $("#group-fill-scale").value = g.imageFillScale ?? 1;
   $("#group-fill-offset-x").value = g.imageFillOffsetX ?? 0;
@@ -2651,6 +2687,36 @@ $("#group-sfx-clear")?.addEventListener("click", () => {
   pendingGroupSfxName = null;
   updateGroupSfxPresetUI();
 });
+$("#group-win-effect")?.addEventListener("change", () => {
+  const v = $("#group-win-effect")?.value;
+  if (v === "look") {
+    pendingGroupWinEffectData = null;
+    pendingGroupWinEffectName = null;
+  } else if (v === "custom" && !pendingGroupWinEffectData) {
+    $("#group-win-effect-input")?.click();
+  }
+  updateGroupWinEffectCustomUI();
+});
+$("#group-win-effect-input")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) {
+    updateGroupWinEffectCustomUI();
+    return;
+  }
+  pendingGroupWinEffectData = await fileToDataUrl(file);
+  pendingGroupWinEffectName = file.name;
+  if ($("#group-win-effect")) $("#group-win-effect").value = "custom";
+  updateGroupWinEffectCustomUI();
+});
+$("#group-win-effect-clear")?.addEventListener("click", () => {
+  pendingGroupWinEffectData = null;
+  pendingGroupWinEffectName = null;
+  if ($("#group-win-effect")?.value === "custom") {
+    $("#group-win-effect").value = "confetti";
+  }
+  updateGroupWinEffectCustomUI();
+});
 $("#group-sfx-preview")?.addEventListener("click", async () => {
   audio.ensure();
   if (audio.isPreviewPlaying) {
@@ -2836,6 +2902,10 @@ $("#btn-apply-your-order")?.addEventListener("click", () => {
 let pendingSectionImage = null;
 let pendingSectionSfx = null;
 let pendingSectionSfxName = null;
+/** @type {string|null} */
+let pendingSectionWinEffectData = null;
+/** @type {string|null} */
+let pendingSectionWinEffectName = null;
 /** Tracks which profile channels the user touched in the open editor */
 let sectionEditDirty = {
   color: false,
@@ -2843,6 +2913,7 @@ let sectionEditDirty = {
   winnerTextColor: false,
   image: false,
   sfx: false,
+  winEffect: false,
 };
 /** custom* flags of the section being edited (or defaults for new) */
 let sectionEditCustom = {
@@ -2851,6 +2922,7 @@ let sectionEditCustom = {
   winnerTextColor: false,
   image: false,
   sfx: false,
+  winEffect: false,
 };
 
 function markSectionDirty(channel) {
@@ -2859,6 +2931,7 @@ function markSectionDirty(channel) {
   if (channel === "winnerTextColor") sectionEditDirty.winnerTextColor = true;
   if (channel === "image") sectionEditDirty.image = true;
   if (channel === "sfx") sectionEditDirty.sfx = true;
+  if (channel === "winEffect") sectionEditDirty.winEffect = true;
 }
 
 function fillGroupSelects() {
@@ -3388,6 +3461,7 @@ function openSectionModal(section) {
     winnerTextColor: false,
     image: false,
     sfx: false,
+    winEffect: false,
   };
   sectionEditCustom = {
     color: section ? section.customColor === true : false,
@@ -3395,6 +3469,7 @@ function openSectionModal(section) {
     winnerTextColor: section ? section.customWinnerTextColor === true : false,
     image: section ? section.customImage === true : false,
     sfx: section ? section.customSfx === true : false,
+    winEffect: section ? section.customWinEffect === true : false,
   };
 
   // Show effective look (inherited group profile) when channel is unedited
@@ -3408,10 +3483,13 @@ function openSectionModal(section) {
     : resolved;
   const imageSrc = sectionEditCustom.image ? section : resolved;
   const sfxSrc = sectionEditCustom.sfx ? section : resolved;
+  const winFxSrc = sectionEditCustom.winEffect ? section : resolved;
 
   pendingSectionImage = imageSrc?.imageData ?? null;
   pendingSectionSfx = sfxSrc?.landSfxData ?? null;
   pendingSectionSfxName = sfxSrc?.landSfxName ?? null;
+  pendingSectionWinEffectData = winFxSrc?.winEffectData ?? null;
+  pendingSectionWinEffectName = winFxSrc?.winEffectName ?? null;
 
   $("#section-modal-title").textContent = section ? "Edit section" : "Add section";
   $("#section-edit-id").value = section?.id || "";
@@ -3473,7 +3551,25 @@ function openSectionModal(section) {
     pendingSectionSfx = section?.landSfxData ?? null;
     pendingSectionSfxName = section?.landSfxName ?? null;
   }
+  if (!sectionEditCustom.winEffect) {
+    pendingSectionWinEffectData = null;
+    pendingSectionWinEffectName = null;
+    if ($("#section-win-effect")) $("#section-win-effect").value = "inherit";
+  } else {
+    pendingSectionWinEffectData = section?.winEffectData ?? null;
+    pendingSectionWinEffectName = section?.winEffectName ?? null;
+    if ($("#section-win-effect")) {
+      const we = section?.winEffect;
+      $("#section-win-effect").value =
+        we === "none" || we === "confetti" || we === "custom"
+          ? we
+          : pendingSectionWinEffectData
+            ? "custom"
+            : "confetti";
+    }
+  }
   updateSectionSfxPresetUI();
+  updateSectionWinEffectUI();
   {
     const vol =
       section?.landSfxVolume != null && Number.isFinite(Number(section.landSfxVolume))
@@ -3681,6 +3777,47 @@ $("#section-sfx-clear").addEventListener("click", () => {
   updateSectionSfxPresetUI();
 });
 
+$("#section-win-effect")?.addEventListener("change", () => {
+  const v = $("#section-win-effect")?.value;
+  if (v === "inherit") {
+    sectionEditCustom.winEffect = false;
+    pendingSectionWinEffectData = null;
+    pendingSectionWinEffectName = null;
+  } else {
+    sectionEditCustom.winEffect = true;
+    markSectionDirty("winEffect");
+    if (v === "custom" && !pendingSectionWinEffectData) {
+      $("#section-win-effect-input")?.click();
+    }
+  }
+  updateSectionWinEffectUI();
+});
+
+$("#section-win-effect-input")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) {
+    updateSectionWinEffectUI();
+    return;
+  }
+  pendingSectionWinEffectData = await fileToDataUrl(file);
+  pendingSectionWinEffectName = file.name;
+  markSectionDirty("winEffect");
+  sectionEditCustom.winEffect = true;
+  if ($("#section-win-effect")) $("#section-win-effect").value = "custom";
+  updateSectionWinEffectUI();
+});
+
+$("#section-win-effect-clear")?.addEventListener("click", () => {
+  pendingSectionWinEffectData = null;
+  pendingSectionWinEffectName = null;
+  markSectionDirty("winEffect");
+  if ($("#section-win-effect")?.value === "custom") {
+    $("#section-win-effect").value = "confetti";
+  }
+  updateSectionWinEffectUI();
+});
+
 function getSectionSfxVolumeFromForm() {
   const v = Number($("#section-sfx-volume")?.value);
   if (!Number.isFinite(v)) return state.sound.landVolume ?? 0.4;
@@ -3732,6 +3869,7 @@ $("#section-form").addEventListener("submit", async (e) => {
     : false;
   let customImage = existing ? existing.customImage === true : false;
   let customSfx = existing ? existing.customSfx === true : false;
+  let customWinEffect = existing ? existing.customWinEffect === true : false;
   if (sectionEditDirty.color) customColor = true;
   if (sectionEditDirty.textColor) customTextColor = true;
   if (sectionEditDirty.winnerTextColor) customWinnerTextColor = true;
@@ -3742,6 +3880,10 @@ $("#section-form").addEventListener("submit", async (e) => {
   }
   if (sectionEditDirty.sfx) {
     customSfx = !!pendingSectionSfx;
+  }
+  if (sectionEditDirty.winEffect) {
+    const sel = $("#section-win-effect")?.value;
+    customWinEffect = sel && sel !== "inherit";
   }
 
   const imageFields = {
@@ -3824,6 +3966,7 @@ $("#section-form").addEventListener("submit", async (e) => {
     customWinnerTextColor,
     customImage,
     customSfx,
+    customWinEffect,
     ...imageFields,
     landSfxData: customSfx
       ? pendingSectionSfx
@@ -3832,7 +3975,23 @@ $("#section-form").addEventListener("submit", async (e) => {
       ? pendingSectionSfxName
       : existing?.landSfxName ?? null,
     landSfxVolume: getSectionSfxVolumeFromForm(),
+    winEffect: customWinEffect
+      ? ($("#section-win-effect")?.value === "none" ||
+        $("#section-win-effect")?.value === "confetti" ||
+        $("#section-win-effect")?.value === "custom"
+          ? $("#section-win-effect").value
+          : "confetti")
+      : existing?.winEffect ?? null,
+    winEffectData: customWinEffect
+      ? pendingSectionWinEffectData
+      : existing?.winEffectData ?? null,
+    winEffectName: customWinEffect
+      ? pendingSectionWinEffectName
+      : existing?.winEffectName ?? null,
   };
+  if (payload.customWinEffect && payload.winEffect === "custom" && !payload.winEffectData) {
+    payload.winEffect = "confetti";
+  }
 
   if (id) {
     const s = state.sections.find((x) => x.id === id);
@@ -3853,6 +4012,9 @@ $("#section-form").addEventListener("submit", async (e) => {
       customWinnerTextColor: sectionEditDirty.winnerTextColor,
       customImage: sectionEditDirty.image && !!pendingSectionImage,
       customSfx: sectionEditDirty.sfx && !!pendingSectionSfx,
+      customWinEffect:
+        sectionEditDirty.winEffect &&
+        $("#section-win-effect")?.value !== "inherit",
       color: sectionEditDirty.color
         ? $("#section-color").value
         : nextPaletteColor(state),
@@ -3978,6 +4140,9 @@ function bindLook() {
         : "Winner";
   }
   $("#chk-allow-winner-remove").checked = state.look.allowWinnerRemove !== false;
+  if ($("#chk-allow-winner-hide")) {
+    $("#chk-allow-winner-hide").checked = state.look.allowWinnerHide !== false;
+  }
   if ($("#eliminate-after-win")) {
     const e = state.look.eliminateAfterWin;
     $("#eliminate-after-win").value =
@@ -3985,8 +4150,10 @@ function bindLook() {
   }
   if ($("#win-effect")) {
     const we = state.look.winEffect;
-    $("#win-effect").value = we === "none" ? "none" : "confetti";
+    $("#win-effect").value =
+      we === "none" || we === "custom" ? we : "confetti";
   }
+  updateLookWinEffectCustomUI();
   if ($("#chk-keyboard-spin")) {
     $("#chk-keyboard-spin").checked = state.look.keyboardSpin !== false;
   }
@@ -4034,8 +4201,11 @@ function updateWinnerRemoveButton() {
   const autoElim = elim === "hide" || elim === "remove";
 
   if (hideBtn) {
-    hideBtn.hidden = autoElim;
-    hideBtn.setAttribute("aria-hidden", autoElim ? "true" : "false");
+    // Auto-eliminate: hide Hide. Else respect Look → Show Hide button.
+    const showHide =
+      !autoElim && state.look?.allowWinnerHide !== false;
+    hideBtn.hidden = !showHide;
+    hideBtn.setAttribute("aria-hidden", showHide ? "false" : "true");
   }
   if (removeBtn) {
     // Auto-eliminate mode: never show Remove. Otherwise respect Look toggle.
@@ -4463,6 +4633,7 @@ function clearAutoDismissTimer() {
 function scheduleAutoDismiss() {
   clearAutoDismissTimer();
   let sec = Number(state.look?.autoDismissSec);
+  // 0 = keep open; -1 = never show overlay (handled in showResult)
   if (!Number.isFinite(sec) || sec <= 0) return;
   sec = Math.min(120, Math.max(1, Math.round(sec)));
   autoDismissTimer = setTimeout(() => {
@@ -4473,6 +4644,11 @@ function scheduleAutoDismiss() {
       console.warn("auto-dismiss:", err);
     }
   }, sec * 1000);
+}
+
+/** True when Look → Auto-dismiss is “Don't show results”. */
+function isResultDisplaySkipped() {
+  return Number(state.look?.autoDismissSec) === -1;
 }
 
 function formatHistoryTime(iso) {
@@ -4538,13 +4714,89 @@ $("#btn-history-export")?.addEventListener("click", () => {
 });
 
 /**
- * After-win visual effect (Look → After-win effect dropdown).
+ * Resolve effective after-win effect for a winner section (Look default / group / section).
+ * @param {{ id?: string }|null} section
  */
-function playWinEffect() {
-  const effect = state.look?.winEffect || "confetti";
+function resolveWinEffectForSection(section) {
+  try {
+    if (section?.id) {
+      const raw =
+        state.sections.find((s) => s.id === section.id) || section;
+      const disp = resolveSectionForDisplay(state, raw);
+      return {
+        effect: disp?.winEffect || state.look?.winEffect || "confetti",
+        data: disp?.winEffectData || null,
+        name: disp?.winEffectName || null,
+      };
+    }
+  } catch {
+    /* fall through */
+  }
+  return {
+    effect: state.look?.winEffect || "confetti",
+    data: state.look?.winEffectData || null,
+    name: state.look?.winEffectName || null,
+  };
+}
+
+/**
+ * After-win visual effect — uses section/group override or Look global default.
+ * @param {{ id?: string }|null} [section]
+ */
+function playWinEffect(section = null) {
+  const { effect, data } = resolveWinEffectForSection(section);
   if (effect === "none") return;
-  if (effect === "confetti") fireConfetti();
-  // Future effects: else if (effect === "…") …
+  if (effect === "custom" && data) {
+    playCustomWinMedia(data);
+    return;
+  }
+  if (effect === "confetti" || (effect === "custom" && !data)) {
+    fireConfetti();
+  }
+}
+
+/**
+ * Full-screen custom media (image / GIF / video) for a few seconds.
+ * @param {string} dataUrl
+ */
+function playCustomWinMedia(dataUrl) {
+  if (!dataUrl) return;
+  try {
+    document.getElementById("win-effect-media-layer")?.remove();
+    const layer = document.createElement("div");
+    layer.id = "win-effect-media-layer";
+    layer.setAttribute("aria-hidden", "true");
+    const isVideo = /^data:video\//i.test(dataUrl);
+    /** @type {HTMLImageElement|HTMLVideoElement} */
+    let el;
+    if (isVideo) {
+      const v = document.createElement("video");
+      v.src = dataUrl;
+      v.autoplay = true;
+      v.muted = true;
+      v.playsInline = true;
+      v.loop = true;
+      el = v;
+    } else {
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      img.alt = "";
+      el = img;
+    }
+    layer.appendChild(el);
+    document.body.appendChild(layer);
+    const remove = () => {
+      try {
+        layer.classList.add("win-fx-out");
+        setTimeout(() => layer.remove(), 400);
+      } catch {
+        /* ignore */
+      }
+    };
+    setTimeout(remove, 3200);
+  } catch (err) {
+    console.warn("custom win effect:", err);
+  }
 }
 
 /**
@@ -4693,7 +4945,25 @@ function showResult(section, opts = {}) {
     } catch (err) {
       console.warn("history:", err);
     }
-    playWinEffect();
+    playWinEffect(section);
+
+    // Don't show results — skip overlay; still eliminate / history / effects
+    if (isResultDisplaySkipped()) {
+      clearAutoDismissTimer();
+      // Keep rigged badge if armed; no win UI
+      resultShowsRigged = false;
+      setResultRiggedVisible(isRigItActive() || isReverseRigActive());
+      void applyPendingEliminate().catch((err) =>
+        console.warn("eliminate after win (no display):", err)
+      );
+      try {
+        if (wheel && !wheel.spinning) wheel.draw({ spinFrame: false });
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+
     scheduleAutoDismiss();
     const label = section.label || "Winner";
     // Resolve inherited group image if the section itself has no image
@@ -5320,6 +5590,59 @@ function updateSectionSfxPresetUI() {
   }
 }
 
+function updateSectionWinEffectUI() {
+  const sel = $("#section-win-effect");
+  const row = $("#section-win-effect-custom-row");
+  const nameEl = $("#section-win-effect-name");
+  if (!sel) return;
+  if (sectionEditCustom?.winEffect) {
+    const v = sel.value;
+    if (v !== "none" && v !== "confetti" && v !== "custom") {
+      // Prefer pending type from last load
+      const we =
+        pendingSectionWinEffectData
+          ? "custom"
+          : sectionEditCustom.winEffect
+            ? "confetti"
+            : "inherit";
+      sel.value =
+        we === "custom" || we === "confetti" || we === "none" ? we : "confetti";
+    }
+  } else {
+    sel.value = "inherit";
+  }
+  // When opening, set from custom flag
+  if (sectionEditCustom?.winEffect === true && !sectionEditDirty.winEffect) {
+    // leave select as set by openSectionModal below
+  }
+  const isCustom = sel.value === "custom";
+  if (row) {
+    row.hidden = !isCustom;
+    row.style.display = isCustom ? "" : "none";
+  }
+  if (nameEl) {
+    nameEl.textContent =
+      pendingSectionWinEffectName ||
+      (pendingSectionWinEffectData ? "Custom media" : "No custom file");
+  }
+}
+
+function updateGroupWinEffectCustomUI() {
+  const sel = $("#group-win-effect");
+  const row = $("#group-win-effect-custom-row");
+  const nameEl = $("#group-win-effect-name");
+  const isCustom = sel?.value === "custom";
+  if (row) {
+    row.hidden = !isCustom;
+    row.style.display = isCustom ? "" : "none";
+  }
+  if (nameEl) {
+    nameEl.textContent =
+      pendingGroupWinEffectName ||
+      (pendingGroupWinEffectData ? "Custom media" : "No custom file");
+  }
+}
+
 function updateGroupSfxPresetUI() {
   const hasCustom = !!pendingGroupSfx;
   const sel = $("#group-sfx-preset");
@@ -5895,6 +6218,9 @@ async function onLookChange() {
     state.look.winnerLabel = wl || "Winner";
   }
   state.look.allowWinnerRemove = $("#chk-allow-winner-remove").checked;
+  if ($("#chk-allow-winner-hide")) {
+    state.look.allowWinnerHide = $("#chk-allow-winner-hide").checked;
+  }
   {
     const v = $("#eliminate-after-win")?.value;
     state.look.eliminateAfterWin =
@@ -5902,15 +6228,22 @@ async function onLookChange() {
   }
   if ($("#win-effect")) {
     const v = $("#win-effect").value;
-    state.look.winEffect = v === "none" ? "none" : "confetti";
+    if (v === "none" || v === "custom") state.look.winEffect = v;
+    else state.look.winEffect = "confetti";
+    if (state.look.winEffect === "custom" && !state.look.winEffectData) {
+      state.look.winEffect = "confetti";
+    }
   }
+  updateLookWinEffectCustomUI();
   if ($("#chk-keyboard-spin")) {
     state.look.keyboardSpin = $("#chk-keyboard-spin").checked;
   }
   if ($("#auto-dismiss-sec")) {
     let ad = Number($("#auto-dismiss-sec").value);
-    if (!Number.isFinite(ad) || ad < 0) ad = 0;
-    state.look.autoDismissSec = Math.min(120, Math.round(ad));
+    if (!Number.isFinite(ad)) ad = 0;
+    if (ad < 0) ad = -1;
+    else ad = Math.min(120, Math.round(ad));
+    state.look.autoDismissSec = ad;
   }
   {
     let min = Number($("#weight-slider-min")?.value);
@@ -5936,7 +6269,7 @@ async function onLookChange() {
   renderSections();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -5945,6 +6278,61 @@ async function onLookChange() {
     });
   }
 );
+
+function updateLookWinEffectCustomUI() {
+  const row = $("#look-win-effect-custom-row");
+  const nameEl = $("#look-win-effect-name");
+  const isCustom = $("#win-effect")?.value === "custom";
+  if (row) row.hidden = !isCustom;
+  if (nameEl) {
+    nameEl.textContent =
+      state.look?.winEffectName ||
+      (state.look?.winEffectData ? "Custom media" : "No custom file");
+  }
+}
+
+$("#win-effect")?.addEventListener("change", () => {
+  updateLookWinEffectCustomUI();
+});
+
+$("#look-win-effect-input")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    checkpoint();
+    const data = await fileToDataUrl(file);
+    state.look.winEffectData = data;
+    state.look.winEffectName = file.name || "Custom media";
+    state.look.winEffect = "custom";
+    if ($("#win-effect")) $("#win-effect").value = "custom";
+    persist();
+    updateLookWinEffectCustomUI();
+  } catch (err) {
+    alert("Could not load file: " + (err.message || err));
+  }
+});
+
+$("#look-win-effect-clear")?.addEventListener("click", () => {
+  checkpoint();
+  state.look.winEffectData = null;
+  state.look.winEffectName = null;
+  if (state.look.winEffect === "custom") state.look.winEffect = "confetti";
+  if ($("#win-effect")) $("#win-effect").value = state.look.winEffect;
+  persist();
+  updateLookWinEffectCustomUI();
+});
+
+$("#look-win-effect-preview")?.addEventListener("click", () => {
+  const we = state.look?.winEffect || "confetti";
+  if (we === "none") return;
+  if (we === "confetti") fireConfetti();
+  else if (we === "custom" && state.look?.winEffectData) {
+    playCustomWinMedia(state.look.winEffectData);
+  } else {
+    alert("Choose a custom media file first.");
+  }
+});
 
 // --- Movable winner pointer (Look → unlock to drag) ---
 const POINTER_SNAP_DEGS = [0, 90, 180, 270];

@@ -60,6 +60,9 @@ export const PROFILE_KEYS = [
   "imageTileOffsetY",
   "landSfxData",
   "landSfxName",
+  "winEffect",
+  "winEffectData",
+  "winEffectName",
 ];
 
 export const COLOR_KEYS = ["color"];
@@ -76,8 +79,15 @@ export const IMAGE_KEYS = [
   "imageTileOffsetY",
 ];
 export const SFX_KEYS = ["landSfxData", "landSfxName"];
+export const WIN_EFFECT_KEYS = ["winEffect", "winEffectData", "winEffectName"];
 
-/** @typedef {{ color?: boolean, textColor?: boolean, winnerTextColor?: boolean, image?: boolean, sfx?: boolean }} ProfileParts */
+/** @typedef {{ color?: boolean, textColor?: boolean, winnerTextColor?: boolean, image?: boolean, sfx?: boolean, winEffect?: boolean }} ProfileParts */
+
+/** Normalize after-win effect id. */
+export function normalizeWinEffect(v, fallback = "confetti") {
+  if (v === "none" || v === "confetti" || v === "custom") return v;
+  return fallback;
+}
 
 export function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
@@ -90,6 +100,7 @@ export function defaultGroupProfile() {
     overrideWinnerTextColor: false,
     overrideImage: false,
     overrideSfx: false,
+    overrideWinEffect: false,
     color: "#4a6cf7",
     textColor: "#ffffff",
     winnerTextColor: "#ffffff",
@@ -103,6 +114,10 @@ export function defaultGroupProfile() {
     imageTileOffsetY: 0,
     landSfxData: null,
     landSfxName: null,
+    /** null = do not set a group win effect (sections use Look / own) */
+    winEffect: null,
+    winEffectData: null,
+    winEffectName: null,
   };
 }
 
@@ -113,7 +128,8 @@ export function groupHasAnyOverride(g) {
       g.overrideTextColor ||
       g.overrideWinnerTextColor ||
       g.overrideImage ||
-      g.overrideSfx)
+      g.overrideSfx ||
+      g.overrideWinEffect)
   );
 }
 
@@ -162,6 +178,16 @@ export function normalizeProfileFields(src = {}) {
     imageTileOffsetY: clampOffset(src.imageTileOffsetY),
     landSfxData: src.landSfxData || null,
     landSfxName: src.landSfxName || null,
+    winEffect:
+      src.winEffect === "none" ||
+      src.winEffect === "confetti" ||
+      src.winEffect === "custom"
+        ? src.winEffect
+        : src.winEffectData
+          ? "custom"
+          : null,
+    winEffectData: src.winEffectData || null,
+    winEffectName: src.winEffectName || null,
   };
 }
 
@@ -169,6 +195,17 @@ export function normalizeGroup(g = {}) {
   const profile = normalizeProfileFields(g);
   // Legacy: single overrideSections flag → all three channels
   const legacyAll = g.overrideSections === true;
+  // Group win effect: null = inherit Look for members (no group contribution)
+  let winEffect = null;
+  if (
+    g.winEffect === "none" ||
+    g.winEffect === "confetti" ||
+    g.winEffect === "custom"
+  ) {
+    winEffect = g.winEffect;
+  } else if (g.winEffectData) {
+    winEffect = "custom";
+  }
   return {
     id: g.id || uid("grp"),
     name: String(g.name ?? "Group"),
@@ -184,7 +221,11 @@ export function normalizeGroup(g = {}) {
       g.overrideImage === true || (g.overrideImage == null && legacyAll),
     overrideSfx:
       g.overrideSfx === true || (g.overrideSfx == null && legacyAll),
+    overrideWinEffect: g.overrideWinEffect === true,
     ...profile,
+    winEffect,
+    winEffectData: profile.winEffectData,
+    winEffectName: profile.winEffectName,
   };
 }
 
@@ -213,6 +254,7 @@ export function applyProfileToSection(section, profile, parts) {
           winnerTextColor: parts.winnerTextColor === true,
           image: parts.image === true,
           sfx: parts.sfx === true,
+          winEffect: parts.winEffect === true,
         }
       : {
           color: true,
@@ -220,6 +262,7 @@ export function applyProfileToSection(section, profile, parts) {
           winnerTextColor: true,
           image: true,
           sfx: true,
+          winEffect: true,
         };
   if (want.color) {
     for (const k of COLOR_KEYS) section[k] = p[k];
@@ -240,6 +283,12 @@ export function applyProfileToSection(section, profile, parts) {
   if (want.sfx) {
     for (const k of SFX_KEYS) section[k] = p[k];
     section.customSfx = true;
+  }
+  if (want.winEffect) {
+    for (const k of WIN_EFFECT_KEYS) section[k] = p[k];
+    if (!section.winEffect && section.winEffectData) section.winEffect = "custom";
+    if (!section.winEffect) section.winEffect = "confetti";
+    section.customWinEffect = true;
   }
   return section;
 }
@@ -301,15 +350,19 @@ export function defaultState() {
       resultStyle: "center",
       winnerLabel: "Winner",
       allowWinnerRemove: true,
+      /** Show Hide button on win screen (default on). */
+      allowWinnerHide: true,
       /**
        * After a spin is dismissed: "off" | "hide" (disable section) | "remove" (delete).
        */
       eliminateAfterWin: "off",
       /**
-       * After-win visual effect: "none" | "confetti" (more effects later).
-       * Default confetti. Legacy confettiOnWin boolean is migrated.
+       * Global default after-win effect: "none" | "confetti" | "custom".
+       * Sections/groups can override. Custom uses winEffectData (image/GIF/video).
        */
       winEffect: "confetti",
+      winEffectData: null,
+      winEffectName: null,
       /** Space / Enter to spin when not typing (default on). */
       keyboardSpin: true,
       /**
@@ -455,7 +508,7 @@ function migrate(data) {
   }
   // After-win effect dropdown (legacy confettiOnWin boolean → winEffect)
   {
-    const allowed = new Set(["none", "confetti"]);
+    const allowed = new Set(["none", "confetti", "custom"]);
     const hadWinEffect =
       data.look &&
       Object.prototype.hasOwnProperty.call(data.look, "winEffect");
@@ -468,13 +521,23 @@ function migrate(data) {
     } else if (!allowed.has(we)) {
       we = "confetti";
     }
+    if (we === "custom" && !look.winEffectData) we = "confetti";
     look.winEffect = we;
   }
   look.keyboardSpin = look.keyboardSpin !== false;
+  look.allowWinnerHide = look.allowWinnerHide !== false;
+  look.winEffectData = look.winEffectData || null;
+  look.winEffectName = look.winEffectName || null;
+  if (look.winEffect === "custom" && !look.winEffectData) {
+    look.winEffect = "confetti";
+  }
   {
     let ad = Number(look.autoDismissSec);
-    if (!Number.isFinite(ad) || ad < 0) ad = 0;
-    look.autoDismissSec = Math.min(120, Math.round(ad));
+    if (!Number.isFinite(ad)) ad = 0;
+    // -1 = don't show results; 0 = manual dismiss; 1–120 = auto-dismiss
+    if (ad < 0) ad = -1;
+    else ad = Math.min(120, Math.round(ad));
+    look.autoDismissSec = ad;
   }
   const spin = { ...base.spin, ...(data.spin || {}) };
   if (wasOldSave) {
@@ -700,6 +763,7 @@ export function inheritGroupForChannel(state, section, channel) {
     if (channel === "winnerTextColor") return g;
     if (channel === "image" && g.imageData) return g;
     if (channel === "sfx" && g.landSfxData) return g;
+    if (channel === "winEffect" && g.winEffect) return g;
   }
   return null;
 }
@@ -737,6 +801,7 @@ export function resolveSectionForDisplay(state, section) {
       winnerTextColor: false,
       image: false,
       sfx: false,
+      winEffect: false,
     },
     profileFrom: {
       color: { source: "section", groupId: null },
@@ -744,6 +809,7 @@ export function resolveSectionForDisplay(state, section) {
       winnerTextColor: { source: "section", groupId: null },
       image: { source: "section", groupId: null },
       sfx: { source: "section", groupId: null },
+      winEffect: { source: "section", groupId: null },
     },
   };
 
@@ -823,6 +889,47 @@ export function resolveSectionForDisplay(state, section) {
     applyFromGroup(inheritGroupForChannel(state, section, "sfx"), SFX_KEYS, "sfx");
   }
 
+  // --- After-win effect (Look global default → group → section) ---
+  const forceWinFx = forceOverrideGroup(state, section, "overrideWinEffect");
+  if (forceWinFx) {
+    applyFromGroup(forceWinFx, WIN_EFFECT_KEYS, "winEffect");
+    out.profileOverrides.winEffect = true;
+    if (!out.winEffect) {
+      out.winEffect = normalizeWinEffect(state.look?.winEffect, "confetti");
+      out.winEffectData = state.look?.winEffectData || null;
+      out.winEffectName = state.look?.winEffectName || null;
+      out.profileFrom.winEffect = { source: "look", groupId: null };
+    }
+  } else if (section.customWinEffect === true) {
+    out.winEffect = normalizeWinEffect(section.winEffect, "confetti");
+    out.winEffectData = section.winEffectData || null;
+    out.winEffectName = section.winEffectName || null;
+    if (out.winEffect === "custom" && !out.winEffectData) {
+      out.winEffect = "confetti";
+    }
+    out.profileFrom.winEffect = { source: "section", groupId: null };
+  } else {
+    const fromG = inheritGroupForChannel(state, section, "winEffect");
+    if (fromG && fromG.winEffect) {
+      applyFromGroup(fromG, WIN_EFFECT_KEYS, "winEffect");
+    } else {
+      out.winEffect = normalizeWinEffect(state.look?.winEffect, "confetti");
+      out.winEffectData = state.look?.winEffectData || null;
+      out.winEffectName = state.look?.winEffectName || null;
+      out.profileFrom.winEffect = { source: "look", groupId: null };
+    }
+    if (out.winEffect === "custom" && !out.winEffectData) {
+      out.winEffect = normalizeWinEffect(state.look?.winEffect, "confetti");
+      if (out.winEffect === "custom") {
+        out.winEffectData = state.look?.winEffectData || null;
+        out.winEffectName = state.look?.winEffectName || null;
+      } else {
+        out.winEffectData = null;
+        out.winEffectName = null;
+      }
+    }
+  }
+
   // Final fallback for text
   out.textColor = normalizeHexColor(
     out.textColor || state.look?.textColor,
@@ -871,7 +978,8 @@ function normalizeSection(s, groups, groupIdsSet) {
     s.customTextColor != null ||
     s.customWinnerTextColor != null ||
     s.customImage != null ||
-    s.customSfx != null;
+    s.customSfx != null ||
+    s.customWinEffect != null;
 
   // Legacy saves: keep existing media/color as section-owned so looks don't jump
   let customColor;
@@ -879,6 +987,7 @@ function normalizeSection(s, groups, groupIdsSet) {
   let customWinnerTextColor;
   let customImage;
   let customSfx;
+  let customWinEffect;
   if (hasCustomFlags) {
     customColor = s.customColor === true;
     customTextColor = s.customTextColor === true;
@@ -886,6 +995,7 @@ function normalizeSection(s, groups, groupIdsSet) {
     customWinnerTextColor = s.customWinnerTextColor === true;
     customImage = s.customImage === true;
     customSfx = s.customSfx === true;
+    customWinEffect = s.customWinEffect === true;
   } else {
     customColor = true;
     // Old projects: inherit text color (Look / group) unless they set one
@@ -893,6 +1003,18 @@ function normalizeSection(s, groups, groupIdsSet) {
     customWinnerTextColor = false;
     customImage = !!profile.imageData;
     customSfx = !!profile.landSfxData;
+    customWinEffect = false;
+  }
+
+  let winEffect = null;
+  if (
+    s.winEffect === "none" ||
+    s.winEffect === "confetti" ||
+    s.winEffect === "custom"
+  ) {
+    winEffect = s.winEffect;
+  } else if (s.winEffectData) {
+    winEffect = "custom";
   }
 
   return {
@@ -906,7 +1028,11 @@ function normalizeSection(s, groups, groupIdsSet) {
     customWinnerTextColor,
     customImage,
     customSfx,
+    customWinEffect,
     ...profile,
+    winEffect,
+    winEffectData: s.winEffectData || profile.winEffectData || null,
+    winEffectName: s.winEffectName || profile.winEffectName || null,
     landSfxVolume: normalizeLandSfxVolume(
       s.landSfxVolume,
       0.4

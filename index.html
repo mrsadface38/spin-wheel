@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#89</span>
+        <span class="app-version" id="app-version" title="Update number">#91</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -277,6 +277,10 @@
               <small>Default for the winning name. Sections/groups can set their own unless Override is on.</small>
             </label>
             <label class="toggle-row">
+              <input type="checkbox" id="chk-allow-winner-hide" checked />
+              <span>Show <strong>Hide</strong> button after a spin</span>
+            </label>
+            <label class="toggle-row">
               <input type="checkbox" id="chk-allow-winner-remove" checked />
               <span>Show <strong>Remove</strong> button after a spin</span>
             </label>
@@ -290,13 +294,25 @@
               <small>Hide or delete applies when you dismiss the result (Continue). Undo restores it.</small>
             </label>
             <label class="field">
-              <span>After-win effect</span>
-              <select id="win-effect" title="Visual celebration when a spin lands">
+              <span>After-win effect (global default)</span>
+              <select id="win-effect" title="Default celebration when a spin lands (sections/groups can override)">
                 <option value="none">None</option>
                 <option value="confetti" selected>Confetti</option>
+                <option value="custom">Custom media…</option>
               </select>
-              <small>More effects can be added here later</small>
+              <small>Used when a section/group does not set its own effect. Custom = image, GIF, or short video overlay.</small>
             </label>
+            <div class="audio-pick" id="look-win-effect-custom-row" hidden>
+              <span id="look-win-effect-name" class="audio-name">No custom file</span>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose file
+                  <input type="file" id="look-win-effect-input" accept="image/*,video/*,.gif,.webp,.mp4,.webm" hidden />
+                </label>
+                <button type="button" id="look-win-effect-clear" class="btn small ghost">Clear file</button>
+                <button type="button" id="look-win-effect-preview" class="btn small ghost">Preview</button>
+              </div>
+            </div>
             <label class="toggle-row">
               <input type="checkbox" id="chk-keyboard-spin" checked />
               <span>Keyboard spin (Space / Enter)</span>
@@ -827,6 +843,30 @@
             </label>
           </div>
 
+          <div class="form-block compact">
+            <h3>After-win effect (this section)</h3>
+            <label class="field">
+              <span>Effect</span>
+              <select id="section-win-effect" title="Celebration when this section wins">
+                <option value="inherit">From group / Look default</option>
+                <option value="none">None</option>
+                <option value="confetti">Confetti</option>
+                <option value="custom">Custom media…</option>
+              </select>
+            </label>
+            <div class="audio-pick" id="section-win-effect-custom-row" hidden>
+              <span id="section-win-effect-name" class="audio-name">No custom file</span>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose file
+                  <input type="file" id="section-win-effect-input" accept="image/*,video/*,.gif,.webp,.mp4,.webm" hidden />
+                </label>
+                <button type="button" id="section-win-effect-clear" class="btn small ghost">Clear file</button>
+              </div>
+            </div>
+            <small>Custom media plays as a full-screen overlay for a few seconds.</small>
+          </div>
+
           <label class="toggle-row">
             <input type="checkbox" id="section-enabled" checked />
             <span>Enabled (include when group is active)</span>
@@ -1013,6 +1053,33 @@
               </div>
             </div>
 
+            <div class="form-block compact">
+              <h4 class="group-profile-subhead">After-win effect</h4>
+              <label class="toggle-row">
+                <input type="checkbox" id="group-override-win-effect" />
+                <span>Force this effect on member sections</span>
+              </label>
+              <label class="field">
+                <span>Effect</span>
+                <select id="group-win-effect" title="Group after-win effect">
+                  <option value="look">Use Look default (no group style)</option>
+                  <option value="none">None</option>
+                  <option value="confetti">Confetti</option>
+                  <option value="custom">Custom media…</option>
+                </select>
+              </label>
+              <div class="audio-pick" id="group-win-effect-custom-row" hidden>
+                <span id="group-win-effect-name" class="audio-name">No custom file</span>
+                <div class="image-pick-actions">
+                  <label class="btn small">
+                    Choose file
+                    <input type="file" id="group-win-effect-input" accept="image/*,video/*,.gif,.webp,.mp4,.webm" hidden />
+                  </label>
+                  <button type="button" id="group-win-effect-clear" class="btn small ghost">Clear file</button>
+                </div>
+              </div>
+            </div>
+
             <div class="group-profile-actions">
               <div class="profile-parts-block">
                 <span class="profile-parts-label">Apply to sections — only copy checked parts</span>
@@ -1022,6 +1089,7 @@
                   <label class="chip-check"><input type="checkbox" id="group-apply-winner-text-color" checked /> Winner text</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-image" checked /> Image</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-sfx" /> Land SFX</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-win-effect" /> Win effect</label>
                 </div>
               </div>
               <button type="button" id="btn-apply-group-profile" class="btn small">

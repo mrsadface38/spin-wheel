@@ -160,6 +160,37 @@ body.focus-mode .stage-panel {
   display: block;
 }
 
+/* Custom after-win media overlay (image / GIF / video) */
+#win-effect-media-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 185;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 14, 0.35);
+  animation: win-fx-fade 0.35s ease both;
+}
+#win-effect-media-layer img,
+#win-effect-media-layer video {
+  max-width: min(92vw, 720px);
+  max-height: min(70vh, 520px);
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+#win-effect-media-layer.win-fx-out {
+  animation: win-fx-out 0.4s ease forwards;
+}
+@keyframes win-fx-fade {
+  from { opacity: 0; transform: scale(1.06); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes win-fx-out {
+  to { opacity: 0; transform: scale(0.96); }
+}
+
 /* Top bar */
 .top-bar {
   display: flex;
