@@ -1,6 +1,4 @@
 import {
-  loadState,
-  saveState,
   defaultState,
   hydrateState,
   getActiveSections,
@@ -21,6 +19,17 @@ import {
   normalizeWeight,
   formatWeight,
 } from "./state.js";
+import {
+  loadLibrary,
+  saveLibrary,
+  getActiveSlot,
+  writeActiveState,
+  switchActive,
+  addWheel,
+  renameWheel,
+  deleteWheel,
+  duplicateWheel,
+} from "./wheels.js";
 import { AudioManager } from "./audio.js";
 import { Wheel } from "./wheel.js";
 import { computeFillImageLayout } from "./slice-image-layout.js";
@@ -28,7 +37,13 @@ import { parseImportFile } from "./import-converters.js";
 import { APP_UPDATE } from "./version.js";
 
 const audio = new AudioManager();
-let state = loadState();
+/** @type {import("./wheels.js").WheelLibrary | ReturnType<typeof loadLibrary>} */
+let library = loadLibrary();
+let state = hydrateState(
+  JSON.parse(JSON.stringify(getActiveSlot(library).data))
+);
+/** True while a timed spin / fling session owns the wheel */
+let spinBusy = false;
 
 // --- Session undo (in-memory only; cleared when the app closes) ---
 const MAX_UNDO = 80;
@@ -82,7 +97,7 @@ async function performUndo() {
   historySuspended = true;
   try {
     state = undoStack.pop();
-    saveState(state);
+    persist();
     lastWinnerId = null;
     hideResults();
     bindAll();
@@ -186,10 +201,119 @@ const wheel = new Wheel(wheelCanvas, bgCanvas, {
   },
 });
 
-// --- Persistence ---
+// --- Persistence (multi-wheel library) ---
 function persist() {
-  saveState(state);
+  library = writeActiveState(library, state);
+  const ok = saveLibrary(library);
+  if (!ok) {
+    console.warn("Save failed — browser storage may be full");
+  }
   updateUndoButton();
+  fillWheelSelect();
+}
+
+function fillWheelSelect() {
+  const sel = $("#wheel-select");
+  if (!sel) return;
+  const cur = library.activeId;
+  sel.innerHTML = library.wheels
+    .map((w) => {
+      const label = escapeHtml(w.name || "Untitled");
+      return `<option value="${w.id}"${w.id === cur ? " selected" : ""}>${label}</option>`;
+    })
+    .join("");
+  const del = $("#btn-wheel-delete");
+  if (del) del.disabled = library.wheels.length <= 1;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Stop spin/audio and load a different wheel slot into the UI. */
+async function applyLoadedWheel(nextLib, nextState) {
+  try {
+    wheel.cancelAnimatedSpin?.();
+  } catch {
+    /* ignore */
+  }
+  audio.stopAll?.();
+  audio.stopBgm?.();
+  audio.stopDivert?.();
+  stopSpinLoop?.();
+  spinBusy = false;
+  library = nextLib;
+  state = nextState;
+  undoStack.length = 0;
+  lastWinnerId = null;
+  hideResults();
+  saveLibrary(library);
+  fillWheelSelect();
+  bindAll();
+  updateSectionsCount();
+  updateUndoButton();
+  await preloadAudio();
+  await refreshWheel();
+  syncBgm();
+}
+
+async function switchToWheelId(id) {
+  if (!id || id === library.activeId) return;
+  // Save current wheel first
+  library = writeActiveState(library, state);
+  const result = switchActive(library, id);
+  if (!result) return;
+  await applyLoadedWheel(result.lib, result.state);
+}
+
+async function createNewWheel() {
+  library = writeActiveState(library, state);
+  const name = prompt("Name for the new wheel:", `Wheel ${library.wheels.length + 1}`);
+  if (name === null) return; // cancelled
+  const result = addWheel(library, name || undefined, null);
+  await applyLoadedWheel(result.lib, result.state);
+}
+
+async function duplicateCurrentWheel() {
+  library = writeActiveState(library, state);
+  const result = duplicateWheel(library, library.activeId);
+  if (!result) return;
+  await applyLoadedWheel(result.lib, result.state);
+}
+
+function renameCurrentWheel() {
+  const slot = getActiveSlot(library);
+  const name = prompt("Rename wheel:", slot.name || "My wheel");
+  if (name === null) return;
+  library = writeActiveState(library, state);
+  library = renameWheel(library, library.activeId, name);
+  saveLibrary(library);
+  fillWheelSelect();
+}
+
+async function deleteCurrentWheel() {
+  if (library.wheels.length <= 1) {
+    alert("You need at least one wheel.");
+    return;
+  }
+  const slot = getActiveSlot(library);
+  if (
+    !confirm(
+      `Delete wheel “${slot.name}”? This cannot be undone.\nYour other wheels stay saved.`
+    )
+  ) {
+    return;
+  }
+  library = writeActiveState(library, state);
+  const next = deleteWheel(library, library.activeId);
+  if (!next) return;
+  const result = switchActive(next, next.activeId);
+  if (!result) return;
+  await applyLoadedWheel(result.lib, result.state);
 }
 
 async function refreshWheel() {
@@ -3314,7 +3438,6 @@ $("#btn-toggle-sidebar")?.addEventListener("click", (e) => {
 });
 
 // --- Spin (double-click / drag-fling the wheel) ---
-let spinBusy = false;
 
 async function beginSpinSession() {
   audio.ensure();
@@ -3397,14 +3520,26 @@ $("#import-file").addEventListener("change", async (e) => {
     const text = await file.text();
     const { data, source } = parseImportFile(text, file.name);
     if (!data.sections || !data.groups) throw new Error("Invalid project file");
-    checkpoint();
-    state = hydrateState(data);
-    persist();
-    bindAll();
-    await preloadAudio();
-    await refreshWheel();
+    const asNew = confirm(
+      "Import as a NEW wheel?\n\nOK = keep current wheel and import into a new one\nCancel = replace the current wheel"
+    );
+    if (asNew) {
+      library = writeActiveState(library, state);
+      const baseName = (file.name || "Imported").replace(
+        /\.(json|wheel|txt|csv|tsv)$/i,
+        ""
+      );
+      const result = addWheel(library, baseName, data);
+      await applyLoadedWheel(result.lib, result.state);
+    } else {
+      checkpoint();
+      state = hydrateState(data);
+      persist();
+      bindAll();
+      await preloadAudio();
+      await refreshWheel();
+    }
     if (source === "wheel-of-names") {
-      // Soft notice — friend should know conversion worked
       console.info(
         `Imported ${state.sections.length} section(s) from Wheel of Names`
       );
@@ -3415,13 +3550,50 @@ $("#import-file").addEventListener("change", async (e) => {
 });
 
 $("#btn-reset").addEventListener("click", async () => {
-  if (!confirm("Reset everything to defaults? You can Undo this while the app stays open.")) return;
+  if (
+    !confirm(
+      "Reset this wheel to defaults? Your other saved wheels are not affected. You can Undo while the app stays open."
+    )
+  )
+    return;
   checkpoint();
   state = defaultState();
   persist();
   bindAll();
   await preloadAudio();
   await refreshWheel();
+});
+
+// --- Multi-wheel switcher ---
+$("#wheel-select")?.addEventListener("change", async (e) => {
+  const id = e.target.value;
+  if (!id || id === library.activeId) {
+    fillWheelSelect();
+    return;
+  }
+  try {
+    await switchToWheelId(id);
+  } catch (err) {
+    console.error(err);
+    alert("Could not switch wheel: " + (err.message || err));
+    fillWheelSelect();
+  }
+});
+
+$("#btn-wheel-new")?.addEventListener("click", () => {
+  createNewWheel().catch((err) => alert(err.message || err));
+});
+
+$("#btn-wheel-dup")?.addEventListener("click", () => {
+  duplicateCurrentWheel().catch((err) => alert(err.message || err));
+});
+
+$("#btn-wheel-rename")?.addEventListener("click", () => {
+  renameCurrentWheel();
+});
+
+$("#btn-wheel-delete")?.addEventListener("click", () => {
+  deleteCurrentWheel().catch((err) => alert(err.message || err));
 });
 
 $("#btn-undo").addEventListener("click", () => {
@@ -3474,6 +3646,7 @@ async function init() {
     verEl.textContent = `#${APP_UPDATE}`;
     verEl.title = `Update #${APP_UPDATE}`;
   }
+  fillWheelSelect();
   bindAll();
   updateSectionsCount();
   updateUndoButton();
@@ -3481,6 +3654,7 @@ async function init() {
   await preloadAudio();
   await refreshWheel();
   updateSectionsCount();
+  fillWheelSelect();
   // Continuous BGM waits for a user gesture (browser autoplay rules);
   // first SPIN / Sound interaction will start it via syncBgm / startBgmForSpin.
   syncBgm();
