@@ -1208,6 +1208,28 @@ $("#btn-add-section").addEventListener("click", () => {
   openSectionModal(null);
 });
 
+async function setAllSectionsEnabled(enabled) {
+  if (!state.sections.length) return;
+  const next = !!enabled;
+  const anyChange = state.sections.some((s) => s.enabled !== next);
+  if (!anyChange) return;
+  checkpoint();
+  for (const s of state.sections) {
+    s.enabled = next;
+  }
+  persist();
+  renderSections();
+  await refreshWheel();
+}
+
+$("#btn-enable-all-sections")?.addEventListener("click", () => {
+  setAllSectionsEnabled(true);
+});
+
+$("#btn-disable-all-sections")?.addEventListener("click", () => {
+  setAllSectionsEnabled(false);
+});
+
 $("#btn-add-group").addEventListener("click", () => {
   openGroupModal(null);
 });
