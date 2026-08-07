@@ -169,26 +169,169 @@ body.focus-mode .stage-panel {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(5, 7, 14, 0.35);
-  animation: win-fx-fade 0.35s ease both;
+  background: rgba(5, 7, 14, 0.4);
+  overflow: hidden;
 }
-#win-effect-media-layer img,
-#win-effect-media-layer video {
+#win-effect-media-layer .win-fx-media {
   max-width: min(92vw, 720px);
   max-height: min(70vh, 520px);
   object-fit: contain;
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  will-change: transform, opacity, filter;
 }
-#win-effect-media-layer.win-fx-out {
-  animation: win-fx-out 0.4s ease forwards;
+
+/* --- Entrance (layer backdrop + media) --- */
+#win-effect-media-layer.win-fx-enter-pop {
+  animation: win-fx-bg-in 0.35s ease both;
 }
-@keyframes win-fx-fade {
-  from { opacity: 0; transform: scale(1.06); }
+#win-effect-media-layer.win-fx-enter-pop .win-fx-media {
+  animation: win-fx-pop-in 0.55s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+}
+#win-effect-media-layer.win-fx-enter-drop {
+  animation: win-fx-bg-in 0.3s ease both;
+}
+#win-effect-media-layer.win-fx-enter-drop .win-fx-media {
+  animation: win-fx-drop-in 0.65s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+#win-effect-media-layer.win-fx-enter-spin {
+  animation: win-fx-bg-in 0.3s ease both;
+}
+#win-effect-media-layer.win-fx-enter-spin .win-fx-media {
+  animation: win-fx-spin-in 0.7s cubic-bezier(0.2, 1.1, 0.35, 1) both;
+}
+#win-effect-media-layer.win-fx-enter-slide {
+  animation: win-fx-bg-in 0.3s ease both;
+}
+#win-effect-media-layer.win-fx-enter-slide .win-fx-media {
+  animation: win-fx-slide-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+#win-effect-media-layer.win-fx-enter-flip {
+  animation: win-fx-bg-in 0.3s ease both;
+  perspective: 900px;
+}
+#win-effect-media-layer.win-fx-enter-flip .win-fx-media {
+  animation: win-fx-flip-in 0.7s cubic-bezier(0.2, 1, 0.3, 1) both;
+}
+#win-effect-media-layer.win-fx-enter-zoomblur {
+  animation: win-fx-bg-in 0.4s ease both;
+}
+#win-effect-media-layer.win-fx-enter-zoomblur .win-fx-media {
+  animation: win-fx-zoomblur-in 0.65s cubic-bezier(0.2, 1, 0.35, 1) both;
+}
+
+/* --- Hold / idle motion while on screen --- */
+#win-effect-media-layer.win-fx-hold-float .win-fx-media {
+  animation: win-fx-float 2.4s ease-in-out infinite;
+}
+#win-effect-media-layer.win-fx-hold-pulse .win-fx-media {
+  animation: win-fx-pulse 1.6s ease-in-out infinite;
+}
+#win-effect-media-layer.win-fx-hold-sway .win-fx-media {
+  animation: win-fx-sway 2.2s ease-in-out infinite;
+}
+#win-effect-media-layer.win-fx-hold-kenburns .win-fx-media {
+  animation: win-fx-kenburns 3.4s ease-out both;
+}
+
+/* Apply hold after entrance finishes (animation-delay set in JS via class combo) */
+#win-effect-media-layer.win-fx-enter-pop.win-fx-hold-float .win-fx-media,
+#win-effect-media-layer.win-fx-enter-drop.win-fx-hold-float .win-fx-media,
+#win-effect-media-layer.win-fx-enter-spin.win-fx-hold-float .win-fx-media,
+#win-effect-media-layer.win-fx-enter-slide.win-fx-hold-float .win-fx-media,
+#win-effect-media-layer.win-fx-enter-flip.win-fx-hold-float .win-fx-media,
+#win-effect-media-layer.win-fx-enter-zoomblur.win-fx-hold-float .win-fx-media {
+  animation:
+    var(--win-fx-enter-name, win-fx-pop-in) var(--win-fx-enter-dur, 0.55s)
+      cubic-bezier(0.22, 1.2, 0.36, 1) both,
+    win-fx-float 2.4s ease-in-out var(--win-fx-enter-dur, 0.55s) infinite;
+}
+
+/* --- Exit --- */
+#win-effect-media-layer.win-fx-exit-fade {
+  animation: win-fx-bg-out 0.45s ease forwards;
+}
+#win-effect-media-layer.win-fx-exit-fade .win-fx-media {
+  animation: win-fx-fade-out 0.4s ease forwards !important;
+}
+#win-effect-media-layer.win-fx-exit-up {
+  animation: win-fx-bg-out 0.45s ease forwards;
+}
+#win-effect-media-layer.win-fx-exit-up .win-fx-media {
+  animation: win-fx-fly-up 0.5s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+#win-effect-media-layer.win-fx-exit-spin {
+  animation: win-fx-bg-out 0.5s ease forwards;
+}
+#win-effect-media-layer.win-fx-exit-spin .win-fx-media {
+  animation: win-fx-spin-out 0.55s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+#win-effect-media-layer.win-fx-exit-shrink {
+  animation: win-fx-bg-out 0.4s ease forwards;
+}
+#win-effect-media-layer.win-fx-exit-shrink .win-fx-media {
+  animation: win-fx-shrink-out 0.45s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+
+@keyframes win-fx-bg-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes win-fx-bg-out {
+  to { opacity: 0; }
+}
+@keyframes win-fx-pop-in {
+  from { opacity: 0; transform: scale(0.35); }
   to { opacity: 1; transform: scale(1); }
 }
-@keyframes win-fx-out {
-  to { opacity: 0; transform: scale(0.96); }
+@keyframes win-fx-drop-in {
+  from { opacity: 0; transform: translateY(-42vh) scale(0.85) rotate(-6deg); }
+  70% { opacity: 1; transform: translateY(12px) scale(1.03) rotate(1deg); }
+  to { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
+}
+@keyframes win-fx-spin-in {
+  from { opacity: 0; transform: scale(0.4) rotate(-180deg); }
+  to { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+@keyframes win-fx-slide-in {
+  from { opacity: 0; transform: translateX(-48vw) rotate(-8deg); }
+  to { opacity: 1; transform: translateX(0) rotate(0deg); }
+}
+@keyframes win-fx-flip-in {
+  from { opacity: 0; transform: rotateY(-95deg) scale(0.7); }
+  to { opacity: 1; transform: rotateY(0deg) scale(1); }
+}
+@keyframes win-fx-zoomblur-in {
+  from { opacity: 0; transform: scale(1.55); filter: blur(12px); }
+  to { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+@keyframes win-fx-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes win-fx-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.045); }
+}
+@keyframes win-fx-sway {
+  0%, 100% { transform: rotate(-2.5deg) translateY(0); }
+  50% { transform: rotate(2.5deg) translateY(-6px); }
+}
+@keyframes win-fx-kenburns {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
+@keyframes win-fx-fade-out {
+  to { opacity: 0; transform: scale(0.92); }
+}
+@keyframes win-fx-fly-up {
+  to { opacity: 0; transform: translateY(-28vh) scale(0.85); }
+}
+@keyframes win-fx-spin-out {
+  to { opacity: 0; transform: scale(0.5) rotate(160deg); }
+}
+@keyframes win-fx-shrink-out {
+  to { opacity: 0; transform: scale(0.2); filter: blur(6px); }
 }
 
 /* Top bar */

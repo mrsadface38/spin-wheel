@@ -4755,8 +4755,33 @@ function playWinEffect(section = null) {
   }
 }
 
+/** Entrance styles for custom after-win media (picked at random). */
+const WIN_FX_ENTERS = [
+  "win-fx-enter-pop",
+  "win-fx-enter-drop",
+  "win-fx-enter-spin",
+  "win-fx-enter-slide",
+  "win-fx-enter-flip",
+  "win-fx-enter-zoomblur",
+];
+/** Hold / idle motion while media is on screen. */
+const WIN_FX_HOLDS = [
+  "win-fx-hold-float",
+  "win-fx-hold-pulse",
+  "win-fx-hold-sway",
+  "win-fx-hold-kenburns",
+];
+/** Exit styles. */
+const WIN_FX_EXITS = [
+  "win-fx-exit-fade",
+  "win-fx-exit-up",
+  "win-fx-exit-spin",
+  "win-fx-exit-shrink",
+];
+
 /**
- * Full-screen custom media (image / GIF / video) for a few seconds.
+ * Full-screen custom media (image / GIF / video) with a random
+ * entrance → hold → exit animation set each time.
  * @param {string} dataUrl
  */
 function playCustomWinMedia(dataUrl) {
@@ -4766,6 +4791,15 @@ function playCustomWinMedia(dataUrl) {
     const layer = document.createElement("div");
     layer.id = "win-effect-media-layer";
     layer.setAttribute("aria-hidden", "true");
+
+    const enter =
+      WIN_FX_ENTERS[Math.floor(Math.random() * WIN_FX_ENTERS.length)];
+    const hold =
+      WIN_FX_HOLDS[Math.floor(Math.random() * WIN_FX_HOLDS.length)];
+    const exit =
+      WIN_FX_EXITS[Math.floor(Math.random() * WIN_FX_EXITS.length)];
+    layer.classList.add(enter, hold);
+
     const isVideo = /^data:video\//i.test(dataUrl);
     /** @type {HTMLImageElement|HTMLVideoElement} */
     let el;
@@ -4783,17 +4817,29 @@ function playCustomWinMedia(dataUrl) {
       img.alt = "";
       el = img;
     }
+    el.classList.add("win-fx-media");
     layer.appendChild(el);
     document.body.appendChild(layer);
+
+    // After entrance, keep hold motion; then exit with a different animation
+    const holdMs = 2800 + Math.floor(Math.random() * 900);
+    const exitMs = 520;
     const remove = () => {
       try {
-        layer.classList.add("win-fx-out");
-        setTimeout(() => layer.remove(), 400);
+        layer.classList.remove(enter, hold);
+        layer.classList.add(exit);
+        setTimeout(() => {
+          try {
+            layer.remove();
+          } catch {
+            /* ignore */
+          }
+        }, exitMs);
       } catch {
         /* ignore */
       }
     };
-    setTimeout(remove, 3200);
+    setTimeout(remove, holdMs);
   } catch (err) {
     console.warn("custom win effect:", err);
   }
