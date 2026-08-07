@@ -222,10 +222,8 @@ const wheel = new Wheel(wheelCanvas, bgCanvas, {
           audio.playOneShot(key, vol, "land");
         });
       }
-    } else if (state.sound.landSfxData) {
-      audio.playOneShot("land", vol, "land");
     } else {
-      audio.playLandDefault(vol);
+      playGlobalLandSfx(vol);
     }
   },
 });
@@ -356,6 +354,12 @@ const DEFAULT_SPIN_TICK = {
   name: "mixkit-short-bass-hit-2299.wav",
 };
 
+/** Bundled Victory land SFX (optional alternative to built-in chime). */
+const LAND_VICTORY = {
+  url: "assets/sounds/land-victory.mp3",
+  name: "Victory",
+};
+
 /** @returns {"mixkit"|"synth"|"custom"} */
 function getSpinTickPreset() {
   const p = state.sound?.spinTickPreset;
@@ -444,11 +448,103 @@ async function ensureBgmBuffer() {
   }
 }
 
+/**
+ * Play the global land SFX (section/group did not supply one).
+ * @param {number} vol
+ * @param {boolean} [asPreview]
+ */
+function playGlobalLandSfx(vol, asPreview = false) {
+  const preset = getLandSfxPreset();
+  if (preset === "default") {
+    audio.playLandDefault(vol, asPreview);
+    return;
+  }
+  if (audio.buffers.has("land")) {
+    audio.playOneShot("land", vol, "land", asPreview);
+    return;
+  }
+  ensureLandSfxBuffer().then((ok) => {
+    if (ok && audio.buffers.has("land")) {
+      audio.playOneShot("land", vol, "land", asPreview);
+    } else {
+      audio.playLandDefault(vol, asPreview);
+    }
+  });
+}
+
+/** @returns {"default"|"victory"|"custom"} */
+function getLandSfxPreset() {
+  const p = state.sound?.landSfxPreset;
+  if (p === "default" || p === "victory" || p === "custom") return p;
+  return state.sound?.landSfxData ? "custom" : "default";
+}
+
+function landSfxDisplayName() {
+  const preset = getLandSfxPreset();
+  if (preset === "victory") return `${LAND_VICTORY.name}`;
+  if (preset === "custom") {
+    if (state.sound?.landSfxName) return state.sound.landSfxName;
+    if (state.sound?.landSfxData) return "Custom land SFX";
+    return "Custom file (none chosen)";
+  }
+  return "Built-in chime (default)";
+}
+
+/**
+ * Load global land buffer for victory/custom. Default chime has no buffer.
+ * @returns {Promise<boolean>} true if a sample buffer is ready
+ */
+async function ensureLandSfxBuffer() {
+  const preset = getLandSfxPreset();
+  try {
+    if (preset === "default") {
+      audio.buffers.delete("land");
+      return false;
+    }
+    if (preset === "custom" && state.sound?.landSfxData) {
+      await audio.loadDataUrl("land", state.sound.landSfxData);
+      return true;
+    }
+    if (preset === "victory") {
+      await audio.loadUrl("land", LAND_VICTORY.url);
+      return true;
+    }
+    // custom without file → no buffer
+    audio.buffers.delete("land");
+    return false;
+  } catch (err) {
+    console.warn("Land SFX load failed:", err);
+    return false;
+  }
+}
+
+function updateLandSfxPresetUI() {
+  const preset = getLandSfxPreset();
+  const sel = $("#land-sfx-preset");
+  if (sel) sel.value = preset;
+  const nameEl = $("#land-sfx-name");
+  if (nameEl) {
+    nameEl.textContent =
+      preset === "custom"
+        ? state.sound?.landSfxName ||
+          (state.sound?.landSfxData ? "Custom land SFX" : "No custom file chosen")
+        : landSfxDisplayName();
+  }
+  const row = $("#land-sfx-custom-row");
+  if (row) {
+    if (preset === "custom") {
+      row.hidden = false;
+      row.style.display = "";
+    } else {
+      row.hidden = true;
+      row.style.display = "none";
+    }
+  }
+}
+
 async function preloadAudio() {
   await ensureSpinSfxBuffer();
-  if (state.sound.landSfxData) {
-    await audio.loadDataUrl("land", state.sound.landSfxData);
-  }
+  await ensureLandSfxBuffer();
   await ensureBgmBuffer();
   for (const s of state.sections) {
     if (s.landSfxData) {
@@ -1835,10 +1931,8 @@ $("#group-sfx-preview")?.addEventListener("click", async () => {
     await audio.loadDataUrl("preview_group", pendingGroupSfx);
     if (audio.isPreviewPlaying) return;
     audio.playOneShot("preview_group", state.sound.landVolume, "land", true);
-  } else if (state.sound.landSfxData) {
-    audio.playOneShot("land", state.sound.landVolume, "land", true);
   } else {
-    audio.playLandDefault(state.sound.landVolume, true);
+    playGlobalLandSfx(state.sound.landVolume, true);
   }
 });
 
@@ -2742,10 +2836,8 @@ $("#section-sfx-preview").addEventListener("click", async () => {
     // User may have clicked stop while loading
     if (audio.isPreviewPlaying) return;
     audio.playOneShot("preview_section", vol, "land", true);
-  } else if (state.sound.landSfxData) {
-    audio.playOneShot("land", vol, "land", true);
   } else {
-    audio.playLandDefault(vol, true);
+    playGlobalLandSfx(vol, true);
   }
 });
 
@@ -3688,7 +3780,7 @@ function bindSound() {
   $("#land-sfx-volume-label").textContent = volumePct(landVol);
   $("#bgm-volume-label").textContent = volumePct(bgmVol);
   updateSpinTickPresetUI();
-  $("#land-sfx-name").textContent = state.sound.landSfxName || "Default (built-in chime)";
+  updateLandSfxPresetUI();
   $("#bgm-name").textContent = bgmDisplayName();
   $("#bgm-mode").value = state.sound.bgmMode || "spin";
   syncBgm();
@@ -3890,35 +3982,67 @@ $("#spin-sfx-preview").addEventListener("click", async () => {
   });
 });
 
+$("#land-sfx-preset")?.addEventListener("change", async () => {
+  checkpoint();
+  const v = $("#land-sfx-preset")?.value;
+  if (v === "default" || v === "victory" || v === "custom") {
+    state.sound.landSfxPreset = v;
+  }
+  if (v === "custom" && !state.sound.landSfxData) {
+    $("#land-sfx-input")?.click();
+  }
+  audio.buffers.delete("land");
+  await ensureLandSfxBuffer();
+  updateLandSfxPresetUI();
+  persist();
+});
+
 $("#land-sfx-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
-  if (!file) return;
+  if (!file) {
+    if (!state.sound.landSfxData) {
+      state.sound.landSfxPreset = "default";
+      updateLandSfxPresetUI();
+      persist();
+    }
+    return;
+  }
   checkpoint();
+  state.sound.landSfxPreset = "custom";
   state.sound.landSfxData = await fileToDataUrl(file);
   state.sound.landSfxName = file.name;
-  $("#land-sfx-name").textContent = file.name;
-  await audio.loadDataUrl("land", state.sound.landSfxData);
+  audio.buffers.delete("land");
+  await ensureLandSfxBuffer();
+  updateLandSfxPresetUI();
   persist();
 });
 
-$("#land-sfx-clear").addEventListener("click", () => {
+$("#land-sfx-clear").addEventListener("click", async () => {
   checkpoint();
+  state.sound.landSfxPreset = "default";
   state.sound.landSfxData = null;
   state.sound.landSfxName = null;
-  $("#land-sfx-name").textContent = "Default (built-in chime)";
   audio.buffers.delete("land");
+  await ensureLandSfxBuffer();
+  updateLandSfxPresetUI();
   persist();
 });
 
-$("#land-sfx-preview").addEventListener("click", () => {
+$("#land-sfx-preview").addEventListener("click", async () => {
   audio.ensure();
-  audio.togglePreview("land", () => {
-    if (state.sound.landSfxData) {
-      audio.playOneShot("land", state.sound.landVolume, "land", true);
-    } else {
+  const preset = getLandSfxPreset();
+  if (preset === "default") {
+    audio.togglePreview("land", () => {
       audio.playLandDefault(state.sound.landVolume, true);
-    }
+    });
+    return;
+  }
+  if (!audio.buffers.has("land")) {
+    await ensureLandSfxBuffer();
+  }
+  audio.togglePreview("land", () => {
+    playGlobalLandSfx(state.sound.landVolume, true);
   });
 });
 

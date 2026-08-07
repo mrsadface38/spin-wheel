@@ -307,6 +307,8 @@ export function defaultState() {
       spinSfxData: null,
       spinSfxName: null,
       spinVolume: 0.4,
+      /** "default" | "victory" | "custom" — global land SFX when section has none */
+      landSfxPreset: "default",
       landSfxData: null,
       landSfxName: null,
       landVolume: 0.4,
@@ -396,6 +398,19 @@ function migrate(data) {
     spinTickPreset = "synth";
   }
 
+  let landSfxPreset = soundIn.landSfxPreset;
+  if (
+    landSfxPreset !== "default" &&
+    landSfxPreset !== "victory" &&
+    landSfxPreset !== "custom"
+  ) {
+    // Legacy: custom land file → custom; else built-in chime
+    landSfxPreset = soundIn.landSfxData ? "custom" : "default";
+  }
+  if (landSfxPreset === "custom" && !soundIn.landSfxData) {
+    landSfxPreset = "default";
+  }
+
   return {
     groups,
     sections,
@@ -404,6 +419,7 @@ function migrate(data) {
       ...base.sound,
       ...soundIn,
       spinTickPreset,
+      landSfxPreset,
     },
     spin,
     secret: {

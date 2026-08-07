@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#42</span>
+        <span class="app-version" id="app-version" title="Update number">#43</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -354,17 +354,27 @@
           </div>
 
           <div class="form-block">
-            <h3>Landing sound (default)</h3>
+            <h3>Landing sound</h3>
             <p class="hint">Used when a section has no custom land SFX of its own.</p>
-            <div class="audio-pick">
-              <span id="land-sfx-name" class="audio-name">Default (built-in chime)</span>
+            <label class="field">
+              <span>Land sound</span>
+              <div class="slider-with-value">
+                <select id="land-sfx-preset" title="Choose default, Victory, or a custom file">
+                  <option value="default">Built-in chime (default)</option>
+                  <option value="victory">Victory</option>
+                  <option value="custom">Custom file…</option>
+                </select>
+                <button type="button" id="land-sfx-preview" class="btn small ghost">Preview</button>
+              </div>
+            </label>
+            <div class="audio-pick" id="land-sfx-custom-row" hidden>
+              <span id="land-sfx-name" class="audio-name">No custom file</span>
               <div class="image-pick-actions">
                 <label class="btn small">
                   Choose audio
                   <input type="file" id="land-sfx-input" accept="audio/*" hidden />
                 </label>
-                <button type="button" id="land-sfx-clear" class="btn small ghost">Use default</button>
-                <button type="button" id="land-sfx-preview" class="btn small ghost">Preview</button>
+                <button type="button" id="land-sfx-clear" class="btn small ghost" title="Clear custom file and use built-in chime">Clear file</button>
               </div>
             </div>
             <label class="field">
