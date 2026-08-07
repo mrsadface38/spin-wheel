@@ -3598,6 +3598,23 @@ function hideResults() {
   resultShowsRigged = false;
   // Keep a clickable “rigged” badge if Rig / Reverse is armed (re-open secret menu)
   setResultRiggedVisible(isRigItActive() || isReverseRigActive());
+  // Redraw after overlay dismiss so canvas/DOM media recover if land left them stale
+  try {
+    if (wheel && !wheel.spinning && !wheel._dragging) {
+      requestAnimationFrame(() => {
+        try {
+          // Re-check: a new spin may have started since we scheduled this
+          if (!wheel || wheel.spinning || wheel._dragging) return;
+          if (!wheel.wheelCanvas?.width) wheel.resize();
+          else wheel.draw({ spinFrame: false });
+        } catch {
+          /* ignore */
+        }
+      });
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Whether the open win screen should keep showing “rigged” */
@@ -3608,47 +3625,85 @@ let resultShowsRigged = false;
  * @param {{ rigged?: boolean }} [opts] rigged = fling or secret Rig it
  */
 function showResult(section, opts = {}) {
-  hideResults();
-  lastWinnerId = section.id;
-  const label = section.label;
-  // Resolve inherited group image if the section itself has no image
-  const raw =
-    state.sections.find((s) => s.id === section.id) || section;
-  const disp = resolveSectionForDisplay(state, raw);
-  const imageData = disp?.imageData || null;
-
-  const style = state.look.resultStyle === "banner" ? "banner" : "center";
-  // Look Override forces Look color; else section/group/Look inheritance
-  const winTextColor =
-    state.look?.forceWinnerTextColor === true
-      ? state.look?.winnerTextColor || state.look?.textColor || "#ffffff"
-      : disp?.winnerTextColor ||
-        state.look?.winnerTextColor ||
-        state.look?.textColor ||
-        "#ffffff";
-  if (style === "banner") {
-    resultTextBanner.textContent = label;
-    resultTextBanner.style.color = winTextColor;
-    resultBanner.classList.remove("hidden");
-  } else {
-    updateWinnerLabelDisplay();
-    resultTextCenter.textContent = label;
-    resultTextCenter.style.color = winTextColor;
-    setResultCenterBg(imageData);
-    const inner = resultCenter.querySelector(".result-center-inner");
-    if (inner) {
-      inner.style.animation = "none";
-      void inner.offsetWidth;
-      inner.style.animation = "";
-    }
-    resultCenter.classList.remove("hidden");
+  if (!section || section.id == null) {
+    console.warn("showResult called without a winner section");
+    return;
   }
-  // Always dock Hide / Continue at the bottom (Remove optional)
-  updateWinnerRemoveButton();
-  resultActionsBar.classList.remove("hidden");
-  resultShowsRigged =
-    !!opts.rigged || isRigItActive() || isReverseRigActive();
-  setResultRiggedVisible(resultShowsRigged);
+  try {
+    // Clear previous overlay UI only (avoid recursive redraw thrash)
+    resultBanner.classList.add("hidden");
+    resultCenter.classList.add("hidden");
+    resultActionsBar.classList.add("hidden");
+    clearResultCenterBg();
+
+    lastWinnerId = section.id;
+    const label = section.label || "Winner";
+    // Resolve inherited group image if the section itself has no image
+    const raw =
+      state.sections.find((s) => s.id === section.id) || section;
+    const disp = resolveSectionForDisplay(state, raw);
+    const imageData = disp?.imageData || null;
+
+    const style = state.look.resultStyle === "banner" ? "banner" : "center";
+    // Look Override forces Look color; else section/group/Look inheritance
+    const winTextColor =
+      state.look?.forceWinnerTextColor === true
+        ? state.look?.winnerTextColor || state.look?.textColor || "#ffffff"
+        : disp?.winnerTextColor ||
+          state.look?.winnerTextColor ||
+          state.look?.textColor ||
+          "#ffffff";
+    if (style === "banner") {
+      if (resultTextBanner) {
+        resultTextBanner.textContent = label;
+        resultTextBanner.style.color = winTextColor;
+      }
+      resultBanner.classList.remove("hidden");
+    } else {
+      updateWinnerLabelDisplay();
+      if (resultTextCenter) {
+        resultTextCenter.textContent = label;
+        resultTextCenter.style.color = winTextColor;
+      }
+      try {
+        setResultCenterBg(imageData);
+      } catch (err) {
+        console.warn("Winner background failed:", err);
+      }
+      const inner = resultCenter?.querySelector?.(".result-center-inner");
+      if (inner) {
+        inner.style.animation = "none";
+        void inner.offsetWidth;
+        inner.style.animation = "";
+      }
+      resultCenter?.classList?.remove("hidden");
+    }
+    // Always dock Hide / Continue at the bottom (Remove optional)
+    updateWinnerRemoveButton();
+    resultActionsBar?.classList?.remove("hidden");
+    resultShowsRigged =
+      !!opts.rigged || isRigItActive() || isReverseRigActive();
+    setResultRiggedVisible(resultShowsRigged);
+
+    // Ensure wheel under the overlay is in a good idle state
+    try {
+      if (wheel && !wheel.spinning) {
+        wheel.draw({ spinFrame: false });
+      }
+    } catch {
+      /* ignore */
+    }
+  } catch (err) {
+    console.error("showResult failed:", err);
+    // Still show something so the session doesn't look dead
+    try {
+      if (resultTextCenter) resultTextCenter.textContent = section.label || "Winner";
+      resultCenter?.classList?.remove("hidden");
+      resultActionsBar?.classList?.remove("hidden");
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 // --- Secret tab (unlocked once by triple-clicking “rigged”) ---
@@ -5272,10 +5327,30 @@ async function beginSpinSession() {
 
 function endSpinSession() {
   stopSpinLoop();
-  audio.stopDivert();
-  endRigDivertAudio();
-  stopBgmAfterSpin();
+  try {
+    audio.stopDivert();
+  } catch {
+    /* ignore */
+  }
+  try {
+    endRigDivertAudio();
+  } catch {
+    /* ignore */
+  }
+  try {
+    stopBgmAfterSpin();
+  } catch {
+    /* ignore */
+  }
   spinBusy = false;
+  // If animation died mid-flight, force the wheel idle so the next spin works
+  try {
+    if (wheel?.spinning) {
+      wheel.cancelAnimatedSpin?.();
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 async function doSpin() {
@@ -5286,11 +5361,23 @@ async function doSpin() {
     const win = await wheel.spin(clampSpinDuration(state.spin.duration), rig);
     // null = grab-interrupted mid-spin (user took over with drag)
     if (win) {
-      showResult(win, {
-        rigged:
-          !!rig.forceSectionId ||
-          !!(rig.avoidSectionIds && rig.avoidSectionIds.length),
-      });
+      try {
+        showResult(win, {
+          rigged:
+            !!rig.forceSectionId ||
+            !!(rig.avoidSectionIds && rig.avoidSectionIds.length) ||
+            !!rig.avoidGroupId,
+        });
+      } catch (err) {
+        console.error("showResult after spin:", err);
+      }
+    }
+  } catch (err) {
+    console.error("doSpin failed:", err);
+    try {
+      wheel.cancelAnimatedSpin?.();
+    } catch {
+      /* ignore */
     }
   } finally {
     endSpinSession();
@@ -5309,7 +5396,20 @@ async function doFling(velocityRadPerSec) {
     const rig = getSpinRigOptions();
     const win = await wheel.fling(velocityRadPerSec, rig);
     // Fling is always "rigged" label; also when secret Rig it is on
-    if (win) showResult(win, { rigged: true });
+    if (win) {
+      try {
+        showResult(win, { rigged: true });
+      } catch (err) {
+        console.error("showResult after fling:", err);
+      }
+    }
+  } catch (err) {
+    console.error("doFling failed:", err);
+    try {
+      wheel.cancelAnimatedSpin?.();
+    } catch {
+      /* ignore */
+    }
   } finally {
     endSpinSession();
   }
@@ -5494,6 +5594,15 @@ function forceUiInteractive() {
       wheel._dragging = false;
       wheel._dragPointerId = null;
       if (wheel._dragEl) wheel._dragEl.style.cursor = "grab";
+      // Unstick a hung spin without wiping rotation
+      if (wheel.spinning || wheel._spinResolve) {
+        wheel.cancelAnimatedSpin?.();
+      }
+      try {
+        wheel.draw?.({ spinFrame: false });
+      } catch {
+        /* ignore */
+      }
     }
   } catch {
     /* ignore */

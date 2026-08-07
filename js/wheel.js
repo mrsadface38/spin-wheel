@@ -71,6 +71,8 @@ export class Wheel {
     this.onFrame = options.onFrame || (() => {});
 
     this._raf = 0;
+    /** @type {ReturnType<typeof setTimeout>|0} */
+    this._spinWatchdog = 0;
     this._lastSeg = -1;
     this._dpr = 1;
     this._cssW = 0;
@@ -1138,22 +1140,79 @@ export class Wheel {
     return target;
   }
 
+  /** Keep rotation in [0, 2π) so canvas / CSS transforms stay precise. */
+  _normalizeRotation() {
+    const TWO_PI = Math.PI * 2;
+    if (!Number.isFinite(this.rotation)) {
+      this.rotation = 0;
+      return;
+    }
+    this.rotation = ((this.rotation % TWO_PI) + TWO_PI) % TWO_PI;
+  }
+
+  /**
+   * Shared end-of-spin cleanup. Always resolves the in-flight promise even if
+   * draw / onLand throw — otherwise spinBusy stays true and the wheel dies.
+   * @param {object|null} win
+   * @param {{ fireLand?: boolean }} [opts]
+   */
+  _endAnimatedSpin(win, opts = {}) {
+    const fireLand = opts.fireLand !== false;
+    if (this._raf) {
+      cancelAnimationFrame(this._raf);
+      this._raf = 0;
+    }
+    if (this._spinWatchdog) {
+      clearTimeout(this._spinWatchdog);
+      this._spinWatchdog = 0;
+    }
+    this.spinning = false;
+    this._spinSlices = null;
+    this._slicesCache = null;
+    if (this.sliceRotatorEl) {
+      this.sliceRotatorEl.classList.remove("is-spinning");
+    }
+    this._normalizeRotation();
+    try {
+      if (!this.wheelCanvas.width || !this.wheelCanvas.height) {
+        this._applySizeFromParent();
+      }
+      this.draw({ spinFrame: false });
+    } catch (err) {
+      console.warn("draw after spin failed:", err);
+      try {
+        this._applySizeFromParent();
+        this.draw({ spinFrame: false });
+      } catch {
+        /* last resort — still resolve */
+      }
+    }
+    if (fireLand) {
+      try {
+        this.onLand(win);
+      } catch (err) {
+        console.warn("onLand failed:", err);
+      }
+    }
+    const resolve = this._spinResolve;
+    this._spinResolve = null;
+    if (resolve) {
+      try {
+        resolve(win);
+      } catch (err) {
+        console.warn("spin resolve failed:", err);
+      }
+    }
+  }
+
   /**
    * Stop a timed spin or fling immediately (e.g. user grabbed the wheel).
    * Does not fire onLand. Resolves the in-flight promise with null.
    */
   cancelAnimatedSpin() {
-    if (!this.spinning && !this._raf) return false;
-    cancelAnimationFrame(this._raf);
-    this._raf = 0;
-    this.spinning = false;
-    if (this.sliceRotatorEl) {
-      this.sliceRotatorEl.classList.remove("is-spinning");
-    }
+    if (!this.spinning && !this._raf && !this._spinResolve) return false;
     // Keep current rotation; leave geometry for possible drag takeover
-    const resolve = this._spinResolve;
-    this._spinResolve = null;
-    if (resolve) resolve(null);
+    this._endAnimatedSpin(null, { fireLand: false });
     return true;
   }
 
@@ -1268,6 +1327,10 @@ export class Wheel {
     );
     const needsLateSteer = canReverse || canForce;
     const minTickGapMs = 28;
+    // Cap total animation so a dead RAF path can't freeze the wheel forever
+    const maxSpinMs =
+      duration +
+      (needsLateSteer ? reverseSteerMs + forceSteerMs + 2000 : 2000);
 
     return new Promise((resolve) => {
       this._spinResolve = resolve;
@@ -1280,21 +1343,21 @@ export class Wheel {
       let activePhase = null;
       /** After current phase, optionally run the other */
       let pendingSecondPhase = null;
+      let finished = false;
 
       const finish = (win) => {
-        this.spinning = false;
-        this._spinSlices = null;
-        this._slicesCache = null;
-        this._raf = 0;
-        if (this.sliceRotatorEl) {
-          this.sliceRotatorEl.classList.remove("is-spinning");
-        }
-        this.draw({ spinFrame: false });
-        this.onLand(win);
-        const res = this._spinResolve;
-        this._spinResolve = null;
-        if (res) res(win);
+        if (finished) return;
+        finished = true;
+        this._endAnimatedSpin(win, { fireLand: true });
       };
+
+      if (this._spinWatchdog) clearTimeout(this._spinWatchdog);
+      this._spinWatchdog = setTimeout(() => {
+        if (!finished && this.spinning) {
+          console.warn("Spin watchdog: forcing land");
+          finish(this.sectionAtPointer());
+        }
+      }, maxSpinMs);
 
       /**
        * @param {number} now
@@ -1493,9 +1556,10 @@ export class Wheel {
           else if (needsLateSteer) {
             // Full spin ended — run the same ordered late phases
             beginFirstLatePhase(now);
-            if (this.spinning && (steering || pendingSecondPhase)) {
+            if (!this.spinning || finished) return;
+            if (steering || pendingSecondPhase) {
               this._raf = requestAnimationFrame(frame);
-            } else if (this.spinning) {
+            } else {
               this.rotation = target;
               finish(this.sectionAtPointer());
             }
@@ -1504,7 +1568,18 @@ export class Wheel {
             finish(this.sectionAtPointer());
           }
         } else {
-          // divertAt reached; next frame starts / continues late steer
+          // Past divertAt, not in a steer phase — must not spin forever
+          if (!steering && !activePhase) {
+            beginFirstLatePhase(now);
+            if (!this.spinning || finished) return;
+            if (steering || pendingSecondPhase) {
+              this._raf = requestAnimationFrame(frame);
+              return;
+            }
+            this.rotation = target;
+            finish(this.sectionAtPointer());
+            return;
+          }
           this._raf = requestAnimationFrame(frame);
         }
       };
@@ -1761,6 +1836,8 @@ export class Wheel {
       400,
       Math.min(12000, Number(opts.reverseSteerMs) || forceSteerMs)
     );
+    const maxFlingMs =
+      30000 + (canReverse || canForce ? reverseSteerMs + forceSteerMs : 0);
 
     return new Promise((resolve) => {
       this._spinResolve = resolve;
@@ -1772,22 +1849,25 @@ export class Wheel {
       let activeSteerMs = forceSteerMs;
       let activePhase = null;
       let pendingSecondPhase = null;
+      let finished = false;
+      let forceKickCount = 0;
+      const MAX_FORCE_KICKS = 8;
 
       const finish = (win) => {
-        this.spinning = false;
-        this._spinSlices = null;
-        this._slicesCache = null;
-        this._raf = 0;
-        if (this.sliceRotatorEl) {
-          this.sliceRotatorEl.classList.remove("is-spinning");
-        }
-        this.draw({ spinFrame: false });
-        this.onLand(win);
-        const r = this._spinResolve;
-        this._spinResolve = null;
-        if (r) r(win);
+        if (finished) return;
+        finished = true;
+        this._endAnimatedSpin(win, { fireLand: true });
       };
 
+      if (this._spinWatchdog) clearTimeout(this._spinWatchdog);
+      this._spinWatchdog = setTimeout(() => {
+        if (!finished && this.spinning) {
+          console.warn("Fling watchdog: forcing land");
+          finish(this.sectionAtPointer());
+        }
+      }, maxFlingMs);
+
+      /** @returns {boolean} true if a steer phase started */
       const startReverseSteer = (now, excludeForce = false) => {
         const escapeId =
           this._pickEscapeSectionId(
@@ -1797,40 +1877,41 @@ export class Wheel {
             excludeForce && forceId ? forceId : null
           ) ||
           slices[this._pickNaturalWinnerIndex(slices, avoidIds)].section.id;
+        const from = this.rotation;
+        const to = this.targetRotationForSection(escapeId, from, "shortest");
+        if (Math.abs(to - from) < 1e-4) return false;
         steering = true;
         activePhase = "reverse";
         steerStart = now;
-        steerFrom = this.rotation;
+        steerFrom = from;
         activeSteerMs = reverseSteerMs;
-        steerTarget = this.targetRotationForSection(
-          escapeId,
-          steerFrom,
-          "shortest"
-        );
+        steerTarget = to;
         try {
           opts.onReverseSteerStart?.();
         } catch {
           /* ignore */
         }
+        return true;
       };
 
+      /** @returns {boolean} true if a steer phase started */
       const startForceSteer = (now) => {
-        if (!forceId) return;
+        if (!forceId) return false;
+        const from = this.rotation;
+        const to = this.targetRotationForSection(forceId, from, "shortest");
+        if (Math.abs(to - from) < 1e-4) return false;
         steering = true;
         activePhase = "force";
         steerStart = now;
-        steerFrom = this.rotation;
+        steerFrom = from;
         activeSteerMs = forceSteerMs;
-        steerTarget = this.targetRotationForSection(
-          forceId,
-          steerFrom,
-          "shortest"
-        );
+        steerTarget = to;
         try {
           opts.onSteerStart?.();
         } catch {
           /* ignore */
         }
+        return true;
       };
 
       const onFlingPhaseComplete = (now) => {
@@ -1839,17 +1920,21 @@ export class Wheel {
         activePhase = null;
         if (pendingSecondPhase === "force" && canForce) {
           pendingSecondPhase = null;
-          startForceSteer(now);
-          this._raf = requestAnimationFrame(frame);
+          if (startForceSteer(now)) {
+            this._raf = requestAnimationFrame(frame);
+            return;
+          }
+          finish(this.sectionAtPointer());
           return;
         }
         if (pendingSecondPhase === "reverse" && canReverse) {
           pendingSecondPhase = null;
           const underId = this.sectionAtPointer()?.id || null;
           if (underId && avoidIds.has(underId)) {
-            startReverseSteer(now, false);
-            this._raf = requestAnimationFrame(frame);
-            return;
+            if (startReverseSteer(now, false)) {
+              this._raf = requestAnimationFrame(frame);
+              return;
+            }
           }
         }
         pendingSecondPhase = null;
@@ -1860,41 +1945,66 @@ export class Wheel {
         if (comboOrder === "rig-first") {
           // Force divert first, then reverse if we stop on an avoided slice
           if (canForce) {
-            if (underId === forceId && slices.length > 1) {
+            if (
+              underId === forceId &&
+              slices.length > 1 &&
+              forceKickCount < MAX_FORCE_KICKS
+            ) {
+              forceKickCount += 1;
               const kick = Math.max(1.8, vDivert * 3);
               v = (Math.sign(v) || 1) * kick;
               return false;
             }
             pendingSecondPhase = canReverse ? "reverse" : null;
-            startForceSteer(now);
-            return true;
+            if (startForceSteer(now)) return true;
+            pendingSecondPhase = null;
+            if (canReverse && underId && avoidIds.has(underId)) {
+              return startReverseSteer(now, false);
+            }
+            return false;
           }
           if (canReverse && underId && avoidIds.has(underId)) {
-            startReverseSteer(now, false);
-            return true;
+            return startReverseSteer(now, false);
           }
           return false;
         }
         // reverse-first: slide off avoid first, then divert to rig
         if (canReverse && underId && avoidIds.has(underId)) {
           pendingSecondPhase = canForce ? "force" : null;
-          startReverseSteer(now, canForce);
-          return true;
+          if (startReverseSteer(now, canForce)) return true;
+          pendingSecondPhase = null;
+          if (canForce) {
+            if (
+              underId === forceId &&
+              slices.length > 1 &&
+              forceKickCount < MAX_FORCE_KICKS
+            ) {
+              forceKickCount += 1;
+              v = (Math.sign(v) || 1) * Math.max(1.8, vDivert * 3);
+              return false;
+            }
+            return startForceSteer(now);
+          }
+          return false;
         }
         if (canForce) {
-          if (underId === forceId && slices.length > 1) {
+          if (
+            underId === forceId &&
+            slices.length > 1 &&
+            forceKickCount < MAX_FORCE_KICKS
+          ) {
+            forceKickCount += 1;
             const kick = Math.max(1.8, vDivert * 3);
             v = (Math.sign(v) || 1) * kick;
             return false;
           }
-          startForceSteer(now);
-          return true;
+          return startForceSteer(now);
         }
         return false;
       };
 
       const frame = (now) => {
-        if (!this.spinning) return;
+        if (!this.spinning || finished) return;
 
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
@@ -1952,8 +2062,10 @@ export class Wheel {
           } else if (
             canForce &&
             slices.length > 1 &&
-            underId === forceId
+            underId === forceId &&
+            forceKickCount < MAX_FORCE_KICKS
           ) {
+            forceKickCount += 1;
             v = (Math.sign(v) || 1) * 1.8;
             this._raf = requestAnimationFrame(frame);
           } else {
@@ -1967,6 +2079,12 @@ export class Wheel {
 
   destroy() {
     cancelAnimationFrame(this._raf);
+    if (this._spinWatchdog) {
+      clearTimeout(this._spinWatchdog);
+      this._spinWatchdog = 0;
+    }
+    this._spinResolve = null;
+    this.spinning = false;
     this._resizeObserver.disconnect();
     if (this._dragBound && this._dragEl) {
       this._dragEl.removeEventListener("pointerdown", this._onDragPointerDown);
