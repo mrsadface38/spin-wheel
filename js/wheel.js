@@ -765,9 +765,8 @@ export class Wheel {
   }
 
   /**
-   * Labels hug the outer rim (widest arc) and scale as large as the slice
-   * allows. Text runs along the arc, hangs inward from the rim — full string,
-   * never ellipsized.
+   * Labels sit on the outer rim (along the arc), sized as large as the slice
+   * allows. Full string always drawn — never ellipsized.
    * @param {boolean} spinFrame lighter text (no shadow) while spinning
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
@@ -779,76 +778,81 @@ export class Wheel {
     const solid = asSolidDisc || sl.span >= Math.PI * 2 - 1e-4;
     const dpr = this._dpr || 1;
     const weight = 700;
-    // Fixed measure size; we scale freely (can be >> 1 for short names)
-    const baseFont = 64;
+    // Fixed size for measuring; we scale freely after (can be > 1)
+    const baseFont = 48 * dpr;
 
-    // Single full-disc section: large label on the outer rim
+    ctx.save();
+    ctx.fillStyle = this.look.textColor || "#fff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (!spinFrame) {
+      ctx.shadowColor = "rgba(0,0,0,0.85)";
+      ctx.shadowBlur = 4 * dpr;
+    }
+
+    // ——— Full-wheel single section ———
     if (solid) {
-      ctx.save();
-      const rimPad = 8 * dpr;
-      const rText = radius - rimPad;
-      const arcLen = radius * 1.8;
-      const maxH = radius * 0.28;
+      const maxH = radius * 0.22;
+      const arcLen = radius * 1.7;
       ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
       const tw = Math.max(1, ctx.measureText(label).width);
-      const s = Math.min(arcLen / tw, maxH / baseFont);
-      ctx.translate(0, -(rText - (baseFont * s) / 2));
+      let s = Math.min(arcLen / tw, maxH / baseFont);
+      if (!Number.isFinite(s) || s <= 0) s = 0.1;
+      const textH = baseFont * s;
+      // Center of text just inside the rim
+      const rText = radius - 8 * dpr - textH / 2;
+      ctx.translate(0, -rText);
       ctx.scale(s, s);
-      ctx.fillStyle = this.look.textColor || "#fff";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      if (!spinFrame) {
-        ctx.shadowColor = "rgba(0,0,0,0.8)";
-        ctx.shadowBlur = 4 * dpr;
-      }
+      ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
       ctx.fillText(label, 0, 0);
       ctx.restore();
       return;
     }
 
-    // Sit just inside the outer border / pegs
-    const rimPad = Math.max(5 * dpr, radius * 0.018);
-    const rRim = radius - rimPad;
-    // Use nearly the full outer arc so type can get big
-    const arcLen = Math.max(4 * dpr, rRim * sl.span * 0.94);
-    // Grow inward from the rim (tall type when the slice is wide enough)
-    const maxInward = radius * 0.32;
-    // Absolute ceiling so a 2-slice wheel doesn't eat the whole disc
-    const maxFontPx = radius * 0.2;
-
-    ctx.save();
-    ctx.rotate(mid);
-    // Anchor on the rim
-    ctx.translate(rRim, 0);
-
-    // Text along the arc. Flip on left half so it isn't upside-down.
-    let a = mid % (Math.PI * 2);
-    if (a < 0) a += Math.PI * 2;
-    const flip = a > Math.PI / 2 && a < (Math.PI * 3) / 2;
-    ctx.rotate(flip ? Math.PI / 2 : -Math.PI / 2);
-    // After rot: flip=false → +y = radial IN; flip=true → +y = radial OUT
-    // Stick the outer edge of the glyphs to the rim; grow inward.
-    ctx.textAlign = "center";
-    ctx.textBaseline = flip ? "bottom" : "top";
+    // ——— Multi-slice: text along the outer arc ———
+    // How tall glyphs may be (inward from rim)
+    const maxH = radius * 0.26;
+    // Hard cap on final pixel height
+    const maxFontPx = radius * 0.18;
 
     ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
     const tw = Math.max(1, ctx.measureText(label).width);
-    const th = baseFont;
-    // Scale UP when there's room (short name / wide slice) — no s≤1 cap
-    let s = Math.min(arcLen / tw, maxInward / th, maxFontPx / baseFont);
+    // Measure arc at the radius where the text center will sit (~rim)
+    // First pass estimate, then refine after we know text height
+    let s = Math.min(maxH / baseFont, maxFontPx / baseFont);
+    // provisional arc at ~0.93 r
+    let rEst = radius * 0.93;
+    let arcLen = Math.max(4 * dpr, rEst * sl.span * 0.92);
+    s = Math.min(s, arcLen / tw);
     if (!Number.isFinite(s) || s <= 0) s = 0.05;
-    // Never drop letters: if still too wide, squash X only
+
+    const textH = baseFont * s;
+    // Outer edge of glyphs stays just inside border; center sits textH/2 inward
+    const rimPad = Math.max(5 * dpr, 6 * dpr);
+    const rText = Math.max(radius * 0.55, radius - rimPad - textH / 2);
+    // Recompute arc at the real radius so scale uses full outer width
+    arcLen = Math.max(4 * dpr, rText * sl.span * 0.92);
+    s = Math.min(maxH / baseFont, maxFontPx / baseFont, arcLen / tw);
+    if (!Number.isFinite(s) || s <= 0) s = 0.05;
+    // Keep full name: allow X squash only if still too wide
     let sx = s;
     let sy = s;
     if (tw * sx > arcLen) sx = arcLen / tw;
-    if (th * sy > maxInward) sy = maxInward / th;
+
+    // +x = radial out at slice mid
+    ctx.rotate(mid);
+    ctx.translate(rText, 0);
+
+    // Tangential: rotate so +x runs along the arc.
+    // Flip 180° on the left half of the wheel so text isn't upside-down.
+    let a = mid % (Math.PI * 2);
+    if (a < 0) a += Math.PI * 2;
+    const onLeft = a > Math.PI / 2 && a < (Math.PI * 3) / 2;
+    // -90° → text reads CCW; +90° on left → still tangential but upright
+    ctx.rotate(onLeft ? Math.PI / 2 : -Math.PI / 2);
 
     ctx.scale(sx, sy);
-    ctx.fillStyle = this.look.textColor || "#fff";
-    if (!spinFrame) {
-      ctx.shadowColor = "rgba(0,0,0,0.85)";
-      ctx.shadowBlur = Math.max(2, 3.5 * dpr / Math.max(sy, 0.12));
-    }
+    ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
     ctx.fillText(label, 0, 0);
     ctx.restore();
   }
