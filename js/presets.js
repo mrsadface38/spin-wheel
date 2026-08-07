@@ -10,9 +10,23 @@ import {
   uid,
 } from "./state.js";
 
-/** Classic polyhedral d20 greens / golds (alternating for adjacent contrast). */
-const D20_ODD = { color: "#1a6b3f", text: "#f5f0d8" };
-const D20_EVEN = { color: "#c9a84c", text: "#1a1408" };
+/** Classic polyhedral d20 greens / golds (alternating by position for adjacent contrast). */
+const D20_A = { color: "#1a6b3f", text: "#f5f0d8" };
+const D20_B = { color: "#c9a84c", text: "#1a1408" };
+
+/**
+ * Around-the-wheel order: low/high interleaved so neighbors aren’t sequential.
+ * 1, 20, 2, 19, 3, 18, … 10, 11 — looks “more fair” than 1–20 in a row.
+ * @returns {number[]}
+ */
+export function d20FaceOrder() {
+  const order = [];
+  for (let low = 1; low <= 10; low++) {
+    order.push(low);
+    order.push(21 - low); // 20, 19, … 11
+  }
+  return order;
+}
 
 /**
  * Twenty equal faces numbered 1–20.
@@ -23,8 +37,10 @@ export function d20State() {
   const g = normalizeGroup({ id: uid("grp"), name: "d20", active: true });
 
   const sections = [];
-  for (let n = 1; n <= 20; n++) {
-    const pair = n % 2 === 0 ? D20_EVEN : D20_ODD;
+  const faces = d20FaceOrder();
+  for (let i = 0; i < faces.length; i++) {
+    const n = faces[i];
+    const pair = i % 2 === 0 ? D20_A : D20_B;
     sections.push({
       id: uid("sec"),
       label: String(n),
@@ -83,7 +99,7 @@ export const WHEEL_PRESETS = [
   {
     id: "d20",
     name: "d20",
-    description: "Numbers 1–20, equal chance",
+    description: "1–20 equal chance (mixed high/low order)",
     defaultName: "d20",
     build: () => d20State(),
   },
