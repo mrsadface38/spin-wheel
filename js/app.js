@@ -805,12 +805,6 @@ function updateSectionsCount() {
     el.title = text;
     el.setAttribute("data-count", String(n));
   }
-  // Also stamp the Bulk add button so the number is impossible to miss
-  const bulk = document.getElementById("btn-add-many") || $("#btn-add-many");
-  if (bulk) {
-    bulk.textContent = `+ Bulk add (${n})`;
-    bulk.title = `Bulk add names — you currently have ${text}`;
-  }
 }
 
 function renderSections() {
