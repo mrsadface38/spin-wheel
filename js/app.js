@@ -4368,7 +4368,7 @@ function playWinEffect() {
 }
 
 /**
- * Lightweight confetti burst over the stage (no dependency).
+ * Confetti falls from the top of the screen (flutter + drift), no dependency.
  */
 function fireConfetti() {
   try {
@@ -4402,48 +4402,69 @@ function fireConfetti() {
       "#b388ff",
       "#ff9f43",
     ];
-    // Big burst: more pieces, longer hang, wider spawn
-    const n = 260;
+    // Rain from the top: many pieces, staggered start so it keeps falling
+    const n = 280;
     const parts = [];
     for (let i = 0; i < n; i++) {
-      // Stagger waves so it keeps raining for longer
       const wave = i / n;
+      const fallSpeed = 1.6 + Math.random() * 2.8;
       parts.push({
-        x: w * 0.5 + (Math.random() - 0.5) * w * 0.7,
-        y: h * (0.18 + Math.random() * 0.22) - wave * 30,
-        vx: (Math.random() - 0.5) * 14,
-        vy: -Math.random() * 11 - 3,
-        g: 0.11 + Math.random() * 0.08,
-        size: 4 + Math.random() * 8,
+        // Spawn across the full top edge (slightly above viewport)
+        x: Math.random() * w,
+        y: -12 - Math.random() * h * 0.35 - wave * 80,
+        // Gentle horizontal drift + flutter
+        vx: (Math.random() - 0.5) * 1.8,
+        vy: fallSpeed,
+        // Side-to-side sway
+        swayAmp: 0.6 + Math.random() * 1.4,
+        swayFreq: 0.04 + Math.random() * 0.08,
+        swayPhase: Math.random() * Math.PI * 2,
+        // Paper-like tumble
         rot: Math.random() * Math.PI * 2,
-        vr: (Math.random() - 0.5) * 0.35,
+        vr: (Math.random() - 0.5) * 0.18,
+        wobble: 0.02 + Math.random() * 0.05,
+        size: 5 + Math.random() * 9,
+        // Thin rectangle aspect (confetti strip)
+        aspect: 0.35 + Math.random() * 0.45,
         color: colors[i % colors.length],
-        // Delay + longer life so pieces fade out over the full duration
-        delay: wave * 0.35,
+        // Staggered entry over the first ~1.5s of the effect
+        delay: wave * 0.28,
         life: 1,
       });
     }
     const start = performance.now();
-    const dur = 5200;
+    const dur = 5600;
     const frame = (now) => {
-      const t = (now - start) / dur;
+      const elapsed = now - start;
+      const t = elapsed / dur;
       ctx.clearRect(0, 0, w, h);
       for (const p of parts) {
-        if (t < p.delay) continue;
-        const localT = Math.min(1, (t - p.delay) / Math.max(0.001, 1 - p.delay));
-        p.vy += p.g;
-        p.x += p.vx;
+        const age = elapsed / 1000 - p.delay * (dur / 1000);
+        if (age < 0) continue;
+        // Gravity pull downward (terminal-ish fall)
+        p.vy = Math.min(p.vy + 0.035, 5.5);
+        // Flutter: sine sway on X, slight coupling to rotation
+        p.x += p.vx + Math.sin(age * 60 * p.swayFreq + p.swayPhase) * p.swayAmp;
         p.y += p.vy;
-        p.rot += p.vr;
-        // Hold full opacity longer, then ease out
-        p.life = localT < 0.55 ? 1 : Math.max(0, 1 - (localT - 0.55) / 0.45);
-        if (p.life <= 0) continue;
+        p.rot += p.vr + Math.sin(age * 40 + p.swayPhase) * p.wobble;
+        // Soft drag on horizontal so it doesn't fly off
+        p.vx *= 0.995;
+
+        // Fade only near the end or when well below the screen
+        const pastBottom = p.y > h + 30;
+        const fadeT = t < 0.72 ? 1 : Math.max(0, 1 - (t - 0.72) / 0.28);
+        p.life = pastBottom ? Math.min(fadeT, 0.35) : fadeT;
+        if (p.life <= 0.02) continue;
+
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.rot);
         ctx.globalAlpha = p.life;
         ctx.fillStyle = p.color;
-        ctx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.55);
+        // Flat strip + slight thickness variation reads as falling paper
+        const sw = p.size;
+        const sh = p.size * p.aspect;
+        ctx.fillRect(-sw / 2, -sh / 2, sw, sh);
         ctx.restore();
       }
       if (t < 1) requestAnimationFrame(frame);
