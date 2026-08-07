@@ -331,6 +331,33 @@ async function refreshWheel() {
   wheel.draw();
 }
 
+/** Bundled default BGM when no custom music is uploaded. */
+const DEFAULT_BGM = {
+  url: "assets/music/bgm-default.mp3",
+  name: "ANIMAL WELL — 01 ANIMAL WELL",
+};
+
+function bgmDisplayName() {
+  if (state.sound?.bgmData && state.sound.bgmName) return state.sound.bgmName;
+  if (state.sound?.bgmData) return "Custom music";
+  return `${DEFAULT_BGM.name} (default)`;
+}
+
+/** Load custom BGM data URL or the bundled Animal Well track. */
+async function ensureBgmBuffer() {
+  try {
+    if (state.sound?.bgmData) {
+      await audio.loadDataUrl("bgm", state.sound.bgmData);
+      return true;
+    }
+    await audio.loadUrl("bgm", DEFAULT_BGM.url);
+    return true;
+  } catch (err) {
+    console.warn("BGM load failed:", err);
+    return false;
+  }
+}
+
 async function preloadAudio() {
   if (state.sound.spinSfxData) {
     await audio.loadDataUrl("spin", state.sound.spinSfxData);
@@ -338,9 +365,7 @@ async function preloadAudio() {
   if (state.sound.landSfxData) {
     await audio.loadDataUrl("land", state.sound.landSfxData);
   }
-  if (state.sound.bgmData) {
-    await audio.loadDataUrl("bgm", state.sound.bgmData);
-  }
+  await ensureBgmBuffer();
   for (const s of state.sections) {
     if (s.landSfxData) {
       await audio.loadDataUrl(`land_${s.id}`, s.landSfxData);
@@ -358,13 +383,16 @@ async function preloadAudio() {
  * Does not start spin-only BGM — that starts with a spin.
  */
 function syncBgm() {
-  if (
-    !state.sound.enabled ||
-    state.sound.bgmMode === "off" ||
-    !state.sound.bgmData ||
-    !audio.buffers.has("bgm")
-  ) {
+  if (!state.sound.enabled || state.sound.bgmMode === "off") {
     audio.stopBgm();
+    return;
+  }
+  if (!audio.buffers.has("bgm")) {
+    ensureBgmBuffer()
+      .then((ok) => {
+        if (ok) syncBgm();
+      })
+      .catch(() => {});
     return;
   }
   if (state.sound.bgmMode === "always") {
@@ -384,9 +412,16 @@ function syncBgm() {
 }
 
 function startBgmForSpin() {
-  if (!state.sound.enabled || !state.sound.bgmData) return;
+  if (!state.sound.enabled) return;
   if (state.sound.bgmMode !== "spin" && state.sound.bgmMode !== "always") return;
-  if (!audio.buffers.has("bgm")) return;
+  if (!audio.buffers.has("bgm")) {
+    ensureBgmBuffer()
+      .then((ok) => {
+        if (ok) startBgmForSpin();
+      })
+      .catch(() => {});
+    return;
+  }
   if (!audio.isBgmPlaying) {
     audio.startBgm("bgm", state.sound.bgmVolume ?? 0.4);
   } else {
@@ -3036,7 +3071,7 @@ function muteMusicForDivertIfNeeded() {
 function restoreMusicAfterDivertIfNeeded() {
   if (!bgmMutedForDivert) return;
   bgmMutedForDivert = false;
-  if (!state.sound?.enabled || !state.sound.bgmData) return;
+  if (!state.sound?.enabled) return;
   const mode = state.sound.bgmMode;
   if (mode === "always") {
     syncBgm();
@@ -3344,7 +3379,7 @@ function bindSound() {
   $("#bgm-volume-label").textContent = volumePct(bgmVol);
   $("#spin-sfx-name").textContent = state.sound.spinSfxName || "Default (built-in tick)";
   $("#land-sfx-name").textContent = state.sound.landSfxName || "Default (built-in chime)";
-  $("#bgm-name").textContent = state.sound.bgmName || "No music loaded";
+  $("#bgm-name").textContent = bgmDisplayName();
   $("#bgm-mode").value = state.sound.bgmMode || "spin";
   syncBgm();
 }
@@ -3480,27 +3515,34 @@ $("#bgm-input").addEventListener("change", async (e) => {
   checkpoint();
   state.sound.bgmData = await fileToDataUrl(file);
   state.sound.bgmName = file.name;
-  $("#bgm-name").textContent = file.name;
-  await audio.loadDataUrl("bgm", state.sound.bgmData);
+  $("#bgm-name").textContent = bgmDisplayName();
+  audio.buffers.delete("bgm");
+  await ensureBgmBuffer();
   persist();
   syncBgm();
 });
 
-$("#bgm-clear").addEventListener("click", () => {
+$("#bgm-clear").addEventListener("click", async () => {
   checkpoint();
+  // Restore bundled default (not silent)
   state.sound.bgmData = null;
   state.sound.bgmName = null;
-  $("#bgm-name").textContent = "No music loaded";
+  $("#bgm-name").textContent = bgmDisplayName();
   audio.stopBgm();
   audio.buffers.delete("bgm");
+  await ensureBgmBuffer();
   persist();
+  syncBgm();
 });
 
-$("#bgm-preview").addEventListener("click", () => {
+$("#bgm-preview").addEventListener("click", async () => {
   audio.ensure();
-  if (!state.sound.bgmData || !audio.buffers.has("bgm")) {
-    alert("Load a music file first.");
-    return;
+  if (!audio.buffers.has("bgm")) {
+    const ok = await ensureBgmBuffer();
+    if (!ok) {
+      alert("Could not load music.");
+      return;
+    }
   }
   audio.togglePreview("bgm", () => {
     audio.playOneShot("bgm", state.sound.bgmVolume ?? 0.4, "land", true);
