@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#25</span>
+        <span class="app-version" id="app-version" title="Update number">#26</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -193,8 +193,9 @@
               <input type="color" id="border-color" value="#f0d78c" />
             </label>
             <label class="field">
-              <span>Text color</span>
+              <span>Default text color</span>
               <input type="color" id="text-color" value="#ffffff" />
+              <small>Used when a section has no own/group text color</small>
             </label>
             <label class="toggle-row">
               <input type="checkbox" id="chk-show-labels" checked />
@@ -452,8 +453,14 @@
           </label>
 
           <label class="field">
-            <span>Color</span>
+            <span>Slice color</span>
             <input type="color" id="section-color" value="#4a6cf7" />
+          </label>
+
+          <label class="field">
+            <span>Text color</span>
+            <input type="color" id="section-text-color" value="#ffffff" />
+            <small>Label color on the wheel for this section</small>
           </label>
 
           <div class="field">
@@ -619,15 +626,21 @@
             <div class="profile-parts-block">
               <span class="profile-parts-label">Override on wheel</span>
               <div class="profile-parts-row">
-                <label class="chip-check"><input type="checkbox" id="group-override-color" /> Color</label>
+                <label class="chip-check"><input type="checkbox" id="group-override-color" /> Slice color</label>
+                <label class="chip-check"><input type="checkbox" id="group-override-text-color" /> Text color</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-image" /> Image</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-sfx" /> Land SFX</label>
               </div>
             </div>
 
             <label class="field">
-              <span>Profile color</span>
+              <span>Profile slice color</span>
               <input type="color" id="group-color" value="#4a6cf7" />
+            </label>
+            <label class="field">
+              <span>Profile text color</span>
+              <input type="color" id="group-text-color" value="#ffffff" />
+              <small>Default label color for sections in this group</small>
             </label>
 
             <div class="form-block compact">
@@ -714,7 +727,8 @@
               <div class="profile-parts-block">
                 <span class="profile-parts-label">Apply to sections — only copy checked parts</span>
                 <div class="profile-parts-row">
-                  <label class="chip-check"><input type="checkbox" id="group-apply-color" checked /> Color</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-color" checked /> Slice color</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-text-color" checked /> Text color</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-image" checked /> Image</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-sfx" /> Land SFX</label>
                 </div>

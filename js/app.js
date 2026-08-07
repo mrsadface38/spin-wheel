@@ -716,7 +716,8 @@ function renderGroups() {
       ).length;
       const isTop = index === 0;
       const ovParts = [
-        g.overrideColor ? "color" : "",
+        g.overrideColor ? "slice" : "",
+        g.overrideTextColor ? "text" : "",
         g.overrideImage ? "img" : "",
         g.overrideSfx ? "sfx" : "",
       ].filter(Boolean);
@@ -1258,6 +1259,7 @@ function setGroupProfileSliderLabels() {
 function readGroupProfileFromForm() {
   return normalizeProfileFields({
     color: $("#group-color")?.value || "#4a6cf7",
+    textColor: $("#group-text-color")?.value || "#ffffff",
     imageData: pendingGroupImage,
     imageMode: $("#group-image-mode")?.value === "tile" ? "tile" : "fill",
     imageFillScale: Number($("#group-fill-scale")?.value) || 1,
@@ -1274,6 +1276,7 @@ function readGroupProfileFromForm() {
 function readOverridePartsFromForm() {
   return {
     overrideColor: $("#group-override-color")?.checked === true,
+    overrideTextColor: $("#group-override-text-color")?.checked === true,
     overrideImage: $("#group-override-image")?.checked === true,
     overrideSfx: $("#group-override-sfx")?.checked === true,
   };
@@ -1282,6 +1285,7 @@ function readOverridePartsFromForm() {
 function readApplyPartsFromForm() {
   return {
     color: $("#group-apply-color")?.checked === true,
+    textColor: $("#group-apply-text-color")?.checked === true,
     image: $("#group-apply-image")?.checked === true,
     sfx: $("#group-apply-sfx")?.checked === true,
   };
@@ -1292,17 +1296,24 @@ function fillGroupProfileForm(group) {
   if ($("#group-override-color")) {
     $("#group-override-color").checked = g.overrideColor === true;
   }
+  if ($("#group-override-text-color")) {
+    $("#group-override-text-color").checked = g.overrideTextColor === true;
+  }
   if ($("#group-override-image")) {
     $("#group-override-image").checked = g.overrideImage === true;
   }
   if ($("#group-override-sfx")) {
     $("#group-override-sfx").checked = g.overrideSfx === true;
   }
-  // Apply chips: default image+color on, SFX off (so you don't wipe audio by accident)
+  // Apply chips: default image+color+text on, SFX off (so you don't wipe audio by accident)
   if ($("#group-apply-color")) $("#group-apply-color").checked = true;
+  if ($("#group-apply-text-color")) $("#group-apply-text-color").checked = true;
   if ($("#group-apply-image")) $("#group-apply-image").checked = true;
   if ($("#group-apply-sfx")) $("#group-apply-sfx").checked = false;
   $("#group-color").value = g.color || "#4a6cf7";
+  if ($("#group-text-color")) {
+    $("#group-text-color").value = g.textColor || "#ffffff";
+  }
   pendingGroupImage = g.imageData || null;
   pendingGroupSfx = g.landSfxData || null;
   pendingGroupSfxName = g.landSfxName || null;
@@ -1479,6 +1490,7 @@ $("#group-cancel").addEventListener("click", () => groupModal.close());
 // Group profile media / sliders + live preview
 $("#group-name")?.addEventListener("input", scheduleGroupLivePreview);
 $("#group-color")?.addEventListener("input", scheduleGroupLivePreview);
+$("#group-text-color")?.addEventListener("input", scheduleGroupLivePreview);
 $("#group-image-input")?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
@@ -1555,12 +1567,15 @@ $("#btn-apply-group-profile")?.addEventListener("click", async () => {
     return;
   }
   const parts = readApplyPartsFromForm();
-  if (!parts.color && !parts.image && !parts.sfx) {
-    alert("Check at least one part to apply: Color, Image, or Land SFX.");
+  if (!parts.color && !parts.textColor && !parts.image && !parts.sfx) {
+    alert(
+      "Check at least one part to apply: Slice color, Text color, Image, or Land SFX."
+    );
     return;
   }
   const labels = [
-    parts.color ? "color" : "",
+    parts.color ? "slice color" : "",
+    parts.textColor ? "text color" : "",
     parts.image ? "image" : "",
     parts.sfx ? "land SFX" : "",
   ].filter(Boolean);
@@ -1698,12 +1713,18 @@ let pendingSectionImage = null;
 let pendingSectionSfx = null;
 let pendingSectionSfxName = null;
 /** Tracks which profile channels the user touched in the open editor */
-let sectionEditDirty = { color: false, image: false, sfx: false };
+let sectionEditDirty = { color: false, textColor: false, image: false, sfx: false };
 /** custom* flags of the section being edited (or defaults for new) */
-let sectionEditCustom = { color: false, image: false, sfx: false };
+let sectionEditCustom = {
+  color: false,
+  textColor: false,
+  image: false,
+  sfx: false,
+};
 
 function markSectionDirty(channel) {
   if (channel === "color") sectionEditDirty.color = true;
+  if (channel === "textColor") sectionEditDirty.textColor = true;
   if (channel === "image") sectionEditDirty.image = true;
   if (channel === "sfx") sectionEditDirty.sfx = true;
 }
@@ -1776,6 +1797,7 @@ function getSectionDraft() {
   return {
     label: ($("#section-label")?.value || "").trim() || "Untitled",
     color: $("#section-color")?.value || "#4a6cf7",
+    textColor: $("#section-text-color")?.value || state.look?.textColor || "#ffffff",
     imageData: pendingSectionImage,
     imageMode: $("#section-image-mode")?.value === "tile" ? "tile" : "fill",
     imageFillScale: Math.min(
@@ -2100,7 +2122,8 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
   }
 
   labelEl.textContent = draft.label;
-  labelEl.style.color = state.look.textColor || "#fff";
+  labelEl.style.color =
+    draft.textColor || state.look?.textColor || "#fff";
   const labelMid = fullDisc ? -Math.PI / 2 : mid;
   const labelDist = fullDisc ? 0.45 : 0.58;
   const lx = 50 + Math.cos(labelMid) * labelDist * 42;
@@ -2161,9 +2184,15 @@ function scheduleGroupLivePreview() {
 
 function openSectionModal(section) {
   fillGroupSelects();
-  sectionEditDirty = { color: false, image: false, sfx: false };
+  sectionEditDirty = {
+    color: false,
+    textColor: false,
+    image: false,
+    sfx: false,
+  };
   sectionEditCustom = {
     color: section ? section.customColor === true : false,
+    textColor: section ? section.customTextColor === true : false,
     image: section ? section.customImage === true : false,
     sfx: section ? section.customSfx === true : false,
   };
@@ -2173,6 +2202,7 @@ function openSectionModal(section) {
     ? resolveSectionForDisplay(state, section)
     : null;
   const colorSrc = sectionEditCustom.color ? section : resolved;
+  const textSrc = sectionEditCustom.textColor ? section : resolved;
   const imageSrc = sectionEditCustom.image ? section : resolved;
   const sfxSrc = sectionEditCustom.sfx ? section : resolved;
 
@@ -2186,6 +2216,12 @@ function openSectionModal(section) {
   $("#section-weight").value = section?.weight ?? 1;
   $("#section-color").value =
     colorSrc?.color || nextPaletteColor(state);
+  if ($("#section-text-color")) {
+    $("#section-text-color").value =
+      textSrc?.textColor ||
+      state.look?.textColor ||
+      "#ffffff";
+  }
   {
     const existing = getSectionGroupIds(section);
     const initial =
@@ -2303,6 +2339,11 @@ $("#section-tile-offset-y")?.addEventListener("input", () => {
 
 // Live preview for label / color / weight
 $("#section-label")?.addEventListener("input", scheduleSectionLivePreview);
+$("#section-text-color")?.addEventListener("input", () => {
+  markSectionDirty("textColor");
+  scheduleSectionLivePreview();
+});
+
 $("#section-color")?.addEventListener("input", () => {
   markSectionDirty("color");
   scheduleSectionLivePreview();
@@ -2410,9 +2451,11 @@ $("#section-form").addEventListener("submit", async (e) => {
 
   // custom* : stay unedited (inherit groups) until the user touches that channel
   let customColor = existing ? existing.customColor === true : false;
+  let customTextColor = existing ? existing.customTextColor === true : false;
   let customImage = existing ? existing.customImage === true : false;
   let customSfx = existing ? existing.customSfx === true : false;
   if (sectionEditDirty.color) customColor = true;
+  if (sectionEditDirty.textColor) customTextColor = true;
   if (sectionEditDirty.image) {
     // Clear with no image → inherit again; pick/adjust image → own
     customImage = !!pendingSectionImage || sectionEditCustom.image === true;
@@ -2483,9 +2526,16 @@ $("#section-form").addEventListener("submit", async (e) => {
     color: customColor
       ? $("#section-color").value
       : existing?.color || $("#section-color").value,
+    textColor: customTextColor
+      ? $("#section-text-color")?.value || "#ffffff"
+      : existing?.textColor ||
+        $("#section-text-color")?.value ||
+        state.look?.textColor ||
+        "#ffffff",
     groupIds,
     enabled: $("#section-enabled").checked,
     customColor,
+    customTextColor,
     customImage,
     customSfx,
     ...imageFields,
@@ -2513,11 +2563,15 @@ $("#section-form").addEventListener("submit", async (e) => {
       ...payload,
       // Brand-new section: untouched channels stay inherited
       customColor: sectionEditDirty.color,
+      customTextColor: sectionEditDirty.textColor,
       customImage: sectionEditDirty.image && !!pendingSectionImage,
       customSfx: sectionEditDirty.sfx && !!pendingSectionSfx,
       color: sectionEditDirty.color
         ? $("#section-color").value
         : nextPaletteColor(state),
+      textColor: sectionEditDirty.textColor
+        ? $("#section-text-color")?.value || "#ffffff"
+        : state.look?.textColor || "#ffffff",
       imageData: sectionEditDirty.image ? pendingSectionImage : null,
       landSfxData: sectionEditDirty.sfx ? pendingSectionSfx : null,
       landSfxName: sectionEditDirty.sfx ? pendingSectionSfxName : null,
@@ -2569,11 +2623,13 @@ $("#bulk-form").addEventListener("submit", async (e) => {
       id: uid("sec"),
       label,
       color,
+      textColor: state.look?.textColor || "#ffffff",
       weight,
       enabled: true,
       groupIds: bulkGroupId ? [bulkGroupId] : [],
       // Unedited image/SFX inherit group profiles; color only owned if set in bulk line
       customColor: colorGiven,
+      customTextColor: false,
       customImage: false,
       customSfx: false,
       imageData: null,
@@ -2739,12 +2795,16 @@ function showResult(section, opts = {}) {
   const imageData = disp?.imageData || null;
 
   const style = state.look.resultStyle === "banner" ? "banner" : "center";
+  const winTextColor =
+    disp?.textColor || state.look?.textColor || "#ffffff";
   if (style === "banner") {
     resultTextBanner.textContent = label;
+    resultTextBanner.style.color = winTextColor;
     resultBanner.classList.remove("hidden");
   } else {
     updateWinnerLabelDisplay();
     resultTextCenter.textContent = label;
+    resultTextCenter.style.color = winTextColor;
     setResultCenterBg(imageData);
     const inner = resultCenter.querySelector(".result-center-inner");
     if (inner) {

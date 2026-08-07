@@ -824,7 +824,9 @@ export class Wheel {
       const baseFont = Math.max(16, 48 * dpr);
 
       ctx.save();
-      ctx.fillStyle = this.look.textColor || "#fff";
+      // Per-section text color (from resolve) → Look default
+      ctx.fillStyle =
+        sl.section?.textColor || this.look.textColor || "#fff";
       ctx.textBaseline = "middle";
       if (!spinFrame) {
         ctx.shadowColor = "rgba(0,0,0,0.85)";

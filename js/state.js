@@ -48,6 +48,7 @@ const PALETTE = [
 /** Visual + land-SFX fields shared by group profiles and sections */
 export const PROFILE_KEYS = [
   "color",
+  "textColor",
   "imageData",
   "imageMode",
   "imageFillScale",
@@ -61,6 +62,7 @@ export const PROFILE_KEYS = [
 ];
 
 export const COLOR_KEYS = ["color"];
+export const TEXT_COLOR_KEYS = ["textColor"];
 export const IMAGE_KEYS = [
   "imageData",
   "imageMode",
@@ -73,7 +75,7 @@ export const IMAGE_KEYS = [
 ];
 export const SFX_KEYS = ["landSfxData", "landSfxName"];
 
-/** @typedef {{ color?: boolean, image?: boolean, sfx?: boolean }} ProfileParts */
+/** @typedef {{ color?: boolean, textColor?: boolean, image?: boolean, sfx?: boolean }} ProfileParts */
 
 export function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
@@ -82,9 +84,11 @@ export function uid(prefix = "id") {
 export function defaultGroupProfile() {
   return {
     overrideColor: false,
+    overrideTextColor: false,
     overrideImage: false,
     overrideSfx: false,
     color: "#4a6cf7",
+    textColor: "#ffffff",
     imageData: null,
     imageMode: "fill",
     imageFillScale: 1,
@@ -99,7 +103,24 @@ export function defaultGroupProfile() {
 }
 
 export function groupHasAnyOverride(g) {
-  return !!(g && (g.overrideColor || g.overrideImage || g.overrideSfx));
+  return !!(
+    g &&
+    (g.overrideColor ||
+      g.overrideTextColor ||
+      g.overrideImage ||
+      g.overrideSfx)
+  );
+}
+
+/** Normalize a CSS hex color; fallback if invalid. */
+export function normalizeHexColor(c, fallback = "#ffffff") {
+  if (typeof c !== "string") return fallback;
+  const s = c.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) return s;
+  if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+    return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
+  }
+  return fallback;
 }
 
 /** Per-section land SFX volume 0–1 */
@@ -120,7 +141,8 @@ function clampOffset(n) {
 /** Normalize profile image/sfx/color fields onto a plain object */
 export function normalizeProfileFields(src = {}) {
   return {
-    color: src.color || "#4a6cf7",
+    color: normalizeHexColor(src.color, "#4a6cf7"),
+    textColor: normalizeHexColor(src.textColor, "#ffffff"),
     imageData: src.imageData || null,
     imageMode: src.imageMode === "tile" ? "tile" : "fill",
     imageFillScale: clampScale(src.imageFillScale),
@@ -145,6 +167,9 @@ export function normalizeGroup(g = {}) {
     // Default OFF — sections use their own profile per channel
     overrideColor:
       g.overrideColor === true || (g.overrideColor == null && legacyAll),
+    overrideTextColor:
+      g.overrideTextColor === true ||
+      (g.overrideTextColor == null && legacyAll),
     overrideImage:
       g.overrideImage === true || (g.overrideImage == null && legacyAll),
     overrideSfx:
@@ -174,13 +199,18 @@ export function applyProfileToSection(section, profile, parts) {
     parts && typeof parts === "object"
       ? {
           color: parts.color === true,
+          textColor: parts.textColor === true,
           image: parts.image === true,
           sfx: parts.sfx === true,
         }
-      : { color: true, image: true, sfx: true };
+      : { color: true, textColor: true, image: true, sfx: true };
   if (want.color) {
     for (const k of COLOR_KEYS) section[k] = p[k];
     section.customColor = true;
+  }
+  if (want.textColor) {
+    for (const k of TEXT_COLOR_KEYS) section[k] = p[k];
+    section.customTextColor = true;
   }
   if (want.image) {
     for (const k of IMAGE_KEYS) section[k] = p[k];
@@ -208,9 +238,13 @@ export function defaultState() {
     groupIds: i === 3 ? [g1.id, g2.id] : [g1.id],
     // Own colors by default; image/SFX inherit from groups until edited
     customColor: true,
+    customTextColor: false,
     customImage: false,
     customSfx: false,
-    ...normalizeProfileFields({ color: PALETTE[i % PALETTE.length] }),
+    ...normalizeProfileFields({
+      color: PALETTE[i % PALETTE.length],
+      textColor: "#ffffff",
+    }),
   }));
 
   return {
@@ -405,6 +439,7 @@ export function inheritGroupForChannel(state, section, channel) {
   const members = memberGroupsByPriority(state, section);
   for (const g of members) {
     if (channel === "color") return g;
+    if (channel === "textColor") return g;
     if (channel === "image" && g.imageData) return g;
     if (channel === "sfx" && g.landSfxData) return g;
   }
@@ -438,9 +473,15 @@ export function resolveSectionForDisplay(state, section) {
     ...section,
     profileSource: "section",
     profileGroupId: null,
-    profileOverrides: { color: false, image: false, sfx: false },
+    profileOverrides: {
+      color: false,
+      textColor: false,
+      image: false,
+      sfx: false,
+    },
     profileFrom: {
       color: { source: "section", groupId: null },
+      textColor: { source: "section", groupId: null },
       image: { source: "section", groupId: null },
       sfx: { source: "section", groupId: null },
     },
@@ -463,6 +504,25 @@ export function resolveSectionForDisplay(state, section) {
     applyFromGroup(inheritGroupForChannel(state, section, "color"), COLOR_KEYS, "color");
   }
 
+  // --- Text color (label on wheel) ---
+  const forceText = forceOverrideGroup(state, section, "overrideTextColor");
+  if (forceText) {
+    applyFromGroup(forceText, TEXT_COLOR_KEYS, "textColor");
+    out.profileOverrides.textColor = true;
+  } else if (!section.customTextColor) {
+    const fromG = inheritGroupForChannel(state, section, "textColor");
+    if (fromG) {
+      applyFromGroup(fromG, TEXT_COLOR_KEYS, "textColor");
+    } else {
+      // No group → Look default
+      out.textColor = normalizeHexColor(
+        state.look?.textColor,
+        "#ffffff"
+      );
+      out.profileFrom.textColor = { source: "look", groupId: null };
+    }
+  }
+
   // --- Image (may come from a different group than SFX) ---
   const forceImage = forceOverrideGroup(state, section, "overrideImage");
   if (forceImage) {
@@ -481,6 +541,12 @@ export function resolveSectionForDisplay(state, section) {
     applyFromGroup(inheritGroupForChannel(state, section, "sfx"), SFX_KEYS, "sfx");
   }
 
+  // Final fallback for text
+  out.textColor = normalizeHexColor(
+    out.textColor || state.look?.textColor,
+    "#ffffff"
+  );
+
   // Prefer SFX group id for audio buffer key; else any group source
   if (out.profileFrom.sfx.source === "group") {
     out.profileGroupId = out.profileFrom.sfx.groupId;
@@ -488,6 +554,8 @@ export function resolveSectionForDisplay(state, section) {
     out.profileGroupId = out.profileFrom.image.groupId;
   } else if (out.profileFrom.color.source === "group") {
     out.profileGroupId = out.profileFrom.color.groupId;
+  } else if (out.profileFrom.textColor.source === "group") {
+    out.profileGroupId = out.profileFrom.textColor.groupId;
   }
 
   return out;
@@ -509,18 +577,25 @@ function normalizeSection(s, groups, groupIdsSet) {
 
   const profile = normalizeProfileFields(s);
   const hasCustomFlags =
-    s.customColor != null || s.customImage != null || s.customSfx != null;
+    s.customColor != null ||
+    s.customTextColor != null ||
+    s.customImage != null ||
+    s.customSfx != null;
 
   // Legacy saves: keep existing media/color as section-owned so looks don't jump
   let customColor;
+  let customTextColor;
   let customImage;
   let customSfx;
   if (hasCustomFlags) {
     customColor = s.customColor === true;
+    customTextColor = s.customTextColor === true;
     customImage = s.customImage === true;
     customSfx = s.customSfx === true;
   } else {
     customColor = true;
+    // Old projects: inherit text color (Look / group) unless they set one
+    customTextColor = s.textColor != null && s.textColor !== "";
     customImage = !!profile.imageData;
     customSfx = !!profile.landSfxData;
   }
@@ -532,6 +607,7 @@ function normalizeSection(s, groups, groupIdsSet) {
     enabled: s.enabled !== false,
     groupIds: gids,
     customColor,
+    customTextColor,
     customImage,
     customSfx,
     ...profile,

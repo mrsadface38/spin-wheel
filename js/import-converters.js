@@ -226,10 +226,12 @@ export function convertWheelOfNames(data) {
         enabled,
         groupIds: [group.id],
         customColor: true,
+        customTextColor: false,
         customImage: !!img,
         customSfx: false,
         ...normalizeProfileFields({
           color,
+          textColor: "#ffffff",
           imageData: img,
         }),
       });
@@ -300,9 +302,10 @@ export function convertTextList(text) {
       enabled: true,
       groupIds: [group.id],
       customColor: true,
+      customTextColor: false,
       customImage: false,
       customSfx: false,
-      ...normalizeProfileFields({ color }),
+      ...normalizeProfileFields({ color, textColor: "#ffffff" }),
     });
   }
 
