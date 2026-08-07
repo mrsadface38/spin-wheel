@@ -335,6 +335,20 @@ export function defaultState() {
       muteMusicOnDivert: true,
       /** Mute spin tick / loop SFX only during the last-moment divert */
       muteSpinTicksOnRig: true,
+      /**
+       * Reverse rig: if the wheel would land on the chosen section/group,
+       * slowly slide off it to another slice.
+       */
+      reverseRigIt: false,
+      /** "section" | "group" */
+      reverseTargetKind: "section",
+      reverseTargetSectionId: null,
+      reverseTargetGroupId: null,
+      /** 1 = slowest slide-off, 10 = fastest */
+      reverseSlideSpeed: 2,
+      reverseSlideSfxData: null,
+      reverseSlideSfxName: null,
+      reverseSlideSfxVolume: 0.4,
     },
   };
 }
@@ -449,6 +463,29 @@ function migrate(data) {
         data.secret && "muteSpinTicksOnRig" in data.secret
           ? !!data.secret.muteSpinTicksOnRig
           : true,
+      reverseRigIt: !!(data.secret && data.secret.reverseRigIt),
+      reverseTargetKind:
+        data.secret?.reverseTargetKind === "group" ? "group" : "section",
+      reverseTargetSectionId: data.secret?.reverseTargetSectionId || null,
+      reverseTargetGroupId: data.secret?.reverseTargetGroupId || null,
+      reverseSlideSpeed:
+        data.secret?.reverseSlideSpeed != null &&
+        Number.isFinite(Number(data.secret.reverseSlideSpeed))
+          ? Math.min(
+              10,
+              Math.max(1, Math.round(Number(data.secret.reverseSlideSpeed)))
+            )
+          : 2,
+      reverseSlideSfxData: data.secret?.reverseSlideSfxData || null,
+      reverseSlideSfxName: data.secret?.reverseSlideSfxName || null,
+      reverseSlideSfxVolume:
+        data.secret?.reverseSlideSfxVolume != null &&
+        Number.isFinite(Number(data.secret.reverseSlideSfxVolume))
+          ? Math.min(
+              1,
+              Math.max(0, Number(data.secret.reverseSlideSfxVolume))
+            )
+          : 0.4,
     },
   };
 }

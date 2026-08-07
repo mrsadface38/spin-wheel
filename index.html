@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#47</span>
+        <span class="app-version" id="app-version" title="Update number">#48</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -435,6 +435,59 @@
               <div class="slider-with-value">
                 <input type="range" id="secret-divert-sfx-volume" min="0" max="1" step="0.05" value="0.4" />
                 <span id="secret-divert-sfx-volume-label" class="slider-value">40%</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3 class="secret-tab-title">// reverse</h3>
+            <label class="toggle-row">
+              <input type="checkbox" id="secret-reverse-rig-it" />
+              <span><strong>Reverse rig it</strong> — if it lands on the target, slowly slide off</span>
+            </label>
+            <label class="field">
+              <span>Avoid type</span>
+              <select id="secret-reverse-target-kind">
+                <option value="section">Section</option>
+                <option value="group">Group</option>
+              </select>
+            </label>
+            <label class="field" id="secret-reverse-section-field">
+              <span>Avoid section</span>
+              <select id="secret-reverse-section"></select>
+            </label>
+            <label class="field" id="secret-reverse-group-field" hidden>
+              <span>Avoid group</span>
+              <select id="secret-reverse-group"></select>
+            </label>
+            <label class="field">
+              <span>Slide-off speed</span>
+              <div class="slider-with-value">
+                <input type="range" id="secret-reverse-slide-speed" min="1" max="10" step="1" value="2" />
+                <span id="secret-reverse-slide-speed-label" class="slider-value">2</span>
+              </div>
+              <small>Slow ← → Fast — how slowly it crawls off the avoided slice (default is very slow)</small>
+            </label>
+          </div>
+          <div class="form-block">
+            <h3>Slide-off SFX</h3>
+            <p class="hint">Plays when reverse rig starts sliding off the avoided section/group.</p>
+            <div class="audio-pick">
+              <span id="secret-reverse-slide-sfx-name" class="audio-name">scp-173-concrete-grind-moving.mp3 (default)</span>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose audio
+                  <input type="file" id="secret-reverse-slide-sfx-input" accept="audio/*" hidden />
+                </label>
+                <button type="button" id="secret-reverse-slide-sfx-clear" class="btn small ghost" title="Restore default slide sound">Default</button>
+                <button type="button" id="secret-reverse-slide-sfx-preview" class="btn small ghost">Preview</button>
+              </div>
+            </div>
+            <label class="field">
+              <span>Volume</span>
+              <div class="slider-with-value">
+                <input type="range" id="secret-reverse-slide-sfx-volume" min="0" max="1" step="0.05" value="0.4" />
+                <span id="secret-reverse-slide-sfx-volume-label" class="slider-value">40%</span>
               </div>
             </label>
           </div>

@@ -964,31 +964,52 @@ export class Wheel {
   }
 
   /**
-   * Weighted random slice index. When excludeId is set and at least one other
-   * slice exists, that section can never be the natural pre-divert land.
+   * Weighted random slice index. When exclude is set and at least one other
+   * slice exists, those section id(s) can never be the natural / escape pick.
    * @param {Array<{section: {id: string, weight?: number}}>} slices
-   * @param {string|null} [excludeId]
+   * @param {string|string[]|Set<string>|null} [exclude]
    * @returns {number}
    */
-  _pickNaturalWinnerIndex(slices, excludeId = null) {
+  _pickNaturalWinnerIndex(slices, exclude = null) {
     if (!slices.length) return 0;
+    let excludeSet = null;
+    if (exclude instanceof Set) {
+      excludeSet = exclude;
+    } else if (Array.isArray(exclude)) {
+      excludeSet = new Set(exclude.filter(Boolean));
+    } else if (exclude) {
+      excludeSet = new Set([exclude]);
+    }
     const pool =
-      excludeId && slices.length > 1
+      excludeSet && excludeSet.size && slices.length > 1
         ? slices
             .map((sl, i) => ({ sl, i }))
-            .filter(({ sl }) => sl.section.id !== excludeId)
+            .filter(({ sl }) => !excludeSet.has(sl.section.id))
         : slices.map((sl, i) => ({ sl, i }));
-    if (!pool.length) return 0;
+    // If everything was excluded, fall back to full pool
+    const use = pool.length ? pool : slices.map((sl, i) => ({ sl, i }));
+    if (!use.length) return 0;
     let total = 0;
-    for (const { sl } of pool) {
+    for (const { sl } of use) {
       total += Math.max(0.1, sl.section.weight || 1);
     }
     let r = Math.random() * total;
-    for (const { sl, i } of pool) {
+    for (const { sl, i } of use) {
       r -= Math.max(0.1, sl.section.weight || 1);
       if (r <= 0) return i;
     }
-    return pool[pool.length - 1].i;
+    return use[use.length - 1].i;
+  }
+
+  /**
+   * @param {string|string[]|Set<string>|null|undefined} raw
+   * @returns {Set<string>}
+   */
+  _asIdSet(raw) {
+    if (!raw) return new Set();
+    if (raw instanceof Set) return raw;
+    if (Array.isArray(raw)) return new Set(raw.filter(Boolean));
+    return new Set([raw]);
   }
 
   /**
@@ -1045,7 +1066,14 @@ export class Wheel {
 
   /**
    * @param {number} durationSec
-   * @param {{ forceSectionId?: string|null, onSteerStart?: () => void, steerMs?: number }} [opts]
+   * @param {{
+   *   forceSectionId?: string|null,
+   *   avoidSectionIds?: string[]|Set<string>|null,
+   *   onSteerStart?: () => void,
+   *   onReverseSteerStart?: () => void,
+   *   steerMs?: number,
+   *   reverseSteerMs?: number,
+   * }} [opts]
    */
   spin(durationSec = 5, opts = {}) {
     if (this.spinning || this._dragging || !this.sections.length) {
@@ -1069,9 +1097,12 @@ export class Wheel {
     // Natural winner first (rig steers only in the last 0.1s).
     // When rigging, never aim the natural land at the rigged section so the
     // divert is always a real move onto it.
+    // Reverse-rig intentionally CAN natural-land on avoided ids so it can slide off.
     const forceId = opts.forceSectionId || null;
+    const avoidIds = this._asIdSet(opts.avoidSectionIds);
     const winnerIndex = this._pickNaturalWinnerIndex(slices, forceId);
     const winnerSlice = slices[winnerIndex];
+    const naturalId = winnerSlice.section.id;
     const pad = winnerSlice.span * 0.15;
     const landLocal =
       winnerSlice.start +
@@ -1106,16 +1137,28 @@ export class Wheel {
     // Honor the UI duration (1–30s); do not force a longer minimum
     const duration = Math.max(0.5, durationSec) * 1000;
     const startTime = performance.now();
-    // 0.1s before natural land → start slow divert to rigged section
+    // 0.1s before natural land → start slow divert / reverse slide
     const divertMs = 100;
     const divertAt = Math.max(0, duration - divertMs);
     // Glide duration after almost-land (from secret Divert speed slider)
-    const steerMs = Math.max(
+    const forceSteerMs = Math.max(
       250,
       Math.min(8000, Number(opts.steerMs) || 1100)
     );
-    const canRig =
+    // Reverse slide-off is intentionally allowed to be very slow
+    const reverseSteerMs = Math.max(
+      400,
+      Math.min(12000, Number(opts.reverseSteerMs) || forceSteerMs)
+    );
+    const canForce =
       !!forceId && slices.some((s) => s.section.id === forceId);
+    const canReverse =
+      avoidIds.size > 0 &&
+      slices.length > 1 &&
+      slices.some((s) => !avoidIds.has(s.section.id));
+    const willReverse = canReverse && avoidIds.has(naturalId);
+    const willForce = canForce && !willReverse;
+    const needsLateSteer = willReverse || willForce;
 
     // Min gap between tick SFX (ms) — avoids audio thrash when many boundaries cross
     const minTickGapMs = 28;
@@ -1126,6 +1169,7 @@ export class Wheel {
       let steerStart = 0;
       let steerFrom = 0;
       let steerTarget = 0;
+      let activeSteerMs = forceSteerMs;
 
       const finish = (win) => {
         this.spinning = false;
@@ -1148,26 +1192,43 @@ export class Wheel {
 
         const elapsed = now - startTime;
 
-        if (canRig && !steering && elapsed >= divertAt) {
-          // Almost landed on the natural winner — slowly pull to rigged pick
-          // (shortest way: forward or backward)
+        if (needsLateSteer && !steering && elapsed >= divertAt) {
           steering = true;
           steerStart = now;
           steerFrom = this.rotation;
-          steerTarget = this.targetRotationForSection(
-            forceId,
-            steerFrom,
-            "shortest"
-          );
-          try {
-            opts.onSteerStart?.();
-          } catch {
-            /* ignore sound errors */
+          if (willReverse) {
+            // Almost landed on avoided section/group — slowly crawl off to another
+            const escapeIndex = this._pickNaturalWinnerIndex(slices, avoidIds);
+            const escapeId = slices[escapeIndex].section.id;
+            activeSteerMs = reverseSteerMs;
+            steerTarget = this.targetRotationForSection(
+              escapeId,
+              steerFrom,
+              "shortest"
+            );
+            try {
+              opts.onReverseSteerStart?.();
+            } catch {
+              /* ignore sound errors */
+            }
+          } else {
+            // Almost landed on the natural winner — slowly pull to rigged pick
+            activeSteerMs = forceSteerMs;
+            steerTarget = this.targetRotationForSection(
+              forceId,
+              steerFrom,
+              "shortest"
+            );
+            try {
+              opts.onSteerStart?.();
+            } catch {
+              /* ignore sound errors */
+            }
           }
         }
 
         if (steering) {
-          const t = Math.min(1, (now - steerStart) / steerMs);
+          const t = Math.min(1, (now - steerStart) / activeSteerMs);
           const e = easeOutQuart(t);
           this.rotation = steerFrom + (steerTarget - steerFrom) * e;
 
@@ -1205,7 +1266,7 @@ export class Wheel {
         this.draw({ spinFrame: true });
         this.onFrame(t);
 
-        if (elapsed < divertAt || !canRig) {
+        if (elapsed < divertAt || !needsLateSteer) {
           if (t < 1) this._raf = requestAnimationFrame(frame);
           else {
             this.rotation = target;
@@ -1397,7 +1458,14 @@ export class Wheel {
   /**
    * Momentum spin from a fling. Decelerates until stop, then lands under the pointer.
    * @param {number} velocityRadPerSec
-   * @param {{ forceSectionId?: string|null, onSteerStart?: () => void, steerMs?: number }} [opts]
+   * @param {{
+   *   forceSectionId?: string|null,
+   *   avoidSectionIds?: string[]|Set<string>|null,
+   *   onSteerStart?: () => void,
+   *   onReverseSteerStart?: () => void,
+   *   steerMs?: number,
+   *   reverseSteerMs?: number,
+   * }} [opts]
    * @returns {Promise<object|null>}
    */
   fling(velocityRadPerSec, opts = {}) {
@@ -1413,16 +1481,18 @@ export class Wheel {
     }
 
     const forceId = opts.forceSectionId || null;
+    const avoidIds = this._asIdSet(opts.avoidSectionIds);
 
     // Freeze geometry
     this._spinSlices = this._computeSlices();
     this._slicesCache = this._spinSlices;
+    const slices = this._spinSlices;
     const w = this.wheelCanvas.width;
     const h = this.wheelCanvas.height;
     this._spinCx = w / 2;
     this._spinCy = h / 2;
     this._spinRadius = Math.min(w, h) * 0.42;
-    this._spinSingle = this._spinSlices.length === 1;
+    this._spinSingle = slices.length === 1;
 
     this.spinning = true;
     this._lastSeg = this._tickIndex();
@@ -1436,12 +1506,20 @@ export class Wheel {
     const stopSpeed = 0.35; // rad/s
     // |v| such that ~0.1s remains until stop under exp decay
     const vDivert = stopSpeed * Math.exp(friction * 0.1);
-    const canRig =
-      !!forceId && this._spinSlices.some((s) => s.section.id === forceId);
+    const canForce =
+      !!forceId && slices.some((s) => s.section.id === forceId);
+    const canReverse =
+      avoidIds.size > 0 &&
+      slices.length > 1 &&
+      slices.some((s) => !avoidIds.has(s.section.id));
     const minTickGapMs = 28;
-    const steerMs = Math.max(
+    const forceSteerMs = Math.max(
       250,
       Math.min(8000, Number(opts.steerMs) || 1100)
+    );
+    const reverseSteerMs = Math.max(
+      400,
+      Math.min(12000, Number(opts.reverseSteerMs) || forceSteerMs)
     );
 
     return new Promise((resolve) => {
@@ -1451,6 +1529,7 @@ export class Wheel {
       let steerStart = 0;
       let steerFrom = 0;
       let steerTarget = 0;
+      let activeSteerMs = forceSteerMs;
 
       const finish = (win) => {
         this.spinning = false;
@@ -1467,43 +1546,69 @@ export class Wheel {
         if (r) r(win);
       };
 
+      const startReverseSteer = (now) => {
+        const escapeIndex = this._pickNaturalWinnerIndex(slices, avoidIds);
+        const escapeId = slices[escapeIndex].section.id;
+        steering = true;
+        steerStart = now;
+        steerFrom = this.rotation;
+        activeSteerMs = reverseSteerMs;
+        steerTarget = this.targetRotationForSection(
+          escapeId,
+          steerFrom,
+          "shortest"
+        );
+        try {
+          opts.onReverseSteerStart?.();
+        } catch {
+          /* ignore */
+        }
+      };
+
+      const startForceSteer = (now) => {
+        steering = true;
+        steerStart = now;
+        steerFrom = this.rotation;
+        activeSteerMs = forceSteerMs;
+        steerTarget = this.targetRotationForSection(
+          forceId,
+          steerFrom,
+          "shortest"
+        );
+        try {
+          opts.onSteerStart?.();
+        } catch {
+          /* ignore */
+        }
+      };
+
       const frame = (now) => {
         if (!this.spinning) return;
 
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
 
-        if (canRig && !steering && Math.abs(v) <= vDivert) {
-          // Must not "land" on the rigged section before divert — kick past it.
+        if (!steering && Math.abs(v) <= vDivert) {
           const under = this.sectionAtPointer();
-          if (
-            under &&
-            under.id === forceId &&
-            this._spinSlices.length > 1
-          ) {
-            const kick = Math.max(1.8, vDivert * 3);
-            v = (Math.sign(v) || 1) * kick;
-          } else {
-            // ~0.1s before natural stop — slowly move to rigged section
-            // (shortest path: reverse if closer)
-            steering = true;
-            steerStart = now;
-            steerFrom = this.rotation;
-            steerTarget = this.targetRotationForSection(
-              forceId,
-              steerFrom,
-              "shortest"
-            );
-            try {
-              opts.onSteerStart?.();
-            } catch {
-              /* ignore */
+          const underId = under?.id || null;
+
+          // Reverse: about to stop on an avoided slice → slowly crawl off
+          if (canReverse && underId && avoidIds.has(underId)) {
+            startReverseSteer(now);
+          } else if (canForce) {
+            // Must not "land" on the rigged section before divert — kick past it.
+            if (underId === forceId && slices.length > 1) {
+              const kick = Math.max(1.8, vDivert * 3);
+              v = (Math.sign(v) || 1) * kick;
+            } else {
+              // ~0.1s before natural stop — slowly move to rigged section
+              startForceSteer(now);
             }
           }
         }
 
         if (steering) {
-          const t = Math.min(1, (now - steerStart) / steerMs);
+          const t = Math.min(1, (now - steerStart) / activeSteerMs);
           const e = easeOutQuart(t);
           this.rotation = steerFrom + (steerTarget - steerFrom) * e;
 
@@ -1544,16 +1649,23 @@ export class Wheel {
 
         if (Math.abs(v) > stopSpeed) {
           this._raf = requestAnimationFrame(frame);
-        } else if (
-          canRig &&
-          this._spinSlices.length > 1 &&
-          this.sectionAtPointer()?.id === forceId
-        ) {
-          // Still on rigged at full stop — kick and keep going until decoy land
-          v = (Math.sign(v) || 1) * 1.8;
-          this._raf = requestAnimationFrame(frame);
         } else {
-          finish(this.sectionAtPointer());
+          const underId = this.sectionAtPointer()?.id || null;
+          if (canReverse && underId && avoidIds.has(underId)) {
+            // Full stop still on avoided — reverse slide off
+            startReverseSteer(now);
+            this._raf = requestAnimationFrame(frame);
+          } else if (
+            canForce &&
+            slices.length > 1 &&
+            underId === forceId
+          ) {
+            // Still on rigged at full stop — kick and keep going until decoy land
+            v = (Math.sign(v) || 1) * 1.8;
+            this._raf = requestAnimationFrame(frame);
+          } else {
+            finish(this.sectionAtPointer());
+          }
         }
       };
       this._raf = requestAnimationFrame(frame);

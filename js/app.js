@@ -630,9 +630,14 @@ document.querySelectorAll(".tab").forEach((tab) => {
     }
     if (tab.dataset.tab === "secret") {
       fillSecretSectionSelect();
+      fillSecretReverseSelects();
       const sec = ensureSecretState();
       if ($("#secret-rig-it")) $("#secret-rig-it").checked = !!sec.rigIt;
+      if ($("#secret-reverse-rig-it")) {
+        $("#secret-reverse-rig-it").checked = !!sec.reverseRigIt;
+      }
       bindSecretDivertSfxUI();
+      bindSecretReverseUI();
     }
   });
 });
@@ -3315,6 +3320,14 @@ function ensureSecretState() {
       unlocked: false,
       rigIt: false,
       targetSectionId: null,
+      reverseRigIt: false,
+      reverseTargetKind: "section",
+      reverseTargetSectionId: null,
+      reverseTargetGroupId: null,
+      reverseSlideSpeed: 2,
+      reverseSlideSfxData: null,
+      reverseSlideSfxName: null,
+      reverseSlideSfxVolume: 0.4,
     };
   }
   return state.secret;
@@ -3325,6 +3338,18 @@ function isRigItActive() {
   return !!(s.rigIt && s.targetSectionId);
 }
 
+function isReverseRigActive() {
+  const s = ensureSecretState();
+  if (!s.reverseRigIt) return false;
+  if (s.reverseTargetKind === "group") {
+    return !!(s.reverseTargetGroupId && state.groups.some((g) => g.id === s.reverseTargetGroupId));
+  }
+  return !!(
+    s.reverseTargetSectionId &&
+    state.sections.some((sec) => sec.id === s.reverseTargetSectionId)
+  );
+}
+
 function getRigForceSectionId() {
   if (!isRigItActive()) return null;
   const id = ensureSecretState().targetSectionId;
@@ -3332,6 +3357,27 @@ function getRigForceSectionId() {
   const active = getActiveSections(state);
   if (!active.some((sec) => sec.id === id)) return null;
   return id;
+}
+
+/**
+ * Section ids reverse-rig should slide off of (on-wheel only).
+ * @returns {string[]}
+ */
+function getReverseAvoidSectionIds() {
+  if (!isReverseRigActive()) return [];
+  const s = ensureSecretState();
+  const active = getActiveSections(state);
+  if (s.reverseTargetKind === "group") {
+    const gid = s.reverseTargetGroupId;
+    if (!gid) return [];
+    return active
+      .filter((sec) => getSectionGroupIds(sec).includes(gid))
+      .map((sec) => sec.id);
+  }
+  const id = s.reverseTargetSectionId;
+  if (!id) return [];
+  if (!active.some((sec) => sec.id === id)) return [];
+  return [id];
 }
 
 function setResultRiggedVisible(visible) {
@@ -3351,8 +3397,8 @@ function hideResults() {
   resultActionsBar.classList.add("hidden");
   clearResultCenterBg();
   resultShowsRigged = false;
-  // Keep a clickable “rigged” badge if Rig it is armed (re-open secret menu)
-  setResultRiggedVisible(isRigItActive());
+  // Keep a clickable “rigged” badge if Rig / Reverse is armed (re-open secret menu)
+  setResultRiggedVisible(isRigItActive() || isReverseRigActive());
 }
 
 /** Whether the open win screen should keep showing “rigged” */
@@ -3401,7 +3447,8 @@ function showResult(section, opts = {}) {
   // Always dock Hide / Continue at the bottom (Remove optional)
   updateWinnerRemoveButton();
   resultActionsBar.classList.remove("hidden");
-  resultShowsRigged = !!opts.rigged || isRigItActive();
+  resultShowsRigged =
+    !!opts.rigged || isRigItActive() || isReverseRigActive();
   setResultRiggedVisible(resultShowsRigged);
 }
 
@@ -3428,6 +3475,67 @@ function fillSecretSectionSelect() {
   }
 }
 
+function fillSecretReverseSelects() {
+  const sec = ensureSecretState();
+  const secSel = $("#secret-reverse-section");
+  if (secSel) {
+    const opts = state.sections
+      .map((s) => {
+        const on = isSectionActiveOnWheel(state, s);
+        const mark = on ? "" : " (off wheel)";
+        return `<option value="${s.id}">${escapeHtml(s.label || "Untitled")}${mark}</option>`;
+      })
+      .join("");
+    secSel.innerHTML = opts || `<option value="">No sections</option>`;
+    if (
+      sec.reverseTargetSectionId &&
+      state.sections.some((s) => s.id === sec.reverseTargetSectionId)
+    ) {
+      secSel.value = sec.reverseTargetSectionId;
+    } else if (state.sections[0]) {
+      secSel.value = state.sections[0].id;
+      sec.reverseTargetSectionId = state.sections[0].id;
+    }
+  }
+  const grpSel = $("#secret-reverse-group");
+  if (grpSel) {
+    const opts = state.groups
+      .map(
+        (g) =>
+          `<option value="${g.id}">${escapeHtml(g.name || "Group")}${
+            g.active === false ? " (inactive)" : ""
+          }</option>`
+      )
+      .join("");
+    grpSel.innerHTML = opts || `<option value="">No groups</option>`;
+    if (
+      sec.reverseTargetGroupId &&
+      state.groups.some((g) => g.id === sec.reverseTargetGroupId)
+    ) {
+      grpSel.value = sec.reverseTargetGroupId;
+    } else if (state.groups[0]) {
+      grpSel.value = state.groups[0].id;
+      sec.reverseTargetGroupId = state.groups[0].id;
+    }
+  }
+  updateSecretReverseTargetFields();
+}
+
+function updateSecretReverseTargetFields() {
+  const kind =
+    $("#secret-reverse-target-kind")?.value === "group" ? "group" : "section";
+  const secField = $("#secret-reverse-section-field");
+  const grpField = $("#secret-reverse-group-field");
+  if (secField) {
+    if (kind === "section") secField.removeAttribute("hidden");
+    else secField.setAttribute("hidden", "");
+  }
+  if (grpField) {
+    if (kind === "group") grpField.removeAttribute("hidden");
+    else grpField.setAttribute("hidden", "");
+  }
+}
+
 function updateSecretTabVisibility() {
   const unlocked = !!ensureSecretState().unlocked;
   const btn = $("#tab-btn-secret");
@@ -3451,8 +3559,10 @@ function unlockSecretTab(switchTo = true) {
   persist();
   updateSecretTabVisibility();
   fillSecretSectionSelect();
+  fillSecretReverseSelects();
   if ($("#secret-rig-it")) $("#secret-rig-it").checked = !!sec.rigIt;
   bindSecretDivertSfxUI();
+  bindSecretReverseUI();
   if (switchTo) {
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     document.querySelectorAll(".tab-panel").forEach((p) => {
@@ -3478,10 +3588,27 @@ function saveSecretPanel() {
   if (Number.isFinite(vol)) {
     sec.divertSfxVolume = Math.min(1, Math.max(0, vol));
   }
-  // divertSfxData / Name set by file input handlers
+  // Reverse rig
+  sec.reverseRigIt = $("#secret-reverse-rig-it")?.checked === true;
+  sec.reverseTargetKind =
+    $("#secret-reverse-target-kind")?.value === "group" ? "group" : "section";
+  sec.reverseTargetSectionId = $("#secret-reverse-section")?.value || null;
+  sec.reverseTargetGroupId = $("#secret-reverse-group")?.value || null;
+  let revSpeed = Math.round(Number($("#secret-reverse-slide-speed")?.value) || 2);
+  if (!Number.isFinite(revSpeed)) revSpeed = 2;
+  sec.reverseSlideSpeed = Math.min(10, Math.max(1, revSpeed));
+  const revVol = Number($("#secret-reverse-slide-sfx-volume")?.value);
+  if (Number.isFinite(revVol)) {
+    sec.reverseSlideSfxVolume = Math.min(1, Math.max(0, revVol));
+  }
+  // divert / reverse SFX data+name set by file input handlers
   persist();
   const resultOpen = !$("#result-actions-bar")?.classList.contains("hidden");
-  setResultRiggedVisible(isRigItActive() || (resultOpen && resultShowsRigged));
+  setResultRiggedVisible(
+    isRigItActive() ||
+      isReverseRigActive() ||
+      (resultOpen && resultShowsRigged)
+  );
 }
 
 /** Map divert speed 1–10 → glide duration in ms (1=slow, 10=fast). */
@@ -3492,6 +3619,19 @@ function getDivertSteerMs() {
   speed = Math.min(10, Math.max(1, Math.round(speed)));
   // 1 → 6.0s (very slow), 5 → ~2.7s, 10 → 0.4s
   const secDur = 6.0 - ((speed - 1) / 9) * 5.6;
+  return Math.round(secDur * 1000);
+}
+
+/**
+ * Reverse slide-off speed 1–10 → ms (defaults slower than forward divert).
+ * 1 → 9.0s, 2 → ~8.1s, 10 → 1.2s
+ */
+function getReverseSteerMs() {
+  const sec = ensureSecretState();
+  let speed = Number(sec.reverseSlideSpeed);
+  if (!Number.isFinite(speed)) speed = 2;
+  speed = Math.min(10, Math.max(1, Math.round(speed)));
+  const secDur = 9.0 - ((speed - 1) / 9) * 7.8;
   return Math.round(secDur * 1000);
 }
 
@@ -3525,6 +3665,39 @@ function bindSecretDivertSfxUI() {
   }
   if ($("#secret-mute-spin-ticks-rig")) {
     $("#secret-mute-spin-ticks-rig").checked = !!sec.muteSpinTicksOnRig;
+  }
+}
+
+function bindSecretReverseUI() {
+  const sec = ensureSecretState();
+  if ($("#secret-reverse-rig-it")) {
+    $("#secret-reverse-rig-it").checked = !!sec.reverseRigIt;
+  }
+  if ($("#secret-reverse-target-kind")) {
+    $("#secret-reverse-target-kind").value =
+      sec.reverseTargetKind === "group" ? "group" : "section";
+  }
+  fillSecretReverseSelects();
+  let speed = Number(sec.reverseSlideSpeed);
+  if (!Number.isFinite(speed)) speed = 2;
+  speed = Math.min(10, Math.max(1, Math.round(speed)));
+  if ($("#secret-reverse-slide-speed")) {
+    $("#secret-reverse-slide-speed").value = String(speed);
+  }
+  if ($("#secret-reverse-slide-speed-label")) {
+    $("#secret-reverse-slide-speed-label").textContent = String(speed);
+  }
+  const nameEl = $("#secret-reverse-slide-sfx-name");
+  if (nameEl) nameEl.textContent = reverseSlideSfxDisplayName();
+  const vol = Math.min(
+    1,
+    Math.max(0, Number(sec.reverseSlideSfxVolume) || 0.4)
+  );
+  if ($("#secret-reverse-slide-sfx-volume")) {
+    $("#secret-reverse-slide-sfx-volume").value = String(vol);
+  }
+  if ($("#secret-reverse-slide-sfx-volume-label")) {
+    $("#secret-reverse-slide-sfx-volume-label").textContent = `${Math.round(vol * 100)}%`;
   }
 }
 
@@ -3568,6 +3741,34 @@ function divertSfxDisplayName() {
   return `${DEFAULT_DIVERT_SFX.name} (default)`;
 }
 
+function reverseSlideSfxDisplayName() {
+  const sec = ensureSecretState();
+  if (sec.reverseSlideSfxData && sec.reverseSlideSfxName) {
+    return sec.reverseSlideSfxName;
+  }
+  if (sec.reverseSlideSfxData) return "Custom slide audio";
+  return `${DEFAULT_DIVERT_SFX.name} (default)`;
+}
+
+/**
+ * Load reverse slide-off SFX (custom or same bundled default as divert).
+ * @returns {Promise<boolean>}
+ */
+async function ensureReverseSlideSfxBuffer(bufferKey = "rig_reverse_slide") {
+  const sec = ensureSecretState();
+  try {
+    if (sec.reverseSlideSfxData) {
+      await audio.loadDataUrl(bufferKey, sec.reverseSlideSfxData);
+      return true;
+    }
+    await audio.loadUrl(bufferKey, DEFAULT_DIVERT_SFX.url);
+    return true;
+  } catch (err) {
+    console.warn("Reverse slide SFX load failed:", err);
+    return false;
+  }
+}
+
 function playRigDivertSfx() {
   const sec = ensureSecretState();
   if (!state.sound?.enabled) return;
@@ -3578,6 +3779,26 @@ function playRigDivertSfx() {
     play();
   } else {
     ensureDivertSfxBuffer("rig_divert")
+      .then((ok) => {
+        if (ok) play();
+      })
+      .catch(() => {});
+  }
+}
+
+function playReverseSlideSfx() {
+  const sec = ensureSecretState();
+  if (!state.sound?.enabled) return;
+  const vol = Math.min(
+    1,
+    Math.max(0, Number(sec.reverseSlideSfxVolume) || 0.4)
+  );
+  audio.ensure();
+  const play = () => audio.playDivert("rig_reverse_slide", vol);
+  if (audio.buffers.has("rig_reverse_slide")) {
+    play();
+  } else {
+    ensureReverseSlideSfxBuffer("rig_reverse_slide")
       .then((ok) => {
         if (ok) play();
       })
@@ -3624,12 +3845,27 @@ function onRigSteerStart() {
   playRigDivertSfx();
 }
 
+function onReverseSteerStart() {
+  rigDivertActive = true;
+  if (ensureSecretState().muteSpinTicksOnRig) {
+    stopSpinLoop();
+  }
+  muteMusicForDivertIfNeeded();
+  playReverseSlideSfx();
+}
+
 function getSpinRigOptions() {
   const forceId = getRigForceSectionId();
+  const avoidIds = getReverseAvoidSectionIds();
   return {
     forceSectionId: forceId,
+    avoidSectionIds: avoidIds.length ? avoidIds : null,
     steerMs: getDivertSteerMs(),
+    reverseSteerMs: getReverseSteerMs(),
     onSteerStart: forceId ? () => onRigSteerStart() : undefined,
+    onReverseSteerStart: avoidIds.length
+      ? () => onReverseSteerStart()
+      : undefined,
   };
 }
 
@@ -3749,6 +3985,77 @@ $("#secret-divert-sfx-preview")?.addEventListener("click", async () => {
   const ok = await ensureDivertSfxBuffer("preview_rig_divert");
   if (!ok || audio.isPreviewPlaying) return;
   audio.playOneShot("preview_rig_divert", vol, "land", true);
+});
+
+// --- Reverse rig it ---
+$("#secret-reverse-rig-it")?.addEventListener("change", () => {
+  saveSecretPanel();
+});
+$("#secret-reverse-target-kind")?.addEventListener("change", () => {
+  updateSecretReverseTargetFields();
+  saveSecretPanel();
+});
+$("#secret-reverse-section")?.addEventListener("change", () => {
+  saveSecretPanel();
+});
+$("#secret-reverse-group")?.addEventListener("change", () => {
+  saveSecretPanel();
+});
+$("#secret-reverse-slide-speed")?.addEventListener("input", () => {
+  let speed = Math.round(Number($("#secret-reverse-slide-speed")?.value) || 2);
+  speed = Math.min(10, Math.max(1, speed));
+  ensureSecretState().reverseSlideSpeed = speed;
+  if ($("#secret-reverse-slide-speed-label")) {
+    $("#secret-reverse-slide-speed-label").textContent = String(speed);
+  }
+  persist();
+});
+$("#secret-reverse-slide-sfx-input")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  const sec = ensureSecretState();
+  sec.reverseSlideSfxData = await fileToDataUrl(file);
+  sec.reverseSlideSfxName = file.name;
+  audio.buffers?.delete?.("rig_reverse_slide");
+  await ensureReverseSlideSfxBuffer("rig_reverse_slide");
+  bindSecretReverseUI();
+  persist();
+});
+$("#secret-reverse-slide-sfx-clear")?.addEventListener("click", async () => {
+  const sec = ensureSecretState();
+  sec.reverseSlideSfxData = null;
+  sec.reverseSlideSfxName = null;
+  audio.buffers?.delete?.("rig_reverse_slide");
+  await ensureReverseSlideSfxBuffer("rig_reverse_slide");
+  bindSecretReverseUI();
+  persist();
+});
+$("#secret-reverse-slide-sfx-volume")?.addEventListener("input", () => {
+  const vol = Math.min(
+    1,
+    Math.max(0, Number($("#secret-reverse-slide-sfx-volume")?.value) || 0)
+  );
+  if ($("#secret-reverse-slide-sfx-volume-label")) {
+    $("#secret-reverse-slide-sfx-volume-label").textContent = `${Math.round(vol * 100)}%`;
+  }
+  ensureSecretState().reverseSlideSfxVolume = vol;
+  persist();
+});
+$("#secret-reverse-slide-sfx-preview")?.addEventListener("click", async () => {
+  audio.ensure();
+  if (audio.isPreviewPlaying) {
+    audio.stopPreview();
+    return;
+  }
+  const sec = ensureSecretState();
+  const vol = Math.min(
+    1,
+    Math.max(0, Number(sec.reverseSlideSfxVolume) || 0.4)
+  );
+  const ok = await ensureReverseSlideSfxBuffer("preview_rig_reverse_slide");
+  if (!ok || audio.isPreviewPlaying) return;
+  audio.playOneShot("preview_rig_reverse_slide", vol, "land", true);
 });
 
 async function hideWinnerPart() {
@@ -4469,12 +4776,14 @@ function bindAll() {
   updateSecretTabVisibility();
   if (ensureSecretState().unlocked) {
     fillSecretSectionSelect();
+    fillSecretReverseSelects();
     if ($("#secret-rig-it")) {
       $("#secret-rig-it").checked = !!state.secret.rigIt;
     }
     bindSecretDivertSfxUI();
-    const sec = ensureSecretState();
+    bindSecretReverseUI();
     ensureDivertSfxBuffer("rig_divert").catch(() => {});
+    ensureReverseSlideSfxBuffer("rig_reverse_slide").catch(() => {});
   }
   updateUndoButton();
 }
