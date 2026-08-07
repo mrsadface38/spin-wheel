@@ -194,7 +194,7 @@ const wheel = new Wheel(wheelCanvas, bgCanvas, {
     const vol =
       raw.landSfxVolume != null && Number.isFinite(Number(raw.landSfxVolume))
         ? Math.min(1, Math.max(0, Number(raw.landSfxVolume)))
-        : state.sound.landVolume ?? 0.7;
+        : state.sound.landVolume ?? 0.4;
     if (eff.landSfxData) {
       // Group buffer when land SFX is inherited/forced from a group profile
       const sfxFromGroup =
@@ -2264,7 +2264,7 @@ function openSectionModal(section) {
     const vol =
       section?.landSfxVolume != null && Number.isFinite(Number(section.landSfxVolume))
         ? Number(section.landSfxVolume)
-        : state.sound.landVolume ?? 0.7;
+        : state.sound.landVolume ?? 0.4;
     const clamped = Math.min(1, Math.max(0, vol));
     if ($("#section-sfx-volume")) $("#section-sfx-volume").value = String(clamped);
     if ($("#section-sfx-volume-label")) {
@@ -2406,7 +2406,7 @@ $("#section-sfx-clear").addEventListener("click", () => {
 
 function getSectionSfxVolumeFromForm() {
   const v = Number($("#section-sfx-volume")?.value);
-  if (!Number.isFinite(v)) return state.sound.landVolume ?? 0.7;
+  if (!Number.isFinite(v)) return state.sound.landVolume ?? 0.4;
   return Math.min(1, Math.max(0, v));
 }
 
@@ -2642,7 +2642,7 @@ $("#bulk-form").addEventListener("submit", async (e) => {
       imageTileOffsetY: 0,
       landSfxData: null,
       landSfxName: null,
-      landSfxVolume: state.sound.landVolume ?? 0.7,
+      landSfxVolume: state.sound.landVolume ?? 0.4,
     });
   }
   persist();
@@ -2919,7 +2919,7 @@ function bindSecretDivertSfxUI() {
   }
   const vol = Math.min(
     1,
-    Math.max(0, Number(sec.divertSfxVolume) || 0.7)
+    Math.max(0, Number(sec.divertSfxVolume) || 0.4)
   );
   if ($("#secret-divert-sfx-volume")) {
     $("#secret-divert-sfx-volume").value = String(vol);
@@ -2987,7 +2987,7 @@ function divertSfxDisplayName() {
 function playRigDivertSfx() {
   const sec = ensureSecretState();
   if (!state.sound?.enabled) return;
-  const vol = Math.min(1, Math.max(0, Number(sec.divertSfxVolume) || 0.7));
+  const vol = Math.min(1, Math.max(0, Number(sec.divertSfxVolume) || 0.4));
   audio.ensure();
   const play = () => audio.playDivert("rig_divert", vol);
   if (audio.buffers.has("rig_divert")) {
@@ -3161,7 +3161,7 @@ $("#secret-divert-sfx-preview")?.addEventListener("click", async () => {
     return;
   }
   const sec = ensureSecretState();
-  const vol = Math.min(1, Math.max(0, Number(sec.divertSfxVolume) || 0.7));
+  const vol = Math.min(1, Math.max(0, Number(sec.divertSfxVolume) || 0.4));
   const ok = await ensureDivertSfxBuffer("preview_rig_divert");
   if (!ok || audio.isPreviewPlaying) return;
   audio.playOneShot("preview_rig_divert", vol, "land", true);
@@ -3311,8 +3311,8 @@ function volumePct(v) {
 function bindSound() {
   $("#chk-sound").checked = state.sound.enabled !== false;
   $("#spin-sfx-mode").value = state.sound.spinMode || "tick";
-  const spinVol = state.sound.spinVolume ?? 0.45;
-  const landVol = state.sound.landVolume ?? 0.7;
+  const spinVol = state.sound.spinVolume ?? 0.4;
+  const landVol = state.sound.landVolume ?? 0.4;
   const bgmVol = state.sound.bgmVolume ?? 0.4;
   $("#spin-sfx-volume").value = spinVol;
   $("#land-sfx-volume").value = landVol;

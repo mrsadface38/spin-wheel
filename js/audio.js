@@ -98,7 +98,7 @@ export class AudioManager {
    * @param {number} pitchScale higher when spinning faster
    * @param {boolean} [asPreview]
    */
-  playTick(volume = 0.45, pitchScale = 1, asPreview = false) {
+  playTick(volume = 0.4, pitchScale = 1, asPreview = false) {
     const ctx = this.ensure();
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
@@ -123,7 +123,7 @@ export class AudioManager {
    * @param {number} volume
    * @param {boolean} [asPreview]
    */
-  playLandDefault(volume = 0.7, asPreview = false) {
+  playLandDefault(volume = 0.4, asPreview = false) {
     const ctx = this.ensure();
     const t = ctx.currentTime;
     const notes = [523.25, 659.25, 783.99];
@@ -282,7 +282,7 @@ export class AudioManager {
    * @param {string} key loaded buffer key (e.g. "rig_divert")
    * @param {number} volume 0..1
    */
-  playDivert(key, volume = 0.7) {
+  playDivert(key, volume = 0.4) {
     this.stopDivert();
     const buf = key ? this.buffers.get(key) : null;
     if (!buf) return false;

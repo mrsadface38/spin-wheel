@@ -124,7 +124,7 @@ export function normalizeHexColor(c, fallback = "#ffffff") {
 }
 
 /** Per-section land SFX volume 0–1 */
-export function normalizeLandSfxVolume(n, fallback = 0.7) {
+export function normalizeLandSfxVolume(n, fallback = 0.4) {
   const v = Number(n);
   if (!Number.isFinite(v)) return fallback;
   return Math.min(1, Math.max(0, v));
@@ -274,10 +274,10 @@ export function defaultState() {
       spinMode: "tick",
       spinSfxData: null,
       spinSfxName: null,
-      spinVolume: 0.45,
+      spinVolume: 0.4,
       landSfxData: null,
       landSfxName: null,
-      landVolume: 0.7,
+      landVolume: 0.4,
       bgmData: null,
       bgmName: null,
       bgmVolume: 0.4,
@@ -294,7 +294,7 @@ export function defaultState() {
       /** SFX when the wheel does the last-moment divert to the rigged section */
       divertSfxData: null,
       divertSfxName: null,
-      divertSfxVolume: 0.7,
+      divertSfxVolume: 0.4,
       /** 1 = slowest divert, 10 = fastest (maps to glide duration) */
       divertSpeed: 5,
       /** Mute BGM during the rig divert move */
@@ -367,7 +367,7 @@ function migrate(data) {
         data.secret?.divertSfxVolume != null &&
         Number.isFinite(Number(data.secret.divertSfxVolume))
           ? Math.min(1, Math.max(0, Number(data.secret.divertSfxVolume)))
-          : 0.7,
+          : 0.4,
       divertSpeed:
         data.secret?.divertSpeed != null &&
         Number.isFinite(Number(data.secret.divertSpeed))
@@ -613,7 +613,7 @@ function normalizeSection(s, groups, groupIdsSet) {
     ...profile,
     landSfxVolume: normalizeLandSfxVolume(
       s.landSfxVolume,
-      0.7
+      0.4
     ),
   };
 }
