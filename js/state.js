@@ -303,7 +303,7 @@ export function defaultState() {
       enabled: true,
       spinMode: "tick",
       /** "mixkit" | "synth" | "custom" — which tick sound to use */
-      spinTickPreset: "mixkit",
+      spinTickPreset: "synth",
       spinSfxData: null,
       spinSfxName: null,
       spinVolume: 0.4,
@@ -389,11 +389,11 @@ function migrate(data) {
   const soundIn = data.sound && typeof data.sound === "object" ? data.sound : {};
   let spinTickPreset = soundIn.spinTickPreset;
   if (spinTickPreset !== "mixkit" && spinTickPreset !== "synth" && spinTickPreset !== "custom") {
-    // Legacy: custom file present → custom; else new default mixkit
-    spinTickPreset = soundIn.spinSfxData ? "custom" : "mixkit";
+    // Legacy: custom file present → custom; else built-in beep
+    spinTickPreset = soundIn.spinSfxData ? "custom" : "synth";
   }
   if (spinTickPreset === "custom" && !soundIn.spinSfxData) {
-    spinTickPreset = "mixkit";
+    spinTickPreset = "synth";
   }
 
   return {

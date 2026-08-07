@@ -360,18 +360,18 @@ const DEFAULT_SPIN_TICK = {
 function getSpinTickPreset() {
   const p = state.sound?.spinTickPreset;
   if (p === "mixkit" || p === "synth" || p === "custom") return p;
-  return state.sound?.spinSfxData ? "custom" : "mixkit";
+  return state.sound?.spinSfxData ? "custom" : "synth";
 }
 
 function spinSfxDisplayName() {
   const preset = getSpinTickPreset();
-  if (preset === "synth") return "Built-in beep (original)";
+  if (preset === "synth") return "Built-in beep (default)";
   if (preset === "custom") {
     if (state.sound?.spinSfxName) return state.sound.spinSfxName;
     if (state.sound?.spinSfxData) return "Custom tick";
     return "Custom file (none chosen)";
   }
-  return `${DEFAULT_SPIN_TICK.name} (default)`;
+  return DEFAULT_SPIN_TICK.name;
 }
 
 /**
@@ -3841,7 +3841,7 @@ $("#spin-sfx-input").addEventListener("change", async (e) => {
   if (!file) {
     // Cancelled custom pick — fall back if no file stored
     if (!state.sound.spinSfxData) {
-      state.sound.spinTickPreset = "mixkit";
+      state.sound.spinTickPreset = "synth";
       updateSpinTickPresetUI();
       persist();
     }
@@ -3859,8 +3859,8 @@ $("#spin-sfx-input").addEventListener("change", async (e) => {
 
 $("#spin-sfx-clear").addEventListener("click", async () => {
   checkpoint();
-  // Clear custom file and switch back to Mixkit default
-  state.sound.spinTickPreset = "mixkit";
+  // Clear custom file and switch back to built-in beep
+  state.sound.spinTickPreset = "synth";
   state.sound.spinSfxData = null;
   state.sound.spinSfxName = null;
   audio.buffers.delete("spin");
