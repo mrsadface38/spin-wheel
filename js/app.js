@@ -4561,7 +4561,7 @@ $("#secret-reverse-slide-sfx-preset")?.addEventListener("change", async () => {
   if (v === "default") v = "goofy-slip";
   if (!v || !REVERSE_SLIDE_PRESET_IDS.has(v)) v = "goofy-slip";
   sec.reverseSlideSfxPreset = v;
-  // Write through immediately so spin / preview never read a stale preset
+  // Write through immediately so spin / manual preview read the new preset
   persist();
   if (v === "custom" && !sec.reverseSlideSfxData) {
     updateReverseSlideSfxPresetUI();
@@ -4569,11 +4569,13 @@ $("#secret-reverse-slide-sfx-preset")?.addEventListener("change", async () => {
     return;
   }
   updateReverseSlideSfxPresetUI();
-  // Force reload + auto-preview so changing the dropdown is audible
+  // Preload the chosen buffer (no auto-preview — use Preview button)
   try {
-    await previewReverseSlideSfxNow();
+    if (v !== "synth") {
+      await ensureReverseSlideSfxBuffer(reverseSlideBufferKey(v), true);
+    }
   } catch (err) {
-    console.warn("Reverse slide preview failed:", err);
+    console.warn("Reverse slide load failed:", err);
   }
 });
 $("#secret-reverse-slide-sfx-input")?.addEventListener("change", async (e) => {
@@ -4595,7 +4597,6 @@ $("#secret-reverse-slide-sfx-input")?.addEventListener("change", async (e) => {
   await ensureReverseSlideSfxBuffer(reverseSlideBufferKey("custom"), true);
   updateReverseSlideSfxPresetUI();
   persist();
-  await previewReverseSlideSfxNow();
 });
 $("#secret-reverse-slide-sfx-clear")?.addEventListener("click", async () => {
   const sec = ensureSecretState();
@@ -4605,7 +4606,11 @@ $("#secret-reverse-slide-sfx-clear")?.addEventListener("click", async () => {
   audio.buffers.delete(reverseSlideBufferKey("custom"));
   updateReverseSlideSfxPresetUI();
   persist();
-  await previewReverseSlideSfxNow();
+  try {
+    await ensureReverseSlideSfxBuffer(reverseSlideBufferKey("goofy-slip"), true);
+  } catch {
+    /* ignore */
+  }
 });
 $("#secret-reverse-slide-sfx-volume")?.addEventListener("input", () => {
   const vol = Math.min(
