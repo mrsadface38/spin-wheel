@@ -179,6 +179,15 @@ body.focus-mode .stage-panel {
   border-radius: 14px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
   will-change: transform, opacity, filter;
+  background: transparent;
+}
+/* Transparent WebM / GIF / WebP / APNG — no dark scrim or hard frame */
+#win-effect-media-layer.win-fx-transparent {
+  background: transparent;
+}
+#win-effect-media-layer.win-fx-transparent .win-fx-media {
+  box-shadow: none;
+  border-radius: 0;
 }
 
 /* --- Entrance (layer backdrop + media) --- */

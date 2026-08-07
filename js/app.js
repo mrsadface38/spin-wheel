@@ -4780,17 +4780,93 @@ const WIN_FX_EXITS = [
 ];
 
 /**
- * Full-screen custom media (image / GIF / video) with a random
- * entrance → hold → exit animation set each time.
- * @param {string} dataUrl
+ * Formats good for transparent (or animated) after-win overlays.
+ * WebM alpha, GIF, WebP, APNG/PNG; MP4 also allowed (opaque).
  */
-function playCustomWinMedia(dataUrl) {
+const WIN_EFFECT_ACCEPT =
+  "video/webm,.webm,image/gif,.gif,image/webp,.webp,image/png,.png,image/apng,.apng,video/mp4,.mp4,image/*,video/*";
+
+/**
+ * @param {File} file
+ * @returns {boolean}
+ */
+function isAllowedWinEffectFile(file) {
+  if (!file) return false;
+  const name = (file.name || "").toLowerCase();
+  const type = (file.type || "").toLowerCase();
+  if (
+    type.startsWith("image/") ||
+    type.startsWith("video/") ||
+    type === "image/apng"
+  ) {
+    return true;
+  }
+  return /\.(webm|gif|webp|png|apng|mp4|mov|m4v|webm)$/i.test(name);
+}
+
+/**
+ * Prefer <video> for real video types (incl. transparent WebM).
+ * GIF / WebP / APNG / PNG use <img> so animation + alpha work in browsers.
+ * @param {string} dataUrl
+ * @param {string} [fileName]
+ */
+function isWinEffectVideoMime(dataUrl, fileName = "") {
+  if (/^data:video\//i.test(dataUrl)) return true;
+  // Some browsers store WebM oddly; name fallback
+  if (/\.webm$/i.test(fileName) && !/^data:image\//i.test(dataUrl)) return true;
+  if (/\.mp4$/i.test(fileName) && !/^data:image\//i.test(dataUrl)) return true;
+  return false;
+}
+
+/**
+ * Formats that typically carry transparency (or 1-bit GIF alpha).
+ * @param {string} dataUrl
+ * @param {string} [fileName]
+ */
+function winEffectLikelyTransparent(dataUrl, fileName = "") {
+  const n = (fileName || "").toLowerCase();
+  if (/^data:video\/webm/i.test(dataUrl) || n.endsWith(".webm")) return true;
+  if (/^data:image\/(gif|webp|png|apng)/i.test(dataUrl)) return true;
+  if (/\.(gif|webp|png|apng)$/i.test(n)) return true;
+  return false;
+}
+
+/**
+ * Load a user file as a custom after-win effect (shared by Look / section / group).
+ * @param {File} file
+ * @returns {Promise<{ data: string, name: string }>}
+ */
+async function loadWinEffectFile(file) {
+  if (!isAllowedWinEffectFile(file)) {
+    throw new Error(
+      "Use WebM (best for transparency), GIF, WebP, APNG/PNG, or MP4."
+    );
+  }
+  // Soft size hint — large files bloat localStorage
+  if (file.size > 12 * 1024 * 1024) {
+    console.warn("Win effect file is large:", file.name, file.size);
+  }
+  const data = await fileToDataUrl(file);
+  return { data, name: file.name || "Custom media" };
+}
+
+/**
+ * Full-screen custom media with random enter/hold/exit.
+ * Supports transparent WebM, GIF, WebP, APNG/PNG, and MP4.
+ * @param {string} dataUrl
+ * @param {{ fileName?: string }} [opts]
+ */
+function playCustomWinMedia(dataUrl, opts = {}) {
   if (!dataUrl) return;
   try {
     document.getElementById("win-effect-media-layer")?.remove();
     const layer = document.createElement("div");
     layer.id = "win-effect-media-layer";
     layer.setAttribute("aria-hidden", "true");
+
+    const fileName = opts.fileName || "";
+    const transparent = winEffectLikelyTransparent(dataUrl, fileName);
+    if (transparent) layer.classList.add("win-fx-transparent");
 
     const enter =
       WIN_FX_ENTERS[Math.floor(Math.random() * WIN_FX_ENTERS.length)];
@@ -4800,28 +4876,32 @@ function playCustomWinMedia(dataUrl) {
       WIN_FX_EXITS[Math.floor(Math.random() * WIN_FX_EXITS.length)];
     layer.classList.add(enter, hold);
 
-    const isVideo = /^data:video\//i.test(dataUrl);
+    const useVideo = isWinEffectVideoMime(dataUrl, fileName);
     /** @type {HTMLImageElement|HTMLVideoElement} */
     let el;
-    if (isVideo) {
+    if (useVideo) {
       const v = document.createElement("video");
       v.src = dataUrl;
       v.autoplay = true;
       v.muted = true;
       v.playsInline = true;
       v.loop = true;
+      // Help WebM alpha composite over the page
+      v.style.background = "transparent";
       el = v;
+      v.play?.().catch(() => {});
     } else {
+      // GIF / WebP / APNG / PNG — <img> preserves animation + alpha
       const img = document.createElement("img");
       img.src = dataUrl;
       img.alt = "";
+      img.decoding = "async";
       el = img;
     }
     el.classList.add("win-fx-media");
     layer.appendChild(el);
     document.body.appendChild(layer);
 
-    // After entrance, keep hold motion; then exit with a different animation
     const holdMs = 2800 + Math.floor(Math.random() * 900);
     const exitMs = 520;
     const remove = () => {
