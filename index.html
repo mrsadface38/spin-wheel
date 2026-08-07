@@ -303,8 +303,9 @@
             </label>
             <label class="field">
               <span>Auto-dismiss result</span>
-              <select id="auto-dismiss-sec" title="Automatically close the win screen after a delay">
-                <option value="0">Off</option>
+              <select id="auto-dismiss-sec" title="How long to show the win screen, or skip it entirely">
+                <option value="0">Off (show until Continue)</option>
+                <option value="-1">Don't show results</option>
                 <option value="3">3 seconds</option>
                 <option value="5">5 seconds</option>
                 <option value="8">8 seconds</option>
@@ -312,7 +313,7 @@
                 <option value="15">15 seconds</option>
                 <option value="30">30 seconds</option>
               </select>
-              <small>When on, Continue is still available; auto-dismiss also runs eliminate-after-win.</small>
+              <small>Don't show results skips the win screen (history, confetti, and eliminate-after-win still run). Timed options auto-close Continue for you.</small>
             </label>
           </div>
 

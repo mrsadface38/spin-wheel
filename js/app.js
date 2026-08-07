@@ -3991,9 +3991,9 @@ function bindLook() {
     $("#chk-keyboard-spin").checked = state.look.keyboardSpin !== false;
   }
   if ($("#auto-dismiss-sec")) {
-    const ad = Number(state.look.autoDismissSec) || 0;
-    const allowed = ["0", "3", "5", "8", "10", "15", "30"];
-    const v = String(ad);
+    const ad = Number(state.look.autoDismissSec);
+    const allowed = ["-1", "0", "3", "5", "8", "10", "15", "30"];
+    const v = String(Number.isFinite(ad) ? ad : 0);
     $("#auto-dismiss-sec").value = allowed.includes(v) ? v : "0";
   }
   {

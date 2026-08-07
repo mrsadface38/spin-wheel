@@ -313,8 +313,9 @@ export function defaultState() {
       /** Space / Enter to spin when not typing (default on). */
       keyboardSpin: true,
       /**
-       * Auto-dismiss win screen after N seconds (0 = off).
-       * Clamped 0–120 in migrate / UI.
+       * Auto-dismiss win screen after N seconds.
+       * 0 = off (show until Continue), -1 = never show result overlay,
+       * positive = auto-close after that many seconds.
        */
       autoDismissSec: 0,
       // Section list weight range slider (manual number field can still use decimals)
