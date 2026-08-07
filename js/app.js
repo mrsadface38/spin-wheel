@@ -171,10 +171,19 @@ const wheel = new Wheel(wheelCanvas, bgCanvas, {
     if (mode === "off" || mode === "loop") return;
     const vol = state.sound.spinVolume * (0.4 + 0.6 * speed);
     const pitch = 0.85 + speed * 0.4;
-    if (state.sound.spinSfxData && audio.buffers.has("spin")) {
+    if (audio.buffers.has("spin")) {
       audio.playOneShot("spin", vol, "tick");
     } else {
-      audio.playTick(vol, pitch);
+      // Load default/custom async; soft synth only as emergency fallback
+      ensureSpinSfxBuffer()
+        .then((ok) => {
+          if (ok && audio.buffers.has("spin")) {
+            audio.playOneShot("spin", vol, "tick");
+          } else {
+            audio.playTick(vol, pitch);
+          }
+        })
+        .catch(() => audio.playTick(vol, pitch));
     }
   },
   onLand: (section) => {
@@ -336,6 +345,35 @@ const DEFAULT_BGM = {
   url: "assets/music/bgm-default.mp3",
   name: "ANIMAL WELL — 01 ANIMAL WELL",
 };
+
+/** Bundled default spin tick when no custom tick is uploaded. */
+const DEFAULT_SPIN_TICK = {
+  url: "assets/sounds/tick-default.wav",
+  name: "mixkit-short-bass-hit-2299.wav",
+};
+
+function spinSfxDisplayName() {
+  if (state.sound?.spinSfxData && state.sound.spinSfxName) {
+    return state.sound.spinSfxName;
+  }
+  if (state.sound?.spinSfxData) return "Custom tick";
+  return `${DEFAULT_SPIN_TICK.name} (default)`;
+}
+
+/** Load custom spin SFX or the bundled default tick. */
+async function ensureSpinSfxBuffer() {
+  try {
+    if (state.sound?.spinSfxData) {
+      await audio.loadDataUrl("spin", state.sound.spinSfxData);
+      return true;
+    }
+    await audio.loadUrl("spin", DEFAULT_SPIN_TICK.url);
+    return true;
+  } catch (err) {
+    console.warn("Spin SFX load failed:", err);
+    return false;
+  }
+}
 
 function bgmDisplayName() {
   if (state.sound?.bgmData && state.sound.bgmName) return state.sound.bgmName;
