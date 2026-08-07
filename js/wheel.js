@@ -786,6 +786,34 @@ export class Wheel {
   }
 
   /**
+   * Weighted random slice index. When excludeId is set and at least one other
+   * slice exists, that section can never be the natural pre-divert land.
+   * @param {Array<{section: {id: string, weight?: number}}>} slices
+   * @param {string|null} [excludeId]
+   * @returns {number}
+   */
+  _pickNaturalWinnerIndex(slices, excludeId = null) {
+    if (!slices.length) return 0;
+    const pool =
+      excludeId && slices.length > 1
+        ? slices
+            .map((sl, i) => ({ sl, i }))
+            .filter(({ sl }) => sl.section.id !== excludeId)
+        : slices.map((sl, i) => ({ sl, i }));
+    if (!pool.length) return 0;
+    let total = 0;
+    for (const { sl } of pool) {
+      total += Math.max(0.1, sl.section.weight || 1);
+    }
+    let r = Math.random() * total;
+    for (const { sl, i } of pool) {
+      r -= Math.max(0.1, sl.section.weight || 1);
+      if (r <= 0) return i;
+    }
+    return pool[pool.length - 1].i;
+  }
+
+  /**
    * Rotation that lands the pointer on a section.
    * @param {string} sectionId
    * @param {number} [fromRot]
@@ -860,18 +888,11 @@ export class Wheel {
     // Ensure media is laid out once before we stop reflowing it
     this.draw({ spinFrame: false });
 
-    // Always pick a *natural* winner first (rig steers only in the last 0.1s)
+    // Natural winner first (rig steers only in the last 0.1s).
+    // When rigging, never aim the natural land at the rigged section so the
+    // divert is always a real move onto it.
     const forceId = opts.forceSectionId || null;
-    const total = this.totalWeight();
-    let r = Math.random() * total;
-    let winnerIndex = 0;
-    for (let i = 0; i < slices.length; i++) {
-      r -= Math.max(0.1, slices[i].section.weight || 1);
-      if (r <= 0) {
-        winnerIndex = i;
-        break;
-      }
-    }
+    const winnerIndex = this._pickNaturalWinnerIndex(slices, forceId);
     const winnerSlice = slices[winnerIndex];
     const pad = winnerSlice.span * 0.15;
     const landLocal =
@@ -1275,20 +1296,31 @@ export class Wheel {
         last = now;
 
         if (canRig && !steering && Math.abs(v) <= vDivert) {
-          // ~0.1s before natural stop — slowly move to rigged section
-          // (shortest path: reverse if closer)
-          steering = true;
-          steerStart = now;
-          steerFrom = this.rotation;
-          steerTarget = this.targetRotationForSection(
-            forceId,
-            steerFrom,
-            "shortest"
-          );
-          try {
-            opts.onSteerStart?.();
-          } catch {
-            /* ignore */
+          // Must not "land" on the rigged section before divert — kick past it.
+          const under = this.sectionAtPointer();
+          if (
+            under &&
+            under.id === forceId &&
+            this._spinSlices.length > 1
+          ) {
+            const kick = Math.max(1.8, vDivert * 3);
+            v = (Math.sign(v) || 1) * kick;
+          } else {
+            // ~0.1s before natural stop — slowly move to rigged section
+            // (shortest path: reverse if closer)
+            steering = true;
+            steerStart = now;
+            steerFrom = this.rotation;
+            steerTarget = this.targetRotationForSection(
+              forceId,
+              steerFrom,
+              "shortest"
+            );
+            try {
+              opts.onSteerStart?.();
+            } catch {
+              /* ignore */
+            }
           }
         }
 
@@ -1333,6 +1365,14 @@ export class Wheel {
         this.onFrame(Math.min(1, 1 - Math.abs(v) / 50));
 
         if (Math.abs(v) > stopSpeed) {
+          this._raf = requestAnimationFrame(frame);
+        } else if (
+          canRig &&
+          this._spinSlices.length > 1 &&
+          this.sectionAtPointer()?.id === forceId
+        ) {
+          // Still on rigged at full stop — kick and keep going until decoy land
+          v = (Math.sign(v) || 1) * 1.8;
           this._raf = requestAnimationFrame(frame);
         } else {
           finish(this.sectionAtPointer());
