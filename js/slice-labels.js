@@ -102,6 +102,7 @@ export function wrapLabelLinesMax(ctx, label, maxWidth, maxLines) {
  * @param {number} [opts.dpr]
  * @param {boolean} [opts.showLabels]
  * @param {boolean} [opts.asSolidDisc] single full-wheel section
+ * @param {boolean} [opts.forceRadial] always hub→rim (skip horizontal full-disc layout)
  * @param {boolean} [opts.spinFrame] skip shadow while spinning
  * @param {string} [opts.fallbackTextColor]
  */
@@ -118,8 +119,10 @@ export function drawSliceLabel(ctx, opts = {}) {
     const dpr = Math.max(0.5, Number(opts.dpr) || 1);
     const wordCount = label.split(/\s+/).filter(Boolean).length;
     const allowWrap = wordCount > 1;
+    // forceRadial: editor previews always want multi-slice style (hub → rim)
     const solid =
-      opts.asSolidDisc === true || span >= Math.PI * 2 - 1e-4;
+      !opts.forceRadial &&
+      (opts.asSolidDisc === true || span >= Math.PI * 2 - 1e-4);
     const weight = 700;
     const baseFont = Math.max(16, 48 * dpr);
     const lineGap = 1.12;

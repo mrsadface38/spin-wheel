@@ -3472,17 +3472,23 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
   if (state.look?.showLabels !== false) {
     octx.save();
     octx.translate(cx, cy);
+    // Always hub→rim (top of preview wedge), matching multi-slice wheel text —
+    // not the horizontal full-disc LTR layout.
+    const labelSpan = fullDisc
+      ? Math.max(0.35, Math.min(Math.PI * 0.9, metrics.span || Math.PI / 3))
+      : Math.max(0.05, metrics.span || 0.05);
     drawSliceLabel(octx, {
       radius,
       mid,
-      span: metrics.span,
+      span: labelSpan,
       label: draft.label,
       textColor: draft.textColor,
       fallbackTextColor: state.look?.textColor || "#fff",
       centerSize: state.look?.centerSize ?? 0.16,
       dpr,
       showLabels: true,
-      asSolidDisc: fullDisc,
+      asSolidDisc: false,
+      forceRadial: true,
       spinFrame: false,
     });
     octx.restore();
