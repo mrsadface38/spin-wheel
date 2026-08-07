@@ -447,7 +447,16 @@ function sortSectionsList(list) {
   return arr;
 }
 
+function updateSectionsCount() {
+  const el = $("#sections-count");
+  if (!el) return;
+  const n = state.sections.length;
+  el.textContent = String(n);
+  el.title = n === 1 ? "1 section" : `${n} sections`;
+}
+
 function renderSections() {
+  updateSectionsCount();
   if (!state.sections.length) {
     sectionsList.innerHTML = `<div class="empty-state">No sections yet. Add one to get started.</div>`;
     sectionSearchMeta.classList.add("hidden");

@@ -723,6 +723,47 @@ export class Wheel {
   }
 
   /**
+   * Word-wrap label to fit maxWidth; never truncates with ellipsis.
+   * @returns {string[]}
+   */
+  _wrapLabelLines(ctx, label, maxWidth) {
+    const text = String(label || "").trim();
+    if (!text) return [];
+    const words = text.split(/\s+/);
+    const lines = [];
+    let line = "";
+    for (const word of words) {
+      const trial = line ? `${line} ${word}` : word;
+      if (ctx.measureText(trial).width <= maxWidth || !line) {
+        line = trial;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+    }
+    if (line) lines.push(line);
+    // Extremely long single tokens: hard-break by measured width
+    const out = [];
+    for (const ln of lines) {
+      if (ctx.measureText(ln).width <= maxWidth) {
+        out.push(ln);
+        continue;
+      }
+      let chunk = "";
+      for (const ch of ln) {
+        const t = chunk + ch;
+        if (ctx.measureText(t).width <= maxWidth || !chunk) chunk = t;
+        else {
+          out.push(chunk);
+          chunk = ch;
+        }
+      }
+      if (chunk) out.push(chunk);
+    }
+    return out;
+  }
+
+  /**
    * @param {boolean} spinFrame lighter text (no shadow) while spinning
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
@@ -740,10 +781,45 @@ export class Wheel {
     const textR = radius * (hasImg ? 0.62 : solid ? 0.55 : 0.62);
     ctx.translate(textR, 0);
     // Labels stay fixed to the slice — no upright flip when inverted
-    const fontSize =
+
+    // Fit full label: wrap + shrink font so nothing is cut with "…"
+    const maxFont =
       Math.max(10, Math.min(solid ? 20 : 16, radius * (solid ? 0.055 : 0.045) / this._dpr)) *
       this._dpr;
-    ctx.font = `${solid ? 700 : 600} ${fontSize}px system-ui,sans-serif`;
+    const minFont = Math.max(7, 8 * this._dpr);
+    // Tangential width ≈ arc length at label radius (pad edges of wedge)
+    const arcW = solid
+      ? radius * 1.1
+      : Math.max(radius * 0.12, textR * sl.span * 0.88);
+    const maxWidth = arcW;
+    // Radial budget for multi-line stack
+    const maxHeight = solid
+      ? radius * 0.45
+      : Math.max(radius * 0.1, radius * Math.min(0.4, 0.12 + sl.span * 0.35));
+
+    const weight = solid ? 700 : 600;
+    let fontSize = maxFont;
+    let lines = [];
+    let lineH = fontSize * 1.15;
+    for (let attempt = 0; attempt < 24; attempt++) {
+      ctx.font = `${weight} ${fontSize}px system-ui,sans-serif`;
+      lines = this._wrapLabelLines(ctx, label, maxWidth);
+      lineH = fontSize * 1.15;
+      const blockH = lines.length * lineH;
+      const widest = lines.reduce(
+        (m, ln) => Math.max(m, ctx.measureText(ln).width),
+        0
+      );
+      if (
+        (blockH <= maxHeight && widest <= maxWidth + 0.5) ||
+        fontSize <= minFont + 0.01
+      ) {
+        break;
+      }
+      fontSize = Math.max(minFont, fontSize * 0.88);
+    }
+
+    ctx.font = `${weight} ${fontSize}px system-ui,sans-serif`;
     ctx.fillStyle = this.look.textColor || "#fff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -752,10 +828,12 @@ export class Wheel {
       ctx.shadowColor = "rgba(0,0,0,0.75)";
       ctx.shadowBlur = 5 * this._dpr;
     }
-    const maxChars = solid ? 22 : Math.max(6, Math.floor(sl.span * 18));
-    const text =
-      label.length > maxChars ? label.slice(0, maxChars - 1) + "…" : label;
-    ctx.fillText(text, 0, 0);
+    const blockH = lines.length * lineH;
+    let y = -blockH / 2 + lineH / 2;
+    for (const ln of lines) {
+      ctx.fillText(ln, 0, y);
+      y += lineH;
+    }
     ctx.restore();
   }
 
