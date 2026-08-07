@@ -2454,7 +2454,7 @@ function fillGroupProfileForm(group) {
     $("#group-preview-weight-mode").value = "custom";
   }
   if ($("#group-preview-custom-weight")) {
-    $("#group-preview-custom-weight").value = "100";
+    $("#group-preview-custom-weight").value = "20";
   }
   syncPreviewWeightValueControls("group-preview", 1);
   updateGroupPreviewWeightUI();
