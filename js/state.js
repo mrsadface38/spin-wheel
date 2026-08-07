@@ -272,6 +272,8 @@ export function defaultState() {
     sound: {
       enabled: true,
       spinMode: "tick",
+      /** "mixkit" | "synth" | "custom" — which tick sound to use */
+      spinTickPreset: "mixkit",
       spinSfxData: null,
       spinSfxName: null,
       spinVolume: 0.4,
@@ -349,11 +351,25 @@ function migrate(data) {
   const sections = Array.isArray(data.sections)
     ? data.sections.map((s) => normalizeSection(s, groups, groupIdsSet))
     : base.sections;
+  const soundIn = data.sound && typeof data.sound === "object" ? data.sound : {};
+  let spinTickPreset = soundIn.spinTickPreset;
+  if (spinTickPreset !== "mixkit" && spinTickPreset !== "synth" && spinTickPreset !== "custom") {
+    // Legacy: custom file present → custom; else new default mixkit
+    spinTickPreset = soundIn.spinSfxData ? "custom" : "mixkit";
+  }
+  if (spinTickPreset === "custom" && !soundIn.spinSfxData) {
+    spinTickPreset = "mixkit";
+  }
+
   return {
     groups,
     sections,
     look,
-    sound: { ...base.sound, ...(data.sound || {}) },
+    sound: {
+      ...base.sound,
+      ...soundIn,
+      spinTickPreset,
+    },
     spin,
     secret: {
       ...base.secret,

@@ -171,10 +171,14 @@ const wheel = new Wheel(wheelCanvas, bgCanvas, {
     if (mode === "off" || mode === "loop") return;
     const vol = state.sound.spinVolume * (0.4 + 0.6 * speed);
     const pitch = 0.85 + speed * 0.4;
+    const preset = getSpinTickPreset();
+    if (preset === "synth") {
+      audio.playTick(vol, pitch);
+      return;
+    }
     if (audio.buffers.has("spin")) {
       audio.playOneShot("spin", vol, "tick");
     } else {
-      // Load default/custom async; soft synth only as emergency fallback
       ensureSpinSfxBuffer()
         .then((ok) => {
           if (ok && audio.buffers.has("spin")) {
@@ -346,33 +350,63 @@ const DEFAULT_BGM = {
   name: "ANIMAL WELL — 01 ANIMAL WELL",
 };
 
-/** Bundled default spin tick when no custom tick is uploaded. */
+/** Bundled Mixkit default spin tick. */
 const DEFAULT_SPIN_TICK = {
   url: "assets/sounds/tick-default.wav",
   name: "mixkit-short-bass-hit-2299.wav",
 };
 
+/** @returns {"mixkit"|"synth"|"custom"} */
+function getSpinTickPreset() {
+  const p = state.sound?.spinTickPreset;
+  if (p === "mixkit" || p === "synth" || p === "custom") return p;
+  return state.sound?.spinSfxData ? "custom" : "mixkit";
+}
+
 function spinSfxDisplayName() {
-  if (state.sound?.spinSfxData && state.sound.spinSfxName) {
-    return state.sound.spinSfxName;
+  const preset = getSpinTickPreset();
+  if (preset === "synth") return "Built-in beep (original)";
+  if (preset === "custom") {
+    if (state.sound?.spinSfxName) return state.sound.spinSfxName;
+    if (state.sound?.spinSfxData) return "Custom tick";
+    return "Custom file (none chosen)";
   }
-  if (state.sound?.spinSfxData) return "Custom tick";
   return `${DEFAULT_SPIN_TICK.name} (default)`;
 }
 
-/** Load custom spin SFX or the bundled default tick. */
+/**
+ * Load spin buffer for mixkit/custom. Synth has no buffer (uses playTick).
+ * @returns {Promise<boolean>} true if a sample buffer is ready
+ */
 async function ensureSpinSfxBuffer() {
+  const preset = getSpinTickPreset();
   try {
-    if (state.sound?.spinSfxData) {
+    if (preset === "synth") {
+      audio.buffers.delete("spin");
+      return false;
+    }
+    if (preset === "custom" && state.sound?.spinSfxData) {
       await audio.loadDataUrl("spin", state.sound.spinSfxData);
       return true;
     }
+    // mixkit (or custom without file → fall back to mixkit)
     await audio.loadUrl("spin", DEFAULT_SPIN_TICK.url);
     return true;
   } catch (err) {
     console.warn("Spin SFX load failed:", err);
     return false;
   }
+}
+
+function updateSpinTickPresetUI() {
+  const preset = getSpinTickPreset();
+  const sel = $("#spin-tick-preset");
+  if (sel) sel.value = preset;
+  const nameEl = $("#spin-sfx-name");
+  if (nameEl) nameEl.textContent = spinSfxDisplayName();
+  // Hide file row for synth (no sample); show for mixkit/custom
+  const row = $("#spin-sfx-custom-row");
+  if (row) row.style.display = preset === "synth" ? "none" : "";
 }
 
 function bgmDisplayName() {
@@ -397,9 +431,7 @@ async function ensureBgmBuffer() {
 }
 
 async function preloadAudio() {
-  if (state.sound.spinSfxData) {
-    await audio.loadDataUrl("spin", state.sound.spinSfxData);
-  }
+  await ensureSpinSfxBuffer();
   if (state.sound.landSfxData) {
     await audio.loadDataUrl("land", state.sound.landSfxData);
   }
@@ -3415,7 +3447,7 @@ function bindSound() {
   $("#spin-sfx-volume-label").textContent = volumePct(spinVol);
   $("#land-sfx-volume-label").textContent = volumePct(landVol);
   $("#bgm-volume-label").textContent = volumePct(bgmVol);
-  $("#spin-sfx-name").textContent = state.sound.spinSfxName || "Default (built-in tick)";
+  $("#spin-sfx-name").textContent = spinSfxDisplayName();
   $("#land-sfx-name").textContent = state.sound.landSfxName || "Default (built-in chime)";
   $("#bgm-name").textContent = bgmDisplayName();
   $("#bgm-mode").value = state.sound.bgmMode || "spin";
@@ -3550,24 +3582,30 @@ $("#spin-sfx-input").addEventListener("change", async (e) => {
   checkpoint();
   state.sound.spinSfxData = await fileToDataUrl(file);
   state.sound.spinSfxName = file.name;
-  $("#spin-sfx-name").textContent = file.name;
-  await audio.loadDataUrl("spin", state.sound.spinSfxData);
+  $("#spin-sfx-name").textContent = spinSfxDisplayName();
+  audio.buffers.delete("spin");
+  await ensureSpinSfxBuffer();
   persist();
 });
 
-$("#spin-sfx-clear").addEventListener("click", () => {
+$("#spin-sfx-clear").addEventListener("click", async () => {
   checkpoint();
+  // Restore bundled default tick
   state.sound.spinSfxData = null;
   state.sound.spinSfxName = null;
-  $("#spin-sfx-name").textContent = "Default (built-in tick)";
+  $("#spin-sfx-name").textContent = spinSfxDisplayName();
   audio.buffers.delete("spin");
+  await ensureSpinSfxBuffer();
   persist();
 });
 
-$("#spin-sfx-preview").addEventListener("click", () => {
+$("#spin-sfx-preview").addEventListener("click", async () => {
   audio.ensure();
+  if (!audio.buffers.has("spin")) {
+    await ensureSpinSfxBuffer();
+  }
   audio.togglePreview("spin", () => {
-    if (state.sound.spinSfxData) {
+    if (audio.buffers.has("spin")) {
       audio.playOneShot("spin", state.sound.spinVolume, "tick", true);
     } else {
       audio.playTick(state.sound.spinVolume, 1, true);
@@ -3675,8 +3713,14 @@ function startSpinLoopIfNeeded() {
   if (!state.sound.enabled) return;
   const mode = state.sound.spinMode;
   if (mode !== "loop" && mode !== "both") return;
-  if (state.sound.spinSfxData) {
+  if (audio.buffers.has("spin")) {
     audio.startLoop("spin", state.sound.spinVolume);
+  } else {
+    ensureSpinSfxBuffer().then((ok) => {
+      if (ok && (wheel.spinning || spinBusy)) {
+        audio.startLoop("spin", state.sound.spinVolume);
+      }
+    });
   }
 }
 

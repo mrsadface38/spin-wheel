@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#33</span>
+        <span class="app-version" id="app-version" title="Update number">#34</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -277,14 +277,22 @@
                 <option value="off">Off</option>
               </select>
             </label>
-            <div class="audio-pick">
+            <label class="field">
+              <span>Tick sound</span>
+              <select id="spin-tick-preset" title="Choose default or custom tick">
+                <option value="mixkit">Mixkit bass hit (default)</option>
+                <option value="synth">Built-in beep (original)</option>
+                <option value="custom">Custom file…</option>
+              </select>
+            </label>
+            <div class="audio-pick" id="spin-sfx-custom-row">
               <span id="spin-sfx-name" class="audio-name">mixkit-short-bass-hit-2299.wav (default)</span>
               <div class="image-pick-actions">
                 <label class="btn small">
-                  Custom tick/loop
+                  Choose file
                   <input type="file" id="spin-sfx-input" accept="audio/*" hidden />
                 </label>
-                <button type="button" id="spin-sfx-clear" class="btn small ghost" title="Restore default tick">Default</button>
+                <button type="button" id="spin-sfx-clear" class="btn small ghost" title="Use Mixkit default">Mixkit default</button>
                 <button type="button" id="spin-sfx-preview" class="btn small ghost">Preview</button>
               </div>
             </div>
