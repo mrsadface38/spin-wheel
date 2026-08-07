@@ -1,0 +1,22 @@
+{
+  "name": "spin-wheel",
+  "version": "1.0.0",
+  "description": "Cross-platform spin-the-wheel with images, SFX, and group toggles",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "npx --yes serve -l 5173 .",
+    "electron": "npx --yes electron .",
+    "dev": "npx --yes serve -l 5173 ."
+  },
+  "keywords": [
+    "wheel",
+    "spin",
+    "lottery",
+    "cross-platform"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^43.3.0"
+  }
+}

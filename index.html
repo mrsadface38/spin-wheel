@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Sad Wheel</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="top-bar">
+      <div class="brand">
+        <span class="brand-icon">🎡</span>
+        <h1>The Sad Wheel</h1>
+      </div>
+      <div class="top-actions">
+        <button type="button" id="btn-undo" class="btn ghost" title="Undo last change (Ctrl+Z)" disabled>Undo</button>
+        <button type="button" id="btn-export" class="btn ghost" title="Export project JSON">Export</button>
+        <button type="button" id="btn-import" class="btn ghost" title="Import project JSON">Import</button>
+        <input type="file" id="import-file" accept="application/json,.json" hidden />
+        <button type="button" id="btn-reset" class="btn ghost danger">Reset</button>
+      </div>
+    </header>
+
+    <main class="layout" id="main-layout">
+      <!-- Wheel stage -->
+      <section class="stage-panel">
+        <button
+          type="button"
+          id="btn-toggle-sidebar"
+          class="btn-toggle-sidebar"
+          title="Hide panels (fullscreen wheel)"
+          aria-expanded="true"
+          aria-controls="editor-panel"
+        >
+          <span class="toggle-sidebar-icon" aria-hidden="true">›</span>
+          <span class="toggle-sidebar-label">Hide panels</span>
+        </button>
+        <div id="stage" class="stage">
+          <!-- DOM media so GIFs animate (canvas freezes to first frame) -->
+          <div id="bg-media" class="bg-media" aria-hidden="true"></div>
+          <canvas id="bg-canvas"></canvas>
+          <canvas id="wheel-canvas"></canvas>
+          <div id="slice-media-layer" class="slice-media-layer" aria-hidden="true">
+            <div id="slice-media-rotator" class="slice-media-rotator"></div>
+          </div>
+          <!-- Labels / border / hub drawn above slice image backgrounds -->
+          <canvas id="wheel-overlay"></canvas>
+          <div id="center-media" class="center-media" aria-hidden="true"></div>
+          <div id="pointer" class="pointer" aria-hidden="true"></div>
+          <!-- Compact bottom banner style (winner text only) -->
+          <div id="result-banner" class="result-banner hidden">
+            <span id="result-text-banner" class="result-text-banner"></span>
+          </div>
+          <!-- Big center overlay — section image huge behind the winner text -->
+          <div id="result-center" class="result-center hidden" aria-live="polite">
+            <div id="result-center-bg" class="result-center-bg" aria-hidden="true"></div>
+            <div class="result-center-scrim" aria-hidden="true"></div>
+            <div class="result-center-inner">
+              <span id="result-center-label" class="result-center-label">Winner</span>
+              <span id="result-text-center" class="result-center-text"></span>
+            </div>
+          </div>
+          <!-- Shown after fling, or when secret "Rig it" is on -->
+          <button type="button" id="result-rigged" class="result-rigged hidden" aria-hidden="true" tabindex="-1">rigged</button>
+          <!-- Shared action bar — always at bottom of stage -->
+          <div id="result-actions-bar" class="result-actions-bar hidden">
+            <button type="button" class="btn result-act" data-result-act="hide" title="Hide this section from the wheel">Hide</button>
+            <button type="button" id="btn-result-remove" class="btn danger result-act" data-result-act="remove" title="Delete this section">Remove</button>
+            <button type="button" class="btn ghost result-act" data-result-act="dismiss">Continue</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Editor sidebar -->
+      <aside class="editor-panel" id="editor-panel">
+        <nav class="tabs" role="tablist">
+          <button type="button" class="tab active" data-tab="sections">Sections</button>
+          <button type="button" class="tab" data-tab="groups">Groups</button>
+          <button type="button" class="tab" data-tab="look">Look</button>
+          <button type="button" class="tab" data-tab="sound">Sound</button>
+          <button type="button" class="tab tab-secret hidden" data-tab="secret" id="tab-btn-secret" hidden>Secret</button>
+        </nav>
+
+        <!-- Sections tab (weights live on each card) -->
+        <div class="tab-panel active" id="tab-sections">
+          <div class="panel-toolbar">
+            <button type="button" id="btn-add-section" class="btn small">+ Add section</button>
+            <button type="button" id="btn-add-many" class="btn small ghost">+ Bulk add</button>
+          </div>
+          <div class="sections-filters">
+            <label class="search-field sections-search-grow">
+              <span class="search-icon" aria-hidden="true">⌕</span>
+              <input type="search" id="section-search" placeholder="Search sections…" autocomplete="off" />
+              <button type="button" id="section-search-clear" class="search-clear hidden" title="Clear search">✕</button>
+            </label>
+            <label class="sort-field">
+              <span class="sort-field-label">Sort</span>
+              <select id="section-sort" title="Sort sections list">
+                <option value="manual">Default order</option>
+                <option value="name-asc">Name A–Z</option>
+                <option value="name-desc">Name Z–A</option>
+                <option value="weight-desc">Weight high → low</option>
+                <option value="weight-asc">Weight low → high</option>
+                <option value="group">Group</option>
+                <option value="on-wheel">On wheel first</option>
+                <option value="enabled">Enabled first</option>
+                <option value="has-image">Has image first</option>
+              </select>
+            </label>
+          </div>
+          <p id="section-search-meta" class="search-meta hidden"></p>
+          <div id="sections-list" class="sections-list"></div>
+        </div>
+
+        <!-- Groups tab -->
+        <div class="tab-panel" id="tab-groups">
+          <div class="panel-toolbar">
+            <button type="button" id="btn-add-group" class="btn small">+ Add group</button>
+          </div>
+          <div id="groups-list" class="groups-list"></div>
+        </div>
+
+        <!-- Look tab -->
+        <div class="tab-panel" id="tab-look">
+          <div class="form-block">
+            <h3>Spin</h3>
+            <p class="hint">Double-click the wheel to spin.</p>
+            <label class="field">
+              <span>Duration</span>
+              <div class="slider-with-value">
+                <input type="range" id="spin-duration" min="1" max="30" step="0.5" value="9" />
+                <span id="spin-duration-label" class="slider-value">9s</span>
+              </div>
+              <small>How long the wheel spins before landing.</small>
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Background</h3>
+            <div class="image-pick">
+              <div id="bg-preview" class="img-preview empty">No image</div>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose image / GIF
+                  <input type="file" id="bg-image-input" accept="image/*,.gif,.webp,.apng,image/gif,image/webp" hidden />
+                </label>
+                <button type="button" id="bg-image-clear" class="btn small ghost">Clear</button>
+              </div>
+            </div>
+            <label class="field">
+              <span>Background color</span>
+              <input type="color" id="bg-color" value="#0f1220" />
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Center hub</h3>
+            <div class="image-pick">
+              <div id="center-preview" class="img-preview empty">No image</div>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose image / GIF
+                  <input type="file" id="center-image-input" accept="image/*,.gif,.webp,.apng,image/gif,image/webp" hidden />
+                </label>
+                <button type="button" id="center-image-clear" class="btn small ghost">Clear</button>
+              </div>
+            </div>
+            <label class="field">
+              <span>Hub color</span>
+              <input type="color" id="center-color" value="#1a1f35" />
+            </label>
+            <label class="field">
+              <span>Hub size</span>
+              <input type="range" id="center-size" min="0.08" max="0.35" step="0.01" value="0.16" />
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Wheel style</h3>
+            <label class="field">
+              <span>Border color</span>
+              <input type="color" id="border-color" value="#f0d78c" />
+            </label>
+            <label class="field">
+              <span>Text color</span>
+              <input type="color" id="text-color" value="#ffffff" />
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-show-labels" checked />
+              <span>Show labels on wheel</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-show-images" checked />
+              <span>Show section images</span>
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Winner display</h3>
+            <label class="field">
+              <span>Style</span>
+              <select id="result-style">
+                <option value="center">Big center (bold)</option>
+                <option value="banner">Bottom banner</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Title above result</span>
+              <input type="text" id="winner-label" maxlength="40" value="Winner" placeholder="Winner" />
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-allow-winner-remove" checked />
+              <span>Show <strong>Remove</strong> button after a spin</span>
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Weight slider</h3>
+            <div class="weight-slider-opts">
+              <label class="field">
+                <span>Min</span>
+                <input type="number" id="weight-slider-min" min="0.1" max="1000" step="any" value="1" />
+              </label>
+              <label class="field">
+                <span>Max</span>
+                <input type="number" id="weight-slider-max" min="0.1" max="1000" step="any" value="20" />
+              </label>
+              <label class="field">
+                <span>Increment by</span>
+                <input type="number" id="weight-slider-step" min="0.01" max="100" step="any" value="1" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sound tab -->
+        <div class="tab-panel" id="tab-sound">
+          <div class="form-block">
+            <h3>Master sound</h3>
+            <label class="toggle-row sound-master-toggle">
+              <input type="checkbox" id="chk-sound" checked />
+              <span>Enable all sound effects</span>
+            </label>
+            <p class="hint">Turn off to mute spin ticks, land SFX, and previews.</p>
+            <button type="button" id="btn-stop-all-audio" class="btn ghost" style="margin-top: 0.5rem">
+              Stop all audio
+            </button>
+            <p class="hint">Cuts off anything currently playing (previews, spin loop, land sounds, ticks).</p>
+          </div>
+
+          <div class="form-block">
+            <h3>Spin tick / loop</h3>
+            <p class="hint">Plays while the wheel is spinning (tick on each segment pass, or a loop SFX).</p>
+            <label class="field">
+              <span>Mode</span>
+              <select id="spin-sfx-mode">
+                <option value="tick">Tick per segment</option>
+                <option value="loop">Loop audio while spinning</option>
+                <option value="both">Both</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            <div class="audio-pick">
+              <span id="spin-sfx-name" class="audio-name">Default (built-in tick)</span>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Custom tick/loop
+                  <input type="file" id="spin-sfx-input" accept="audio/*" hidden />
+                </label>
+                <button type="button" id="spin-sfx-clear" class="btn small ghost">Use default</button>
+                <button type="button" id="spin-sfx-preview" class="btn small ghost">Preview</button>
+              </div>
+            </div>
+            <label class="field">
+              <span>Spin SFX volume</span>
+              <div class="slider-with-value">
+                <input type="range" id="spin-sfx-volume" min="0" max="1" step="0.05" value="0.45" />
+                <span id="spin-sfx-volume-label" class="slider-value">45%</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Background music</h3>
+            <p class="hint">Optional music track. Can play only during a spin, or keep playing the whole time.</p>
+            <div class="audio-pick">
+              <span id="bgm-name" class="audio-name">No music loaded</span>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose music
+                  <input type="file" id="bgm-input" accept="audio/*" hidden />
+                </label>
+                <button type="button" id="bgm-clear" class="btn small ghost">Clear</button>
+                <button type="button" id="bgm-preview" class="btn small ghost">Preview</button>
+              </div>
+            </div>
+            <label class="field">
+              <span>When to play</span>
+              <select id="bgm-mode">
+                <option value="spin">Only while spinning</option>
+                <option value="always">Always (outside spins too)</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Music volume</span>
+              <div class="slider-with-value">
+                <input type="range" id="bgm-volume" min="0" max="1" step="0.05" value="0.4" />
+                <span id="bgm-volume-label" class="slider-value">40%</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Landing sound (default)</h3>
+            <p class="hint">Used when a section has no custom land SFX of its own.</p>
+            <div class="audio-pick">
+              <span id="land-sfx-name" class="audio-name">Default (built-in chime)</span>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose audio
+                  <input type="file" id="land-sfx-input" accept="audio/*" hidden />
+                </label>
+                <button type="button" id="land-sfx-clear" class="btn small ghost">Use default</button>
+                <button type="button" id="land-sfx-preview" class="btn small ghost">Preview</button>
+              </div>
+            </div>
+            <label class="field">
+              <span>Land SFX volume</span>
+              <div class="slider-with-value">
+                <input type="range" id="land-sfx-volume" min="0" max="1" step="0.05" value="0.7" />
+                <span id="land-sfx-volume-label" class="slider-value">70%</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Secret tab (unlocked by clicking “rigged” 3× once) -->
+        <div class="tab-panel" id="tab-secret" hidden>
+          <div class="form-block">
+            <h3 class="secret-tab-title">// classified</h3>
+            <label class="toggle-row">
+              <input type="checkbox" id="secret-rig-it" />
+              <span><strong>Rig it</strong></span>
+            </label>
+            <label class="field">
+              <span>Rigged section</span>
+              <select id="secret-rig-section"></select>
+            </label>
+            <label class="field">
+              <span>Divert speed</span>
+              <div class="slider-with-value">
+                <input type="range" id="secret-divert-speed" min="1" max="10" step="1" value="5" />
+                <span id="secret-divert-speed-label" class="slider-value">5</span>
+              </div>
+              <small>Slow ← → Fast — how quickly the last-moment move reaches the rigged section</small>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="secret-mute-music-divert" />
+              <span>Mute music during divert</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="secret-mute-spin-ticks-rig" />
+              <span>Mute spin ticks during divert</span>
+            </label>
+          </div>
+          <div class="form-block">
+            <h3>Divert SFX</h3>
+            <p class="hint">Plays when the wheel starts the last-moment move to the rigged section.</p>
+            <div class="audio-pick">
+              <span id="secret-divert-sfx-name" class="audio-name">None</span>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose audio
+                  <input type="file" id="secret-divert-sfx-input" accept="audio/*" hidden />
+                </label>
+                <button type="button" id="secret-divert-sfx-clear" class="btn small ghost">Clear</button>
+                <button type="button" id="secret-divert-sfx-preview" class="btn small ghost">Preview</button>
+              </div>
+            </div>
+            <label class="field">
+              <span>Volume</span>
+              <div class="slider-with-value">
+                <input type="range" id="secret-divert-sfx-volume" min="0" max="1" step="0.05" value="0.7" />
+                <span id="secret-divert-sfx-volume-label" class="slider-value">70%</span>
+              </div>
+            </label>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Section editor modal (live preview on the left) -->
+  <dialog id="section-modal" class="modal modal-section-edit">
+    <form method="dialog" id="section-form">
+      <h2 id="section-modal-title">Edit section</h2>
+      <input type="hidden" id="section-edit-id" />
+
+      <div class="section-edit-layout">
+        <!-- Live slice preview -->
+        <aside class="section-live-col" aria-label="Live section preview">
+          <div class="section-live-stage" id="section-live-stage">
+            <canvas id="section-live-canvas" width="280" height="280"></canvas>
+            <div id="section-live-media" class="section-live-media" aria-hidden="true"></div>
+            <div class="section-live-pointer" aria-hidden="true"></div>
+            <div id="section-live-label" class="section-live-label"></div>
+          </div>
+          <p class="hint section-live-hint">Live preview — updates as you edit</p>
+          <div class="section-preview-weight-controls">
+            <label class="field">
+              <span>Preview slice size</span>
+              <select id="preview-weight-mode">
+                <option value="current">At current weight</option>
+                <option value="custom">Custom % of wheel</option>
+              </select>
+            </label>
+            <label class="field" id="preview-custom-weight-field" hidden>
+              <span>Custom size</span>
+              <div class="slider-with-value">
+                <input type="range" id="preview-custom-weight" min="1" max="100" step="1" value="50" />
+                <span id="preview-custom-weight-label" class="slider-value">50%</span>
+              </div>
+              <small>Preview only — % of the full wheel (100% = entire circle). Does not change real weight.</small>
+            </label>
+            <p id="preview-weight-meta" class="hint section-preview-meta"></p>
+          </div>
+        </aside>
+
+        <!-- Form fields -->
+        <div class="section-edit-fields">
+          <label class="field">
+            <span>Label</span>
+            <input type="text" id="section-label" required maxlength="80" placeholder="Prize name" />
+          </label>
+
+          <label class="field">
+            <span>Weight</span>
+            <input type="number" id="section-weight" min="0.1" max="1000" step="any" value="1" />
+            <small>Higher weight = larger slice on the wheel (decimals allowed, e.g. 1.1)</small>
+          </label>
+
+          <label class="field">
+            <span>Color</span>
+            <input type="color" id="section-color" value="#4a6cf7" />
+          </label>
+
+          <div class="field">
+            <span>Groups</span>
+            <div id="section-groups" class="group-checkboxes" role="group" aria-label="Groups for this section"></div>
+            <small>Pick one or more. Highest-priority group (see Groups tab order) decides show/hide for this section.</small>
+          </div>
+
+          <div class="form-block compact">
+            <h3>Section image</h3>
+            <div class="image-pick">
+              <div id="section-img-preview" class="img-preview empty">No image</div>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose image / GIF
+                  <input type="file" id="section-image-input" accept="image/*,.gif,.webp,.apng,image/gif,image/webp" hidden />
+                </label>
+                <button type="button" id="section-image-clear" class="btn small ghost">Clear</button>
+              </div>
+            </div>
+            <label class="field">
+              <span>Image style</span>
+              <select id="section-image-mode">
+                <option value="fill">Full slice (one big image)</option>
+                <option value="tile">Tiled / looped (small repeats)</option>
+              </select>
+              <small>Full slice fills the whole wedge. Tiled repeats the same image in a pattern.</small>
+            </label>
+            <div id="section-fill-options">
+              <label class="field" id="section-fill-scale-field">
+                <span>Image size (full slice)</span>
+                <div class="slider-with-value">
+                  <input type="range" id="section-fill-scale" min="0.1" max="3" step="0.05" value="1" />
+                  <span id="section-fill-scale-label" class="slider-value">100%</span>
+                </div>
+                <small>Zoom the single image — 10%–300%. Centered on the middle of the slice by default.</small>
+              </label>
+              <label class="field" id="section-fill-offset-x-field">
+                <span>Image offset X</span>
+                <div class="slider-with-value">
+                  <input type="range" id="section-fill-offset-x" min="-100" max="100" step="1" value="0" />
+                  <span id="section-fill-offset-x-label" class="slider-value">0%</span>
+                </div>
+              </label>
+              <label class="field" id="section-fill-offset-y-field">
+                <span>Image offset Y</span>
+                <div class="slider-with-value">
+                  <input type="range" id="section-fill-offset-y" min="-100" max="100" step="1" value="0" />
+                  <span id="section-fill-offset-y-label" class="slider-value">0%</span>
+                </div>
+                <small>Shift the full-slice image (−100% to 100% of radius).</small>
+              </label>
+            </div>
+            <label class="field" id="section-tile-scale-field">
+              <span>Tile size</span>
+              <div class="slider-with-value">
+                <input type="range" id="section-tile-scale" min="0.1" max="3" step="0.05" value="1" />
+                <span id="section-tile-scale-label" class="slider-value">100%</span>
+              </div>
+              <small>10%–300%. Smaller = more copies of the image.</small>
+            </label>
+            <label class="field" id="section-tile-offset-x-field">
+              <span>Tile offset X</span>
+              <div class="slider-with-value">
+                <input type="range" id="section-tile-offset-x" min="-100" max="100" step="1" value="0" />
+                <span id="section-tile-offset-x-label" class="slider-value">0%</span>
+              </div>
+            </label>
+            <label class="field" id="section-tile-offset-y-field">
+              <span>Tile offset Y</span>
+              <div class="slider-with-value">
+                <input type="range" id="section-tile-offset-y" min="-100" max="100" step="1" value="0" />
+                <span id="section-tile-offset-y-label" class="slider-value">0%</span>
+              </div>
+              <small>Shift the tiled pattern horizontally / vertically (−100% to 100% of one tile).</small>
+            </label>
+          </div>
+
+          <div class="form-block compact">
+            <h3>Land SFX (this section)</h3>
+            <div class="audio-pick">
+              <span id="section-sfx-name" class="audio-name">Use default land SFX</span>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose audio
+                  <input type="file" id="section-sfx-input" accept="audio/*" hidden />
+                </label>
+                <button type="button" id="section-sfx-clear" class="btn small ghost">Clear</button>
+                <button type="button" id="section-sfx-preview" class="btn small ghost">Preview</button>
+              </div>
+            </div>
+            <label class="field">
+              <span>Volume</span>
+              <div class="slider-with-value">
+                <input type="range" id="section-sfx-volume" min="0" max="1" step="0.05" value="0.7" />
+                <span id="section-sfx-volume-label" class="slider-value">70%</span>
+              </div>
+            </label>
+          </div>
+
+          <label class="toggle-row">
+            <input type="checkbox" id="section-enabled" checked />
+            <span>Enabled (include when group is active)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="section-cancel" class="btn ghost" value="cancel">Cancel</button>
+        <button type="submit" class="btn primary" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Group add / edit modal (live profile preview on the left, same as section edit) -->
+  <dialog id="group-modal" class="modal modal-section-edit modal-group-edit">
+    <form method="dialog" id="group-form">
+      <h2 id="group-modal-title">Add group</h2>
+      <input type="hidden" id="group-edit-id" />
+
+      <div class="section-edit-layout">
+        <!-- Live slice preview (group profile) -->
+        <aside class="section-live-col" aria-label="Live group profile preview">
+          <div class="section-live-stage" id="group-live-stage">
+            <canvas id="group-live-canvas" width="280" height="280"></canvas>
+            <div id="group-live-media" class="section-live-media" aria-hidden="true"></div>
+            <div class="section-live-pointer" aria-hidden="true"></div>
+            <div id="group-live-label" class="section-live-label"></div>
+          </div>
+          <div class="section-preview-weight-controls">
+            <label class="field">
+              <span>Preview slice size</span>
+              <select id="group-preview-weight-mode">
+                <option value="current">At member weight</option>
+                <option value="custom">Custom % of wheel</option>
+              </select>
+            </label>
+            <label class="field" id="group-preview-custom-weight-field" hidden>
+              <span>Custom size</span>
+              <div class="slider-with-value">
+                <input type="range" id="group-preview-custom-weight" min="1" max="100" step="1" value="50" />
+                <span id="group-preview-custom-weight-label" class="slider-value">50%</span>
+              </div>
+            </label>
+            <p id="group-preview-weight-meta" class="hint section-preview-meta"></p>
+          </div>
+        </aside>
+
+        <!-- Form fields -->
+        <div class="section-edit-fields">
+          <label class="field">
+            <span>Group name</span>
+            <input type="text" id="group-name" required maxlength="60" placeholder="e.g. Bonus prizes" autofocus />
+          </label>
+          <label class="toggle-row" id="group-active-row">
+            <input type="checkbox" id="group-active" checked />
+            <span>Active (sections in this group can appear on the wheel)</span>
+          </label>
+
+          <div class="group-profile-block">
+            <h3>Group profile</h3>
+
+            <div class="profile-parts-block">
+              <span class="profile-parts-label">Override on wheel</span>
+              <div class="profile-parts-row">
+                <label class="chip-check"><input type="checkbox" id="group-override-color" /> Color</label>
+                <label class="chip-check"><input type="checkbox" id="group-override-image" /> Image</label>
+                <label class="chip-check"><input type="checkbox" id="group-override-sfx" /> Land SFX</label>
+              </div>
+            </div>
+
+            <label class="field">
+              <span>Profile color</span>
+              <input type="color" id="group-color" value="#4a6cf7" />
+            </label>
+
+            <div class="form-block compact">
+              <h4 class="group-profile-subhead">Image</h4>
+              <div class="image-pick">
+                <div id="group-img-preview" class="img-preview empty">No image</div>
+                <div class="image-pick-actions">
+                  <label class="btn small">
+                    Choose image / GIF
+                    <input type="file" id="group-image-input" accept="image/*,.gif,.webp,.apng,image/gif,image/webp" hidden />
+                  </label>
+                  <button type="button" id="group-image-clear" class="btn small ghost">Clear</button>
+                </div>
+              </div>
+              <label class="field">
+                <span>Image style</span>
+                <select id="group-image-mode">
+                  <option value="fill">Full slice (one big image)</option>
+                  <option value="tile">Tiled / looped (small repeats)</option>
+                </select>
+              </label>
+              <div id="group-fill-options">
+                <label class="field">
+                  <span>Image size (full slice)</span>
+                  <div class="slider-with-value">
+                    <input type="range" id="group-fill-scale" min="0.1" max="3" step="0.05" value="1" />
+                    <span id="group-fill-scale-label" class="slider-value">100%</span>
+                  </div>
+                </label>
+                <label class="field">
+                  <span>Image offset X</span>
+                  <div class="slider-with-value">
+                    <input type="range" id="group-fill-offset-x" min="-100" max="100" step="1" value="0" />
+                    <span id="group-fill-offset-x-label" class="slider-value">0%</span>
+                  </div>
+                </label>
+                <label class="field">
+                  <span>Image offset Y</span>
+                  <div class="slider-with-value">
+                    <input type="range" id="group-fill-offset-y" min="-100" max="100" step="1" value="0" />
+                    <span id="group-fill-offset-y-label" class="slider-value">0%</span>
+                  </div>
+                </label>
+              </div>
+              <label class="field" id="group-tile-scale-field">
+                <span>Tile size</span>
+                <div class="slider-with-value">
+                  <input type="range" id="group-tile-scale" min="0.1" max="3" step="0.05" value="1" />
+                  <span id="group-tile-scale-label" class="slider-value">100%</span>
+                </div>
+              </label>
+              <label class="field" id="group-tile-offset-x-field">
+                <span>Tile offset X</span>
+                <div class="slider-with-value">
+                  <input type="range" id="group-tile-offset-x" min="-100" max="100" step="1" value="0" />
+                  <span id="group-tile-offset-x-label" class="slider-value">0%</span>
+                </div>
+              </label>
+              <label class="field" id="group-tile-offset-y-field">
+                <span>Tile offset Y</span>
+                <div class="slider-with-value">
+                  <input type="range" id="group-tile-offset-y" min="-100" max="100" step="1" value="0" />
+                  <span id="group-tile-offset-y-label" class="slider-value">0%</span>
+                </div>
+              </label>
+            </div>
+
+            <div class="form-block compact">
+              <h4 class="group-profile-subhead">Land SFX</h4>
+              <div class="audio-pick">
+                <span id="group-sfx-name" class="audio-name">Use default land SFX</span>
+                <div class="image-pick-actions">
+                  <label class="btn small">
+                    Choose audio
+                    <input type="file" id="group-sfx-input" accept="audio/*" hidden />
+                  </label>
+                  <button type="button" id="group-sfx-clear" class="btn small ghost">Clear</button>
+                  <button type="button" id="group-sfx-preview" class="btn small ghost">Preview</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="group-profile-actions">
+              <div class="profile-parts-block">
+                <span class="profile-parts-label">Apply to sections — only copy checked parts</span>
+                <div class="profile-parts-row">
+                  <label class="chip-check"><input type="checkbox" id="group-apply-color" checked /> Color</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-image" checked /> Image</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-sfx" /> Land SFX</label>
+                </div>
+              </div>
+              <button type="button" id="btn-apply-group-profile" class="btn small">
+                Apply selected to sections
+              </button>
+            </div>
+          </div>
+
+          <div class="group-members-block">
+            <h3>Sections in this group</h3>
+            <label class="search-field group-member-search">
+              <span class="search-icon" aria-hidden="true">⌕</span>
+              <input type="search" id="group-member-search" placeholder="Filter sections…" autocomplete="off" />
+            </label>
+            <div class="group-members-grid">
+              <div class="group-members-col">
+                <h4>In this group <span id="group-in-count" class="count-badge">0</span></h4>
+                <div id="group-members-in" class="group-members-list"></div>
+              </div>
+              <div class="group-members-col">
+                <h4>Other sections <span id="group-out-count" class="count-badge">0</span></h4>
+                <div id="group-members-out" class="group-members-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="group-cancel" class="btn ghost">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Bulk add modal -->
+  <dialog id="bulk-modal" class="modal">
+    <form method="dialog" id="bulk-form">
+      <h2>Bulk add sections</h2>
+      <p class="hint">One label per line. Optional: <code>Label | color | weight</code></p>
+      <textarea id="bulk-text" rows="10" placeholder="Alice&#10;Bob&#10;Charlie&#10;Prize A | #e74c3c | 2"></textarea>
+      <label class="field">
+        <span>Assign to group</span>
+        <select id="bulk-group"></select>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="bulk-cancel" class="btn ghost">Cancel</button>
+        <button type="submit" class="btn primary">Add all</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
