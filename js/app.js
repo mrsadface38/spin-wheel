@@ -226,14 +226,6 @@ function fillWheelSelect() {
   if (del) del.disabled = library.wheels.length <= 1;
 }
 
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 /** Stop spin/audio and load a different wheel slot into the UI. */
 async function applyLoadedWheel(nextLib, nextState) {
   try {
