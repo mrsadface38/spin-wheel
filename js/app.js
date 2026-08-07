@@ -4071,10 +4071,12 @@ function getReverseSlideSfxPreset() {
   const live = $("#secret-reverse-slide-sfx-preset")?.value;
   let p = live || sec.reverseSlideSfxPreset;
   if (p === "default") p = "goofy-slip"; // legacy
+  if (p === "synth") p = "scp-173"; // legacy slippery synth → SCP grind
   if (p && REVERSE_SLIDE_PRESET_IDS.has(p)) {
     if (p === "custom" && !sec.reverseSlideSfxData && live !== "custom") {
       return "goofy-slip";
     }
+    if (p === "synth") return "scp-173";
     return p;
   }
   if (sec.reverseSlideSfxData) return "custom";
@@ -4083,7 +4085,7 @@ function getReverseSlideSfxPreset() {
 
 /** Unique audio buffer key per reverse-slide preset (avoids playing a stale sample). */
 function reverseSlideBufferKey(preset = getReverseSlideSfxPreset()) {
-  if (preset === "synth") return null;
+  if (preset === "synth") preset = "scp-173";
   if (preset === "custom") return "rig_reverse_custom";
   if (REVERSE_SLIDE_PRESETS[preset]) return `rig_reverse_${preset}`;
   return "rig_reverse_goofy-slip";
@@ -4094,8 +4096,14 @@ function updateReverseSlideSfxPresetUI() {
   // Prefer saved preset when syncing UI (don't fight a mid-change select)
   let preset = sec.reverseSlideSfxPreset || "goofy-slip";
   if (preset === "default") preset = "goofy-slip";
-  if (!REVERSE_SLIDE_PRESET_IDS.has(preset)) {
-    preset = sec.reverseSlideSfxData ? "custom" : "goofy-slip";
+  if (preset === "synth") preset = "scp-173";
+  if (!REVERSE_SLIDE_PRESET_IDS.has(preset) || preset === "synth") {
+    preset =
+      preset === "synth"
+        ? "scp-173"
+        : sec.reverseSlideSfxData
+          ? "custom"
+          : "goofy-slip";
   }
   if (preset === "custom" && !sec.reverseSlideSfxData) preset = "goofy-slip";
   const sel = $("#secret-reverse-slide-sfx-preset");
@@ -4176,7 +4184,6 @@ function updateGroupSfxPresetUI() {
 
 /**
  * Load reverse slide-off buffer for the current preset (or custom file).
- * Synth preset has no buffer (uses playSlipperySlide).
  * Each preset uses its own buffer key so switching never plays a stale sample.
  * @param {string|null} [bufferKey] force a key; default from current preset
  * @param {boolean} [forceReload] re-fetch even if already buffered
@@ -4184,7 +4191,8 @@ function updateGroupSfxPresetUI() {
  */
 async function ensureReverseSlideSfxBuffer(bufferKey = null, forceReload = false) {
   const sec = ensureSecretState();
-  const preset = getReverseSlideSfxPreset();
+  let preset = getReverseSlideSfxPreset();
+  if (preset === "synth") preset = "scp-173";
   const key = bufferKey || reverseSlideBufferKey(preset);
   if (!key) return false;
   try {
@@ -4195,9 +4203,6 @@ async function ensureReverseSlideSfxBuffer(bufferKey = null, forceReload = false
       if (!forceReload && audio.buffers.has(key)) return true;
       await audio.loadDataUrl(key, sec.reverseSlideSfxData);
       return true;
-    }
-    if (preset === "synth") {
-      return false;
     }
     const meta =
       REVERSE_SLIDE_PRESETS[preset] || REVERSE_SLIDE_PRESETS["goofy-slip"];
@@ -4239,12 +4244,9 @@ function playReverseSlideSfx() {
   );
   audio.ensure();
   // Always re-read preset from state (and live select) at play time
-  const preset = getReverseSlideSfxPreset();
+  let preset = getReverseSlideSfxPreset();
+  if (preset === "synth") preset = "scp-173";
   sec.reverseSlideSfxPreset = preset;
-  if (preset === "synth") {
-    audio.playSlipperySlide(vol);
-    return;
-  }
   const key = reverseSlideBufferKey(preset);
   const playBuf = () => {
     if (audio.buffers.has(key)) {
@@ -4257,9 +4259,16 @@ function playReverseSlideSfx() {
   ensureReverseSlideSfxBuffer(key, true)
     .then((ok) => {
       if (ok && playBuf()) return;
-      audio.playSlipperySlide(vol);
+      // Last resort: play divert default buffer if already loaded
+      if (audio.buffers.has("rig_divert")) {
+        audio.playDivert("rig_divert", vol);
+      }
     })
-    .catch(() => audio.playSlipperySlide(vol));
+    .catch(() => {
+      if (audio.buffers.has("rig_divert")) {
+        audio.playDivert("rig_divert", vol);
+      }
+    });
 }
 
 /** Mute BGM for the divert move if Secret option is on. */
@@ -4551,26 +4560,29 @@ async function previewReverseSlideSfxNow() {
   if (audio.isPreviewPlaying) audio.stopPreview();
   audio.stopDivert?.();
 
-  const preset = getReverseSlideSfxPreset();
+  let preset = getReverseSlideSfxPreset();
+  if (preset === "synth") preset = "scp-173";
   sec.reverseSlideSfxPreset = preset;
-  if (preset === "synth") {
-    audio.playSlipperySlide(vol, true);
-    return;
-  }
   const key = reverseSlideBufferKey(preset);
   const ok = await ensureReverseSlideSfxBuffer(key, true);
   if (ok && audio.buffers.has(key)) {
     audio.playOneShot(key, vol, "land", true);
     return;
   }
-  audio.playSlipperySlide(vol, true);
+  // Fallback to divert sample
+  const okDivert = await ensureDivertSfxBuffer("preview_rig_divert");
+  if (okDivert) {
+    audio.playOneShot("preview_rig_divert", vol, "land", true);
+  }
 }
 
 $("#secret-reverse-slide-sfx-preset")?.addEventListener("change", async () => {
   const sec = ensureSecretState();
   let v = $("#secret-reverse-slide-sfx-preset")?.value;
   if (v === "default") v = "goofy-slip";
+  if (v === "synth") v = "scp-173";
   if (!v || !REVERSE_SLIDE_PRESET_IDS.has(v)) v = "goofy-slip";
+  if (v === "synth") v = "scp-173";
   sec.reverseSlideSfxPreset = v;
   // Write through immediately so spin / manual preview read the new preset
   persist();
@@ -4582,9 +4594,7 @@ $("#secret-reverse-slide-sfx-preset")?.addEventListener("change", async () => {
   updateReverseSlideSfxPresetUI();
   // Preload the chosen buffer (no auto-preview — use Preview button)
   try {
-    if (v !== "synth") {
-      await ensureReverseSlideSfxBuffer(reverseSlideBufferKey(v), true);
-    }
+    await ensureReverseSlideSfxBuffer(reverseSlideBufferKey(v), true);
   } catch (err) {
     console.warn("Reverse slide load failed:", err);
   }

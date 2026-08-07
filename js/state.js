@@ -507,12 +507,15 @@ function migrate(data) {
           "slide-slip",
           "glass-squeak-3",
           "glass-squeak-2",
-          "synth",
+          "scp-173",
+          "synth", // legacy → scp-173
           "custom",
           "default", // legacy label → goofy-slip
         ];
         if (p && allowed.includes(p)) {
-          return p === "default" ? "goofy-slip" : p;
+          if (p === "default") return "goofy-slip";
+          if (p === "synth") return "scp-173";
+          return p;
         }
         // Legacy: custom file stored without preset
         if (data.secret?.reverseSlideSfxData) return "custom";
