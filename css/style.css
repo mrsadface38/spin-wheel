@@ -97,6 +97,70 @@ select optgroup {
   font-weight: 600;
 }
 
+/* + New → preset menu */
+.wheel-new-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.wheel-new-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 80;
+  min-width: 12.5rem;
+  max-width: min(18rem, 90vw);
+  padding: 0.3rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(18, 22, 36, 0.98);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.wheel-new-menu.hidden,
+.wheel-new-menu[hidden] {
+  display: none;
+}
+
+.wheel-new-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wheel-new-menu-item:hover,
+.wheel-new-menu-item:focus-visible {
+  background: rgba(74, 108, 247, 0.18);
+  outline: none;
+}
+
+.wheel-new-menu-item-name {
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.wheel-new-menu-item-desc {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.25;
+}
+
 .brand {
   display: flex;
   align-items: center;

@@ -12,12 +12,25 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#68</span>
+        <span class="app-version" id="app-version" title="Update number">#69</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
         <select id="wheel-select" class="wheel-select" aria-label="Select saved wheel"></select>
-        <button type="button" id="btn-wheel-new" class="btn small ghost" title="Create a new blank wheel (keeps the current one)">+ New</button>
+        <div class="wheel-new-dropdown" id="wheel-new-dropdown">
+          <button
+            type="button"
+            id="btn-wheel-new"
+            class="btn small ghost"
+            title="Create a new wheel from a preset"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="wheel-new-menu"
+          >+ New ▾</button>
+          <div id="wheel-new-menu" class="wheel-new-menu hidden" role="menu" aria-label="New wheel presets" hidden>
+            <!-- filled by JS from WHEEL_PRESETS -->
+          </div>
+        </div>
         <button type="button" id="btn-wheel-dup" class="btn small ghost" title="Duplicate current wheel">Copy</button>
         <button type="button" id="btn-wheel-rename" class="btn small ghost" title="Rename current wheel">Rename</button>
         <button type="button" id="btn-wheel-delete" class="btn small ghost danger" title="Delete current wheel">Delete</button>

@@ -34,6 +34,7 @@ import { AudioManager } from "./audio.js";
 import { Wheel } from "./wheel.js";
 import { computeFillImageLayout } from "./slice-image-layout.js";
 import { parseImportFile } from "./import-converters.js";
+import { WHEEL_PRESETS, getWheelPreset } from "./presets.js";
 import { APP_UPDATE } from "./version.js";
 
 const audio = new AudioManager();
@@ -289,12 +290,112 @@ async function switchToWheelId(id) {
   await applyLoadedWheel(result.lib, result.state);
 }
 
-async function createNewWheel() {
+/**
+ * Create a new saved wheel from a preset (keeps the current one).
+ * @param {string} [presetId="default"]
+ */
+async function createNewWheelFromPreset(presetId = "default") {
   library = writeActiveState(library, state);
-  const name = prompt("Name for the new wheel:", `Wheel ${library.wheels.length + 1}`);
+  const preset = getWheelPreset(presetId) || getWheelPreset("default");
+  if (!preset) return;
+  const suggested =
+    preset.defaultName || `Wheel ${library.wheels.length + 1}`;
+  const name = prompt("Name for the new wheel:", suggested);
   if (name === null) return; // cancelled
-  const result = addWheel(library, name || undefined, null);
+  let fromState = null;
+  try {
+    fromState = preset.build();
+  } catch (err) {
+    console.error("Preset build failed:", err);
+    alert("Could not build that preset. Using default instead.");
+    fromState = null;
+  }
+  const result = addWheel(library, name || suggested, fromState);
   await applyLoadedWheel(result.lib, result.state);
+}
+
+/** @deprecated use createNewWheelFromPreset — kept for any old callers */
+async function createNewWheel() {
+  return createNewWheelFromPreset("default");
+}
+
+function closeWheelNewMenu() {
+  const menu = $("#wheel-new-menu");
+  const btn = $("#btn-wheel-new");
+  const wrap = $("#wheel-new-dropdown");
+  if (menu) {
+    menu.classList.add("hidden");
+    menu.hidden = true;
+  }
+  if (btn) btn.setAttribute("aria-expanded", "false");
+  wrap?.classList?.remove("is-open");
+}
+
+function openWheelNewMenu() {
+  const menu = $("#wheel-new-menu");
+  const btn = $("#btn-wheel-new");
+  const wrap = $("#wheel-new-dropdown");
+  if (!menu || !btn) return;
+  // Rebuild so future presets appear without reload
+  menu.innerHTML = WHEEL_PRESETS.map(
+    (p) => `
+    <button type="button" class="wheel-new-menu-item" role="menuitem" data-preset="${escapeHtml(p.id)}">
+      <span class="wheel-new-menu-item-name">${escapeHtml(p.name)}</span>
+      <span class="wheel-new-menu-item-desc">${escapeHtml(p.description || "")}</span>
+    </button>`
+  ).join("");
+  menu.classList.remove("hidden");
+  menu.hidden = false;
+  btn.setAttribute("aria-expanded", "true");
+  wrap?.classList?.add("is-open");
+}
+
+function toggleWheelNewMenu() {
+  const menu = $("#wheel-new-menu");
+  if (!menu || menu.hidden || menu.classList.contains("hidden")) {
+    openWheelNewMenu();
+  } else {
+    closeWheelNewMenu();
+  }
+}
+
+function bindWheelNewMenu() {
+  const btn = $("#btn-wheel-new");
+  const menu = $("#wheel-new-menu");
+  if (!btn || !menu || btn.dataset.presetMenuBound === "1") return;
+  btn.dataset.presetMenuBound = "1";
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleWheelNewMenu();
+  });
+
+  menu.addEventListener("click", (e) => {
+    const item = e.target.closest?.("[data-preset]");
+    if (!item) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const id = item.getAttribute("data-preset") || "default";
+    closeWheelNewMenu();
+    createNewWheelFromPreset(id).catch((err) =>
+      alert(err.message || String(err))
+    );
+  });
+
+  document.addEventListener(
+    "click",
+    (e) => {
+      const wrap = $("#wheel-new-dropdown");
+      if (!wrap || wrap.contains(e.target)) return;
+      closeWheelNewMenu();
+    },
+    true
+  );
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeWheelNewMenu();
+  });
 }
 
 async function duplicateCurrentWheel() {
@@ -5500,9 +5601,7 @@ $("#wheel-select")?.addEventListener("change", async (e) => {
   }
 });
 
-$("#btn-wheel-new")?.addEventListener("click", () => {
-  createNewWheel().catch((err) => alert(err.message || err));
-});
+bindWheelNewMenu();
 
 $("#btn-wheel-dup")?.addEventListener("click", () => {
   duplicateCurrentWheel().catch((err) => alert(err.message || err));
