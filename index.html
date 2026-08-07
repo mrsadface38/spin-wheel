@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#52</span>
+        <span class="app-version" id="app-version" title="Update number">#54</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -325,15 +325,24 @@
           <div class="form-block">
             <h3>Background music</h3>
             <p class="hint">Optional music track. Can play only during a spin, or keep playing the whole time.</p>
-            <div class="audio-pick">
-              <span id="bgm-name" class="audio-name">ANIMAL WELL — 01 ANIMAL WELL (default)</span>
+            <label class="field">
+              <span>Music track</span>
+              <div class="slider-with-value">
+                <select id="bgm-preset" title="Choose music track">
+                  <option value="default">ANIMAL WELL — 01 ANIMAL WELL (default)</option>
+                  <option value="custom">Custom file…</option>
+                </select>
+                <button type="button" id="bgm-preview" class="btn small ghost">Preview</button>
+              </div>
+            </label>
+            <div class="audio-pick" id="bgm-custom-row" hidden>
+              <span id="bgm-name" class="audio-name">No custom file</span>
               <div class="image-pick-actions">
                 <label class="btn small">
-                  Choose music
+                  Choose file
                   <input type="file" id="bgm-input" accept="audio/*" hidden />
                 </label>
-                <button type="button" id="bgm-clear" class="btn small ghost" title="Restore default Animal Well track">Default</button>
-                <button type="button" id="bgm-preview" class="btn small ghost">Preview</button>
+                <button type="button" id="bgm-clear" class="btn small ghost" title="Clear custom and use default">Clear file</button>
               </div>
             </div>
             <label class="field">
@@ -391,6 +400,18 @@
         <div class="tab-panel" id="tab-secret" hidden>
           <div class="form-block">
             <h3 class="secret-tab-title">// classified</h3>
+            <label class="field">
+              <span>When both Rig + Reverse are on</span>
+              <select id="secret-combo-order">
+                <option value="reverse-first">Reverse first, then Rig</option>
+                <option value="rig-first">Rig first, then Reverse</option>
+              </select>
+              <small>Controls which last-moment move runs first when both features are armed</small>
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Rig it</h3>
             <label class="toggle-row">
               <input type="checkbox" id="secret-rig-it" />
               <span><strong>Rig it</strong></span>
@@ -427,27 +448,28 @@
               <input type="checkbox" id="secret-mute-spin-ticks-rig" checked />
               <span>Mute spin ticks during divert</span>
             </label>
-            <label class="field">
-              <span>When both Rig + Reverse are on</span>
-              <select id="secret-combo-order">
-                <option value="reverse-first">Reverse first, then Rig</option>
-                <option value="rig-first">Rig first, then Reverse</option>
-              </select>
-              <small>Controls which last-moment move runs first when both features are armed</small>
-            </label>
           </div>
           <div class="form-block">
             <h3>Divert SFX</h3>
             <p class="hint">Plays when the wheel starts the last-moment move to the rigged section.</p>
-            <div class="audio-pick">
-              <span id="secret-divert-sfx-name" class="audio-name">scp-173-concrete-grind-moving.mp3 (default)</span>
+            <label class="field">
+              <span>Sound</span>
+              <div class="slider-with-value">
+                <select id="secret-divert-sfx-preset" title="Choose divert sound">
+                  <option value="default">scp-173 grind (default)</option>
+                  <option value="custom">Custom file…</option>
+                </select>
+                <button type="button" id="secret-divert-sfx-preview" class="btn small ghost">Preview</button>
+              </div>
+            </label>
+            <div class="audio-pick" id="secret-divert-sfx-custom-row" hidden>
+              <span id="secret-divert-sfx-name" class="audio-name">No custom file</span>
               <div class="image-pick-actions">
                 <label class="btn small">
-                  Choose audio
+                  Choose file
                   <input type="file" id="secret-divert-sfx-input" accept="audio/*" hidden />
                 </label>
-                <button type="button" id="secret-divert-sfx-clear" class="btn small ghost" title="Restore default divert sound">Default</button>
-                <button type="button" id="secret-divert-sfx-preview" class="btn small ghost">Preview</button>
+                <button type="button" id="secret-divert-sfx-clear" class="btn small ghost" title="Clear custom and use default">Clear file</button>
               </div>
             </div>
             <label class="field">
@@ -501,15 +523,24 @@
           <div class="form-block">
             <h3>Slide-off SFX</h3>
             <p class="hint">Plays when reverse rig starts sliding off the avoided section/group.</p>
-            <div class="audio-pick">
-              <span id="secret-reverse-slide-sfx-name" class="audio-name">scp-173-concrete-grind-moving.mp3 (default)</span>
+            <label class="field">
+              <span>Sound</span>
+              <div class="slider-with-value">
+                <select id="secret-reverse-slide-sfx-preset" title="Choose slide-off sound">
+                  <option value="default">scp-173 grind (default)</option>
+                  <option value="custom">Custom file…</option>
+                </select>
+                <button type="button" id="secret-reverse-slide-sfx-preview" class="btn small ghost">Preview</button>
+              </div>
+            </label>
+            <div class="audio-pick" id="secret-reverse-slide-sfx-custom-row" hidden>
+              <span id="secret-reverse-slide-sfx-name" class="audio-name">No custom file</span>
               <div class="image-pick-actions">
                 <label class="btn small">
-                  Choose audio
+                  Choose file
                   <input type="file" id="secret-reverse-slide-sfx-input" accept="audio/*" hidden />
                 </label>
-                <button type="button" id="secret-reverse-slide-sfx-clear" class="btn small ghost" title="Restore default slide sound">Default</button>
-                <button type="button" id="secret-reverse-slide-sfx-preview" class="btn small ghost">Preview</button>
+                <button type="button" id="secret-reverse-slide-sfx-clear" class="btn small ghost" title="Clear custom and use default">Clear file</button>
               </div>
             </div>
             <label class="field">
@@ -678,15 +709,24 @@
 
           <div class="form-block compact">
             <h3>Land SFX (this section)</h3>
-            <div class="audio-pick">
-              <span id="section-sfx-name" class="audio-name">Use default land SFX</span>
+            <label class="field">
+              <span>Sound</span>
+              <div class="slider-with-value">
+                <select id="section-sfx-preset" title="Section land sound">
+                  <option value="default">From group / global default</option>
+                  <option value="custom">Custom file…</option>
+                </select>
+                <button type="button" id="section-sfx-preview" class="btn small ghost">Preview</button>
+              </div>
+            </label>
+            <div class="audio-pick" id="section-sfx-custom-row" hidden>
+              <span id="section-sfx-name" class="audio-name">No custom file</span>
               <div class="image-pick-actions">
                 <label class="btn small">
-                  Choose audio
+                  Choose file
                   <input type="file" id="section-sfx-input" accept="audio/*" hidden />
                 </label>
-                <button type="button" id="section-sfx-clear" class="btn small ghost">Clear</button>
-                <button type="button" id="section-sfx-preview" class="btn small ghost">Preview</button>
+                <button type="button" id="section-sfx-clear" class="btn small ghost">Clear file</button>
               </div>
             </div>
             <label class="field">
@@ -862,15 +902,24 @@
 
             <div class="form-block compact">
               <h4 class="group-profile-subhead">Land SFX</h4>
-              <div class="audio-pick">
-                <span id="group-sfx-name" class="audio-name">Use default land SFX</span>
+              <label class="field">
+                <span>Sound</span>
+                <div class="slider-with-value">
+                  <select id="group-sfx-preset" title="Group land sound">
+                    <option value="default">Use global default</option>
+                    <option value="custom">Custom file…</option>
+                  </select>
+                  <button type="button" id="group-sfx-preview" class="btn small ghost">Preview</button>
+                </div>
+              </label>
+              <div class="audio-pick" id="group-sfx-custom-row" hidden>
+                <span id="group-sfx-name" class="audio-name">No custom file</span>
                 <div class="image-pick-actions">
                   <label class="btn small">
-                    Choose audio
+                    Choose file
                     <input type="file" id="group-sfx-input" accept="audio/*" hidden />
                   </label>
-                  <button type="button" id="group-sfx-clear" class="btn small ghost">Clear</button>
-                  <button type="button" id="group-sfx-preview" class="btn small ghost">Preview</button>
+                  <button type="button" id="group-sfx-clear" class="btn small ghost">Clear file</button>
                 </div>
               </div>
             </div>

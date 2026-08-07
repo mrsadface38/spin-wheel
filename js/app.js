@@ -1947,18 +1947,31 @@ $("#group-preview-weight-value-num")?.addEventListener("input", () => {
   }
   scheduleGroupLivePreview();
 });
+$("#group-sfx-preset")?.addEventListener("change", () => {
+  const v = $("#group-sfx-preset")?.value;
+  if (v === "default") {
+    pendingGroupSfx = null;
+    pendingGroupSfxName = null;
+  } else if (v === "custom" && !pendingGroupSfx) {
+    $("#group-sfx-input")?.click();
+  }
+  updateGroupSfxPresetUI();
+});
 $("#group-sfx-input")?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
-  if (!file) return;
+  if (!file) {
+    updateGroupSfxPresetUI();
+    return;
+  }
   pendingGroupSfx = await fileToDataUrl(file);
   pendingGroupSfxName = file.name;
-  $("#group-sfx-name").textContent = pendingGroupSfxName;
+  updateGroupSfxPresetUI();
 });
 $("#group-sfx-clear")?.addEventListener("click", () => {
   pendingGroupSfx = null;
   pendingGroupSfxName = null;
-  $("#group-sfx-name").textContent = "Use default land SFX";
+  updateGroupSfxPresetUI();
 });
 $("#group-sfx-preview")?.addEventListener("click", async () => {
   audio.ensure();
@@ -2931,14 +2944,40 @@ window.addEventListener("resize", () => {
   if (groupModal?.open) scheduleGroupLivePreview();
 });
 
+$("#section-sfx-preset")?.addEventListener("change", () => {
+  const v = $("#section-sfx-preset")?.value;
+  if (v === "default") {
+    pendingSectionSfx = null;
+    pendingSectionSfxName = null;
+    markSectionDirty("sfx");
+    sectionEditCustom.sfx = false;
+  } else if (v === "custom") {
+    // Don't keep an inherited buffer as "custom" unless already section-owned
+    if (sectionEditCustom.sfx !== true) {
+      pendingSectionSfx = null;
+      pendingSectionSfxName = null;
+    }
+    sectionEditCustom.sfx = true;
+    markSectionDirty("sfx");
+    if (!pendingSectionSfx) {
+      $("#section-sfx-input")?.click();
+    }
+  }
+  updateSectionSfxPresetUI();
+});
+
 $("#section-sfx-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
-  if (!file) return;
+  if (!file) {
+    updateSectionSfxPresetUI();
+    return;
+  }
   pendingSectionSfx = await fileToDataUrl(file);
   pendingSectionSfxName = file.name;
   markSectionDirty("sfx");
-  $("#section-sfx-name").textContent = file.name;
+  sectionEditCustom.sfx = true;
+  updateSectionSfxPresetUI();
 });
 
 $("#section-sfx-clear").addEventListener("click", () => {
@@ -2947,7 +2986,7 @@ $("#section-sfx-clear").addEventListener("click", () => {
   pendingSectionSfxName = null;
   markSectionDirty("sfx");
   sectionEditCustom.sfx = false;
-  $("#section-sfx-name").textContent = "From group / default";
+  updateSectionSfxPresetUI();
 });
 
 function getSectionSfxVolumeFromForm() {
@@ -3615,10 +3654,8 @@ function fillSecretSectionSelect() {
       sec.targetGroupId = state.groups[0].id;
     }
   }
-  if ($("#secret-rig-target-kind")) {
-    $("#secret-rig-target-kind").value =
-      sec.rigTargetKind === "group" ? "group" : "section";
-  }
+  // Do NOT overwrite rig-type select here — that was resetting Group back to Section
+  // on every change handler that refilled the dropdowns. Kind is set in bind/tab open.
   updateSecretRigTargetFields();
 }
 
@@ -3638,6 +3675,16 @@ function updateSecretRigTargetFields() {
     grpField.hidden = kind !== "group";
     grpField.style.display = kind === "group" ? "" : "none";
   }
+}
+
+/** Sync Rig type select from saved state (tab open / unlock only). */
+function bindSecretRigKindFromState() {
+  const sec = ensureSecretState();
+  if ($("#secret-rig-target-kind")) {
+    $("#secret-rig-target-kind").value =
+      sec.rigTargetKind === "group" ? "group" : "section";
+  }
+  updateSecretRigTargetFields();
 }
 
 function fillSecretReverseSelects() {
@@ -3815,10 +3862,7 @@ function getReverseSteerMs() {
 
 function bindSecretDivertSfxUI() {
   const sec = ensureSecretState();
-  const nameEl = $("#secret-divert-sfx-name");
-  if (nameEl) {
-    nameEl.textContent = divertSfxDisplayName();
-  }
+  updateDivertSfxPresetUI();
   const vol = Math.min(
     1,
     Math.max(0, Number(sec.divertSfxVolume) || 0.4)
@@ -3870,8 +3914,7 @@ function bindSecretReverseUI() {
   if ($("#secret-reverse-slide-speed-label")) {
     $("#secret-reverse-slide-speed-label").textContent = String(speed);
   }
-  const nameEl = $("#secret-reverse-slide-sfx-name");
-  if (nameEl) nameEl.textContent = reverseSlideSfxDisplayName();
+  updateReverseSlideSfxPresetUI();
   const vol = Math.min(
     1,
     Math.max(0, Number(sec.reverseSlideSfxVolume) || 0.4)
@@ -3931,6 +3974,33 @@ function divertSfxDisplayName() {
   return `${DEFAULT_DIVERT_SFX.name} (default)`;
 }
 
+function getDivertSfxPreset() {
+  const sec = ensureSecretState();
+  if (sec.divertSfxData) return "custom";
+  return "default";
+}
+
+function updateDivertSfxPresetUI() {
+  const preset = getDivertSfxPreset();
+  const sel = $("#secret-divert-sfx-preset");
+  if (sel) sel.value = preset;
+  const nameEl = $("#secret-divert-sfx-name");
+  if (nameEl) {
+    nameEl.textContent =
+      preset === "custom"
+        ? ensureSecretState().divertSfxName ||
+          (ensureSecretState().divertSfxData
+            ? "Custom divert"
+            : "No custom file chosen")
+        : divertSfxDisplayName();
+  }
+  const row = $("#secret-divert-sfx-custom-row");
+  if (row) {
+    row.hidden = preset !== "custom";
+    row.style.display = preset === "custom" ? "" : "none";
+  }
+}
+
 function reverseSlideSfxDisplayName() {
   const sec = ensureSecretState();
   if (sec.reverseSlideSfxData && sec.reverseSlideSfxName) {
@@ -3938,6 +4008,92 @@ function reverseSlideSfxDisplayName() {
   }
   if (sec.reverseSlideSfxData) return "Custom slide audio";
   return `${DEFAULT_DIVERT_SFX.name} (default)`;
+}
+
+function getReverseSlideSfxPreset() {
+  const sec = ensureSecretState();
+  if (sec.reverseSlideSfxData) return "custom";
+  return "default";
+}
+
+function updateReverseSlideSfxPresetUI() {
+  const preset = getReverseSlideSfxPreset();
+  const sel = $("#secret-reverse-slide-sfx-preset");
+  if (sel) sel.value = preset;
+  const nameEl = $("#secret-reverse-slide-sfx-name");
+  if (nameEl) {
+    nameEl.textContent =
+      preset === "custom"
+        ? ensureSecretState().reverseSlideSfxName ||
+          (ensureSecretState().reverseSlideSfxData
+            ? "Custom slide"
+            : "No custom file chosen")
+        : reverseSlideSfxDisplayName();
+  }
+  const row = $("#secret-reverse-slide-sfx-custom-row");
+  if (row) {
+    row.hidden = preset !== "custom";
+    row.style.display = preset === "custom" ? "" : "none";
+  }
+}
+
+function getBgmPreset() {
+  return state.sound?.bgmData ? "custom" : "default";
+}
+
+function updateBgmPresetUI() {
+  const preset = getBgmPreset();
+  const sel = $("#bgm-preset");
+  if (sel) sel.value = preset;
+  const nameEl = $("#bgm-name");
+  if (nameEl) {
+    nameEl.textContent =
+      preset === "custom"
+        ? state.sound?.bgmName ||
+          (state.sound?.bgmData ? "Custom music" : "No custom file chosen")
+        : bgmDisplayName();
+  }
+  const row = $("#bgm-custom-row");
+  if (row) {
+    row.hidden = preset !== "custom";
+    row.style.display = preset === "custom" ? "" : "none";
+  }
+}
+
+function updateSectionSfxPresetUI() {
+  // Section-owned custom only — not inherited group/global sound
+  const isCustom = sectionEditCustom?.sfx === true;
+  const sel = $("#section-sfx-preset");
+  if (sel) sel.value = isCustom ? "custom" : "default";
+  const nameEl = $("#section-sfx-name");
+  if (nameEl) {
+    nameEl.textContent = isCustom
+      ? pendingSectionSfxName ||
+        (pendingSectionSfx ? "Custom land SFX" : "No custom file chosen")
+      : "From group / default";
+  }
+  const row = $("#section-sfx-custom-row");
+  if (row) {
+    row.hidden = !isCustom;
+    row.style.display = isCustom ? "" : "none";
+  }
+}
+
+function updateGroupSfxPresetUI() {
+  const hasCustom = !!pendingGroupSfx;
+  const sel = $("#group-sfx-preset");
+  if (sel) sel.value = hasCustom ? "custom" : "default";
+  const nameEl = $("#group-sfx-name");
+  if (nameEl) {
+    nameEl.textContent = hasCustom
+      ? pendingGroupSfxName || "Custom land SFX"
+      : "Use global default";
+  }
+  const row = $("#group-sfx-custom-row");
+  if (row) {
+    row.hidden = !hasCustom;
+    row.style.display = hasCustom ? "" : "none";
+  }
 }
 
 /**
@@ -4064,16 +4220,20 @@ function getSpinRigOptions() {
   }
   const forceId = getRigForceSectionId();
   const avoidIds = getReverseAvoidSectionIds();
+  const avoidGroupId = getReverseAvoidGroupId();
   return {
     forceSectionId: forceId,
     avoidSectionIds: avoidIds.length ? avoidIds : null,
+    /** Expand avoid set on the wheel from live slice group membership */
+    avoidGroupId: avoidGroupId || null,
     steerMs: getDivertSteerMs(),
     reverseSteerMs: getReverseSteerMs(),
     comboOrder: getSecretComboOrder(),
     onSteerStart: forceId ? () => onRigSteerStart() : undefined,
-    onReverseSteerStart: avoidIds.length
-      ? () => onReverseSteerStart()
-      : undefined,
+    onReverseSteerStart:
+      avoidIds.length || avoidGroupId
+        ? () => onReverseSteerStart()
+        : undefined,
   };
 }
 
@@ -4125,6 +4285,10 @@ $("#secret-rig-it")?.addEventListener("change", () => {
 });
 
 $("#secret-rig-target-kind")?.addEventListener("change", () => {
+  // Persist kind immediately so refill helpers don't stomp the live selection
+  const sec = ensureSecretState();
+  sec.rigTargetKind =
+    $("#secret-rig-target-kind")?.value === "group" ? "group" : "section";
   fillSecretSectionSelect();
   updateSecretRigTargetFields();
   saveSecretPanel();
@@ -4150,16 +4314,34 @@ $("#secret-mute-spin-ticks-rig")?.addEventListener("change", () => {
   saveSecretPanel();
 });
 
+$("#secret-divert-sfx-preset")?.addEventListener("change", async () => {
+  const sec = ensureSecretState();
+  const v = $("#secret-divert-sfx-preset")?.value;
+  if (v === "default") {
+    sec.divertSfxData = null;
+    sec.divertSfxName = null;
+    audio.buffers?.delete?.("rig_divert");
+    await ensureDivertSfxBuffer("rig_divert");
+  } else if (v === "custom" && !sec.divertSfxData) {
+    $("#secret-divert-sfx-input")?.click();
+  }
+  updateDivertSfxPresetUI();
+  persist();
+});
+
 $("#secret-divert-sfx-input")?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
-  if (!file) return;
+  if (!file) {
+    updateDivertSfxPresetUI();
+    return;
+  }
   const sec = ensureSecretState();
   sec.divertSfxData = await fileToDataUrl(file);
   sec.divertSfxName = file.name;
   audio.buffers?.delete?.("rig_divert");
   await ensureDivertSfxBuffer("rig_divert");
-  bindSecretDivertSfxUI();
+  updateDivertSfxPresetUI();
   persist();
 });
 
@@ -4170,7 +4352,7 @@ $("#secret-divert-sfx-clear")?.addEventListener("click", async () => {
   sec.divertSfxName = null;
   audio.buffers?.delete?.("rig_divert");
   await ensureDivertSfxBuffer("rig_divert");
-  bindSecretDivertSfxUI();
+  updateDivertSfxPresetUI();
   persist();
 });
 
@@ -4214,6 +4396,9 @@ $("#secret-reverse-rig-it")?.addEventListener("change", () => {
   saveSecretPanel();
 });
 $("#secret-reverse-target-kind")?.addEventListener("change", () => {
+  const sec = ensureSecretState();
+  sec.reverseTargetKind =
+    $("#secret-reverse-target-kind")?.value === "group" ? "group" : "section";
   fillSecretReverseSelects();
   updateSecretReverseTargetFields();
   saveSecretPanel();
@@ -4239,16 +4424,33 @@ $("#secret-reverse-slide-speed")?.addEventListener("input", () => {
   }
   persist();
 });
+$("#secret-reverse-slide-sfx-preset")?.addEventListener("change", async () => {
+  const sec = ensureSecretState();
+  const v = $("#secret-reverse-slide-sfx-preset")?.value;
+  if (v === "default") {
+    sec.reverseSlideSfxData = null;
+    sec.reverseSlideSfxName = null;
+    audio.buffers?.delete?.("rig_reverse_slide");
+    await ensureReverseSlideSfxBuffer("rig_reverse_slide");
+  } else if (v === "custom" && !sec.reverseSlideSfxData) {
+    $("#secret-reverse-slide-sfx-input")?.click();
+  }
+  updateReverseSlideSfxPresetUI();
+  persist();
+});
 $("#secret-reverse-slide-sfx-input")?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
-  if (!file) return;
+  if (!file) {
+    updateReverseSlideSfxPresetUI();
+    return;
+  }
   const sec = ensureSecretState();
   sec.reverseSlideSfxData = await fileToDataUrl(file);
   sec.reverseSlideSfxName = file.name;
   audio.buffers?.delete?.("rig_reverse_slide");
   await ensureReverseSlideSfxBuffer("rig_reverse_slide");
-  bindSecretReverseUI();
+  updateReverseSlideSfxPresetUI();
   persist();
 });
 $("#secret-reverse-slide-sfx-clear")?.addEventListener("click", async () => {
@@ -4257,7 +4459,7 @@ $("#secret-reverse-slide-sfx-clear")?.addEventListener("click", async () => {
   sec.reverseSlideSfxName = null;
   audio.buffers?.delete?.("rig_reverse_slide");
   await ensureReverseSlideSfxBuffer("rig_reverse_slide");
-  bindSecretReverseUI();
+  updateReverseSlideSfxPresetUI();
   persist();
 });
 $("#secret-reverse-slide-sfx-volume")?.addEventListener("input", () => {
@@ -4446,7 +4648,7 @@ function bindSound() {
   $("#bgm-volume-label").textContent = volumePct(bgmVol);
   updateSpinTickPresetUI();
   updateLandSfxPresetUI();
-  $("#bgm-name").textContent = bgmDisplayName();
+  updateBgmPresetUI();
   $("#bgm-mode").value = state.sound.bgmMode || "spin";
   syncBgm();
 }
@@ -4712,16 +4914,39 @@ $("#land-sfx-preview").addEventListener("click", async () => {
 });
 
 // --- Background music ---
+$("#bgm-preset")?.addEventListener("change", async () => {
+  checkpoint();
+  const v = $("#bgm-preset")?.value;
+  if (v === "default") {
+    state.sound.bgmData = null;
+    state.sound.bgmName = null;
+    audio.stopBgm();
+    audio.buffers.delete("bgm");
+    await ensureBgmBuffer();
+  } else if (v === "custom" && !state.sound.bgmData) {
+    $("#bgm-input")?.click();
+  }
+  updateBgmPresetUI();
+  persist();
+  syncBgm();
+});
+
 $("#bgm-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
-  if (!file) return;
+  if (!file) {
+    if (!state.sound.bgmData) {
+      updateBgmPresetUI();
+      persist();
+    }
+    return;
+  }
   checkpoint();
   state.sound.bgmData = await fileToDataUrl(file);
   state.sound.bgmName = file.name;
-  $("#bgm-name").textContent = bgmDisplayName();
   audio.buffers.delete("bgm");
   await ensureBgmBuffer();
+  updateBgmPresetUI();
   persist();
   syncBgm();
 });
@@ -4731,10 +4956,10 @@ $("#bgm-clear").addEventListener("click", async () => {
   // Restore bundled default (not silent)
   state.sound.bgmData = null;
   state.sound.bgmName = null;
-  $("#bgm-name").textContent = bgmDisplayName();
   audio.stopBgm();
   audio.buffers.delete("bgm");
   await ensureBgmBuffer();
+  updateBgmPresetUI();
   persist();
   syncBgm();
 });
