@@ -4001,19 +4001,68 @@ function updateDivertSfxPresetUI() {
   }
 }
 
+/** Bundled reverse slide-off samples (Secret → Slide-off SFX). */
+const REVERSE_SLIDE_PRESETS = {
+  "goofy-slip": {
+    id: "goofy-slip",
+    url: "assets/sounds/reverse-goofy-slip.mp3",
+    name: "Goofy slip",
+  },
+  "cartoon-slip": {
+    id: "cartoon-slip",
+    url: "assets/sounds/reverse-cartoon-slip.mp3",
+    name: "Cartoon slip",
+  },
+  "slide-slip": {
+    id: "slide-slip",
+    url: "assets/sounds/reverse-slide-slip.mp3",
+    name: "Slide slip",
+  },
+  "glass-squeak-3": {
+    id: "glass-squeak-3",
+    url: "assets/sounds/reverse-glass-squeak-3.mp3",
+    name: "Glass rub squeak 3",
+  },
+  "glass-squeak-2": {
+    id: "glass-squeak-2",
+    url: "assets/sounds/reverse-glass-squeak-2.mp3",
+    name: "Glass rub squeak 2",
+  },
+  synth: {
+    id: "synth",
+    url: null,
+    name: "Built-in slippery synth",
+  },
+};
+
+const REVERSE_SLIDE_PRESET_IDS = new Set([
+  ...Object.keys(REVERSE_SLIDE_PRESETS),
+  "custom",
+]);
+
 function reverseSlideSfxDisplayName() {
   const sec = ensureSecretState();
-  if (sec.reverseSlideSfxData && sec.reverseSlideSfxName) {
-    return sec.reverseSlideSfxName;
+  const preset = getReverseSlideSfxPreset();
+  if (preset === "custom") {
+    if (sec.reverseSlideSfxData && sec.reverseSlideSfxName) {
+      return sec.reverseSlideSfxName;
+    }
+    if (sec.reverseSlideSfxData) return "Custom slide audio";
+    return "Custom file (none chosen)";
   }
-  if (sec.reverseSlideSfxData) return "Custom slide audio";
-  return "Built-in slippery slide (default)";
+  return REVERSE_SLIDE_PRESETS[preset]?.name || "Goofy slip";
 }
 
 function getReverseSlideSfxPreset() {
   const sec = ensureSecretState();
+  let p = sec.reverseSlideSfxPreset;
+  if (p === "default") p = "goofy-slip"; // legacy
+  if (p && REVERSE_SLIDE_PRESET_IDS.has(p)) {
+    if (p === "custom" && !sec.reverseSlideSfxData) return "goofy-slip";
+    return p;
+  }
   if (sec.reverseSlideSfxData) return "custom";
-  return "default";
+  return "goofy-slip";
 }
 
 function updateReverseSlideSfxPresetUI() {
@@ -4097,20 +4146,29 @@ function updateGroupSfxPresetUI() {
 }
 
 /**
- * Load reverse slide-off custom file if any.
- * Default is a built-in slippery synth (no buffer) — not the divert grind.
+ * Load reverse slide-off buffer for the current preset (or custom file).
+ * Synth preset has no buffer (uses playSlipperySlide).
  * @returns {Promise<boolean>} true if a sample buffer is ready
  */
 async function ensureReverseSlideSfxBuffer(bufferKey = "rig_reverse_slide") {
   const sec = ensureSecretState();
+  const preset = getReverseSlideSfxPreset();
   try {
-    if (sec.reverseSlideSfxData) {
+    if (preset === "custom" && sec.reverseSlideSfxData) {
       await audio.loadDataUrl(bufferKey, sec.reverseSlideSfxData);
       return true;
     }
-    // Built-in slippery default — clear any old buffer so we don't play divert by mistake
-    audio.buffers.delete(bufferKey);
-    return false;
+    if (preset === "synth" || preset === "custom") {
+      audio.buffers.delete(bufferKey);
+      return false;
+    }
+    const meta = REVERSE_SLIDE_PRESETS[preset] || REVERSE_SLIDE_PRESETS["goofy-slip"];
+    if (!meta?.url) {
+      audio.buffers.delete(bufferKey);
+      return false;
+    }
+    await audio.loadUrl(bufferKey, meta.url);
+    return true;
   } catch (err) {
     console.warn("Reverse slide SFX load failed:", err);
     return false;

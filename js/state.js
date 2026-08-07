@@ -354,6 +354,12 @@ export function defaultState() {
       reverseTargetGroupId: null,
       /** 1 = slowest slide-off, 10 = fastest */
       reverseSlideSpeed: 2,
+      /**
+       * Bundled reverse slide presets + custom:
+       * "goofy-slip" | "cartoon-slip" | "slide-slip" | "glass-squeak-3" |
+       * "glass-squeak-2" | "synth" | "custom"
+       */
+      reverseSlideSfxPreset: "goofy-slip",
       reverseSlideSfxData: null,
       reverseSlideSfxName: null,
       reverseSlideSfxVolume: 0.4,
@@ -493,6 +499,25 @@ function migrate(data) {
               Math.max(1, Math.round(Number(data.secret.reverseSlideSpeed)))
             )
           : 2,
+      reverseSlideSfxPreset: (() => {
+        const p = data.secret?.reverseSlideSfxPreset;
+        const allowed = [
+          "goofy-slip",
+          "cartoon-slip",
+          "slide-slip",
+          "glass-squeak-3",
+          "glass-squeak-2",
+          "synth",
+          "custom",
+          "default", // legacy label → goofy-slip
+        ];
+        if (p && allowed.includes(p)) {
+          return p === "default" ? "goofy-slip" : p;
+        }
+        // Legacy: custom file stored without preset
+        if (data.secret?.reverseSlideSfxData) return "custom";
+        return "goofy-slip";
+      })(),
       reverseSlideSfxData: data.secret?.reverseSlideSfxData || null,
       reverseSlideSfxName: data.secret?.reverseSlideSfxName || null,
       reverseSlideSfxVolume:
