@@ -278,6 +278,100 @@ export class AudioManager {
   }
 
   /**
+   * Built-in reverse-rig slide: soft wet/slippery whoosh (not the divert grind).
+   * Tracked as divert source so stopDivert() cuts it when the wheel lands.
+   * @param {number} volume 0..1
+   * @param {boolean} [asPreview]
+   */
+  playSlipperySlide(volume = 0.4, asPreview = false) {
+    this.stopDivert();
+    const ctx = this.ensure();
+    const t = ctx.currentTime;
+    const dur = 1.4;
+    const vol = Math.max(0, Math.min(1, Number(volume) || 0)) * 0.55;
+
+    // Soft noise body (pink-ish) with falling low-pass = slick slide
+    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    let b0 = 0;
+    let b1 = 0;
+    let b2 = 0;
+    for (let i = 0; i < len; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99765 * b0 + white * 0.099046;
+      b1 = 0.963 * b1 + white * 0.2965164;
+      b2 = 0.57 * b2 + white * 1.0526913;
+      // Fade envelope baked into samples for a clean stop
+      const env = Math.sin((Math.PI * i) / Math.max(1, len - 1));
+      data[i] = (b0 + b1 + b2 + white * 0.12) * 0.07 * env;
+    }
+
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+
+    const low = ctx.createBiquadFilter();
+    low.type = "lowpass";
+    low.Q.value = 0.65;
+    low.frequency.setValueAtTime(3200, t);
+    low.frequency.exponentialRampToValueAtTime(220, t + dur);
+
+    const band = ctx.createBiquadFilter();
+    band.type = "bandpass";
+    band.Q.value = 0.85;
+    band.frequency.setValueAtTime(1100, t);
+    band.frequency.exponentialRampToValueAtTime(160, t + dur);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol), t + 0.05);
+    gain.gain.setValueAtTime(vol * 0.9, t + dur * 0.4);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    // Quiet sine layer — “wet” glass/ice feel under the noise
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(260, t);
+    osc.frequency.exponentialRampToValueAtTime(55, t + dur);
+    const oscGain = ctx.createGain();
+    oscGain.gain.setValueAtTime(0.0001, t);
+    oscGain.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol * 0.14), t + 0.06);
+    oscGain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    src.connect(low);
+    low.connect(band);
+    band.connect(gain);
+    gain.connect(this.master);
+    osc.connect(oscGain);
+    oscGain.connect(this.master);
+
+    src.start(t);
+    src.stop(t + dur + 0.02);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+
+    this._divertSource = src;
+    this._divertGain = gain;
+    this._trackActive(src);
+    this._trackActive(osc);
+    if (asPreview) {
+      this._trackPreview(src, dur + 0.05);
+      this._trackPreview(osc, dur + 0.05);
+    }
+    const clear = () => {
+      if (this._divertSource === src) {
+        this._divertSource = null;
+        this._divertGain = null;
+      }
+    };
+    src.onended = () => {
+      clear();
+      this._activeNodes.delete(src);
+    };
+    return true;
+  }
+
+  /**
    * Play the rig-it divert one-shot (stopped via stopDivert when the wheel lands).
    * @param {string} key loaded buffer key (e.g. "rig_divert")
    * @param {number} volume 0..1

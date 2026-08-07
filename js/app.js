@@ -4007,7 +4007,7 @@ function reverseSlideSfxDisplayName() {
     return sec.reverseSlideSfxName;
   }
   if (sec.reverseSlideSfxData) return "Custom slide audio";
-  return `${DEFAULT_DIVERT_SFX.name} (default)`;
+  return "Built-in slippery slide (default)";
 }
 
 function getReverseSlideSfxPreset() {
