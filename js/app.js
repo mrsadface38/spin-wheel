@@ -1899,11 +1899,42 @@ for (const id of [
   });
 }
 $("#group-preview-weight-mode")?.addEventListener("change", () => {
+  if (
+    parsePreviewWeightMode($("#group-preview-weight-mode")?.value) === "weight"
+  ) {
+    const num = $("#group-preview-weight-value-num");
+    syncPreviewWeightValueControls(
+      "group-preview",
+      num?.value || 1
+    );
+  }
   updateGroupPreviewWeightUI();
   scheduleGroupLivePreview();
 });
 $("#group-preview-custom-weight")?.addEventListener("input", () => {
   updateGroupPreviewWeightUI();
+  scheduleGroupLivePreview();
+});
+$("#group-preview-weight-value")?.addEventListener("input", () => {
+  const opts = getWeightSliderOpts();
+  const v = snapWeightSliderValue(
+    $("#group-preview-weight-value")?.value,
+    opts
+  );
+  if ($("#group-preview-weight-value-num")) {
+    $("#group-preview-weight-value-num").value = String(v);
+  }
+  scheduleGroupLivePreview();
+});
+$("#group-preview-weight-value-num")?.addEventListener("input", () => {
+  const opts = getWeightSliderOpts();
+  const raw = Number($("#group-preview-weight-value-num")?.value);
+  if (!Number.isFinite(raw)) return;
+  if ($("#group-preview-weight-value")) {
+    $("#group-preview-weight-value").value = String(
+      snapWeightSliderValue(raw, opts)
+    );
+  }
   scheduleGroupLivePreview();
 });
 $("#group-sfx-input")?.addEventListener("change", async (e) => {
@@ -2747,6 +2778,11 @@ function openSectionModal(section) {
   if ($("#preview-custom-weight")) {
     $("#preview-custom-weight").value = "100";
   }
+  // Seed custom-weight preview from this section's weight
+  syncPreviewWeightValueControls(
+    "preview",
+    $("#section-weight")?.value ?? 1
+  );
   updatePreviewWeightUI();
   sectionModal.showModal();
   // Preview after layout so stage has size
@@ -2757,11 +2793,37 @@ function openSectionModal(section) {
 }
 
 $("#preview-weight-mode")?.addEventListener("change", () => {
+  if (parsePreviewWeightMode($("#preview-weight-mode")?.value) === "weight") {
+    // When switching to custom weight, seed from the real section weight if empty-ish
+    const num = $("#preview-weight-value-num");
+    if (num && (num.value === "" || Number(num.value) <= 0)) {
+      syncPreviewWeightValueControls("preview", $("#section-weight")?.value);
+    } else {
+      syncPreviewWeightValueControls("preview", num?.value);
+    }
+  }
   updatePreviewWeightUI();
   scheduleSectionLivePreview();
 });
 $("#preview-custom-weight")?.addEventListener("input", () => {
   updatePreviewWeightUI();
+  scheduleSectionLivePreview();
+});
+$("#preview-weight-value")?.addEventListener("input", () => {
+  const opts = getWeightSliderOpts();
+  const v = snapWeightSliderValue($("#preview-weight-value")?.value, opts);
+  if ($("#preview-weight-value-num")) {
+    $("#preview-weight-value-num").value = String(v);
+  }
+  scheduleSectionLivePreview();
+});
+$("#preview-weight-value-num")?.addEventListener("input", () => {
+  const opts = getWeightSliderOpts();
+  const raw = Number($("#preview-weight-value-num")?.value);
+  if (!Number.isFinite(raw)) return;
+  if ($("#preview-weight-value")) {
+    $("#preview-weight-value").value = String(snapWeightSliderValue(raw, opts));
+  }
   scheduleSectionLivePreview();
 });
 $("#section-weight")?.addEventListener("input", scheduleSectionLivePreview);
