@@ -865,31 +865,70 @@ export class Wheel {
       const outerR = radius - rimPad;
       // Keep clear of the hub
       const hubR =
-        radius * Math.max(0.18, (this.look.centerSize ?? 0.16) + 0.05);
-      const radialBudget = Math.max(8 * dpr, outerR - hubR);
+        radius * Math.max(0.2, (this.look.centerSize ?? 0.16) + 0.06);
 
-      // Half-height must stay inside the wedge on BOTH sides of the mid-line.
-      // Chord half-width at outerR ≈ outerR * sin(span/2); leave padding so
-      // neighboring section text never meets.
-      const halfChord = outerR * Math.sin(Math.min(Math.PI / 2, span / 2));
-      const edgePad = Math.max(2 * dpr, halfChord * 0.18);
-      const tanBudget = Math.max(3 * dpr, (halfChord - edgePad) * 2 * 0.92);
-      // Slightly smaller ceiling than before — user asked for less bulk
+      // Usable chord width at radius r (full height budget across the mid-line)
+      const chordH = (r) => {
+        const half = Math.max(
+          0,
+          r * Math.sin(Math.min(Math.PI / 2, span / 2))
+        );
+        // Leave a gap so neighbors never touch; tighter near center
+        const pad = Math.max(1.5 * dpr, half * 0.22);
+        return Math.max(0, (half - pad) * 2);
+      };
+
       const maxFontPx = radius * 0.14;
 
-      // Fit length + height; never exceed wedge
+      // Iteratively pick scale so the INNER end of the text still fits the
+      // (much narrower) wedge there — that's what was clipping near the middle.
       let s = Math.min(
-        radialBudget / tw,
-        tanBudget / th,
-        maxFontPx / baseFont
+        maxFontPx / baseFont,
+        chordH(outerR) / th,
+        Math.max(8 * dpr, outerR - hubR) / tw
       );
       if (!Number.isFinite(s) || s <= 0) s = 0.04;
+
+      for (let i = 0; i < 12; i++) {
+        const h = th * s;
+        const w = tw * s;
+        // Innermost radius of the string
+        let rInner = outerR - w;
+        if (rInner < hubR) {
+          s = Math.min(s, Math.max(8 * dpr, outerR - hubR) / tw);
+          continue;
+        }
+        // Height must fit the chord at the INNER end (tightest point)
+        const availInner = chordH(rInner);
+        if (availInner > 0 && h > availInner) {
+          s = Math.min(s, availInner / th);
+          continue;
+        }
+        // Also don't exceed outer chord
+        const availOuter = chordH(outerR);
+        if (availOuter > 0 && h > availOuter) {
+          s = Math.min(s, availOuter / th);
+          continue;
+        }
+        break;
+      }
+      if (!Number.isFinite(s) || s <= 0) s = 0.04;
+
+      // Optional: if text would still dig past hubR, shorten only (keep height)
       let sx = s;
       let sy = s;
-      if (tw * sx > radialBudget) sx = radialBudget / tw;
-      if (th * sy > tanBudget) sy = tanBudget / th;
-
-      const textW = tw * sx;
+      let textW = tw * sx;
+      if (outerR - textW < hubR) {
+        sx = Math.max(0.04, (outerR - hubR) / tw);
+        textW = tw * sx;
+      }
+      // Final height check at the actual inner end
+      const rInnerFinal = Math.max(hubR, outerR - textW);
+      const hFinal = th * sy;
+      const avail = chordH(rInnerFinal);
+      if (avail > 0 && hFinal > avail) {
+        sy = avail / th;
+      }
 
       // +x = radial out. Place so the LAST character is at outerR
       // (as close to the circumference as possible). First char is more
