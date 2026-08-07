@@ -287,10 +287,11 @@ export class AudioManager {
     this.stopDivert();
     const ctx = this.ensure();
     const t = ctx.currentTime;
-    const dur = 1.4;
-    const vol = Math.max(0, Math.min(1, Number(volume) || 0)) * 0.55;
+    // Longer wet whoosh — clearly not the concrete-grind divert sample
+    const dur = 1.85;
+    const vol = Math.max(0, Math.min(1, Number(volume) || 0)) * 0.75;
 
-    // Soft noise body (pink-ish) with falling low-pass = slick slide
+    // Soft noise body (pink-ish) with falling low-pass = slick ice/wet slide
     const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
     const noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = noiseBuf.getChannelData(0);
@@ -302,9 +303,8 @@ export class AudioManager {
       b0 = 0.99765 * b0 + white * 0.099046;
       b1 = 0.963 * b1 + white * 0.2965164;
       b2 = 0.57 * b2 + white * 1.0526913;
-      // Fade envelope baked into samples for a clean stop
       const env = Math.sin((Math.PI * i) / Math.max(1, len - 1));
-      data[i] = (b0 + b1 + b2 + white * 0.12) * 0.07 * env;
+      data[i] = (b0 + b1 + b2 + white * 0.08) * 0.11 * env;
     }
 
     const src = ctx.createBufferSource();
@@ -312,52 +312,55 @@ export class AudioManager {
 
     const low = ctx.createBiquadFilter();
     low.type = "lowpass";
-    low.Q.value = 0.65;
-    low.frequency.setValueAtTime(3200, t);
-    low.frequency.exponentialRampToValueAtTime(220, t + dur);
+    low.Q.value = 0.55;
+    low.frequency.setValueAtTime(4200, t);
+    low.frequency.exponentialRampToValueAtTime(180, t + dur);
 
     const band = ctx.createBiquadFilter();
     band.type = "bandpass";
-    band.Q.value = 0.85;
-    band.frequency.setValueAtTime(1100, t);
-    band.frequency.exponentialRampToValueAtTime(160, t + dur);
+    band.Q.value = 0.7;
+    band.frequency.setValueAtTime(1400, t);
+    band.frequency.exponentialRampToValueAtTime(140, t + dur);
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol), t + 0.05);
-    gain.gain.setValueAtTime(vol * 0.9, t + dur * 0.4);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol), t + 0.06);
+    gain.gain.setValueAtTime(vol * 0.95, t + dur * 0.35);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
-    // Quiet sine layer — “wet” glass/ice feel under the noise
-    const osc = ctx.createOscillator();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(260, t);
-    osc.frequency.exponentialRampToValueAtTime(55, t + dur);
-    const oscGain = ctx.createGain();
-    oscGain.gain.setValueAtTime(0.0001, t);
-    oscGain.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol * 0.14), t + 0.06);
-    oscGain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    // Wet “slick” tones (very different from concrete grind)
+    const makeSine = (f0, f1, level) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(f0, t);
+      osc.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol * level), t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g);
+      g.connect(this.master);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+      this._trackActive(osc);
+      if (asPreview) this._trackPreview(osc, dur + 0.05);
+      return osc;
+    };
+    makeSine(320, 48, 0.18);
+    makeSine(480, 90, 0.1);
 
     src.connect(low);
     low.connect(band);
     band.connect(gain);
     gain.connect(this.master);
-    osc.connect(oscGain);
-    oscGain.connect(this.master);
 
     src.start(t);
     src.stop(t + dur + 0.02);
-    osc.start(t);
-    osc.stop(t + dur + 0.02);
 
     this._divertSource = src;
     this._divertGain = gain;
     this._trackActive(src);
-    this._trackActive(osc);
-    if (asPreview) {
-      this._trackPreview(src, dur + 0.05);
-      this._trackPreview(osc, dur + 0.05);
-    }
+    if (asPreview) this._trackPreview(src, dur + 0.05);
     const clear = () => {
       if (this._divertSource === src) {
         this._divertSource = null;

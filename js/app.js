@@ -4097,8 +4097,9 @@ function updateGroupSfxPresetUI() {
 }
 
 /**
- * Load reverse slide-off SFX (custom or same bundled default as divert).
- * @returns {Promise<boolean>}
+ * Load reverse slide-off custom file if any.
+ * Default is a built-in slippery synth (no buffer) — not the divert grind.
+ * @returns {Promise<boolean>} true if a sample buffer is ready
  */
 async function ensureReverseSlideSfxBuffer(bufferKey = "rig_reverse_slide") {
   const sec = ensureSecretState();
@@ -4107,8 +4108,9 @@ async function ensureReverseSlideSfxBuffer(bufferKey = "rig_reverse_slide") {
       await audio.loadDataUrl(bufferKey, sec.reverseSlideSfxData);
       return true;
     }
-    await audio.loadUrl(bufferKey, DEFAULT_DIVERT_SFX.url);
-    return true;
+    // Built-in slippery default — clear any old buffer so we don't play divert by mistake
+    audio.buffers.delete(bufferKey);
+    return false;
   } catch (err) {
     console.warn("Reverse slide SFX load failed:", err);
     return false;
@@ -4140,16 +4142,22 @@ function playReverseSlideSfx() {
     Math.max(0, Number(sec.reverseSlideSfxVolume) || 0.4)
   );
   audio.ensure();
-  const play = () => audio.playDivert("rig_reverse_slide", vol);
-  if (audio.buffers.has("rig_reverse_slide")) {
-    play();
-  } else {
-    ensureReverseSlideSfxBuffer("rig_reverse_slide")
-      .then((ok) => {
-        if (ok) play();
-      })
-      .catch(() => {});
+  if (sec.reverseSlideSfxData) {
+    const play = () => audio.playDivert("rig_reverse_slide", vol);
+    if (audio.buffers.has("rig_reverse_slide")) {
+      play();
+    } else {
+      ensureReverseSlideSfxBuffer("rig_reverse_slide")
+        .then((ok) => {
+          if (ok) play();
+          else audio.playSlipperySlide(vol);
+        })
+        .catch(() => audio.playSlipperySlide(vol));
+    }
+    return;
   }
+  // Default: slippery synth (not SCP-173 divert grind)
+  audio.playSlipperySlide(vol);
 }
 
 /** Mute BGM for the divert move if Secret option is on. */
@@ -4484,9 +4492,15 @@ $("#secret-reverse-slide-sfx-preview")?.addEventListener("click", async () => {
     1,
     Math.max(0, Number(sec.reverseSlideSfxVolume) || 0.4)
   );
-  const ok = await ensureReverseSlideSfxBuffer("preview_rig_reverse_slide");
-  if (!ok || audio.isPreviewPlaying) return;
-  audio.playOneShot("preview_rig_reverse_slide", vol, "land", true);
+  if (sec.reverseSlideSfxData) {
+    const ok = await ensureReverseSlideSfxBuffer("preview_rig_reverse_slide");
+    if (!ok || audio.isPreviewPlaying) return;
+    audio.playOneShot("preview_rig_reverse_slide", vol, "land", true);
+    return;
+  }
+  audio.togglePreview("reverse_slide", () => {
+    audio.playSlipperySlide(vol, true);
+  });
 });
 
 async function hideWinnerPart() {
