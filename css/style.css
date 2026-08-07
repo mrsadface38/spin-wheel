@@ -1346,6 +1346,28 @@ body.group-drag-cursor * {
   padding: 0.2rem;
 }
 
+.field-with-action {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field-with-action input[type="color"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.field-with-action .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.btn.is-active {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel-2));
+  color: var(--text);
+}
+
 .field input[type="range"],
 .field-inline input[type="range"] {
   accent-color: var(--accent);

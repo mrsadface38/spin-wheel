@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#40</span>
+        <span class="app-version" id="app-version" title="Update number">#41</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -227,8 +227,18 @@
             </label>
             <label class="field">
               <span>Winner text color</span>
-              <input type="color" id="winner-text-color" value="#ffffff" />
-              <small>Color of the winning name on the result screen (not wheel labels)</small>
+              <div class="field-with-action">
+                <input type="color" id="winner-text-color" value="#ffffff" />
+                <button
+                  type="button"
+                  id="btn-winner-text-override"
+                  class="btn small ghost"
+                  title="Force this Look color on the result screen for every section (ignores section/group winner colors)"
+                >
+                  Override
+                </button>
+              </div>
+              <small>Default for the winning name. Sections/groups can set their own unless Override is on.</small>
             </label>
             <label class="toggle-row">
               <input type="checkbox" id="chk-allow-winner-remove" checked />
@@ -483,6 +493,12 @@
             <small>Label color on the wheel for this section</small>
           </label>
 
+          <label class="field">
+            <span>Winner text color</span>
+            <input type="color" id="section-winner-text-color" value="#ffffff" />
+            <small>Color of this name on the result screen (inherits group / Look until you change it)</small>
+          </label>
+
           <div class="field">
             <span>Groups</span>
             <div id="section-groups" class="group-checkboxes" role="group" aria-label="Groups for this section"></div>
@@ -648,6 +664,7 @@
               <div class="profile-parts-row">
                 <label class="chip-check"><input type="checkbox" id="group-override-color" /> Slice color</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-text-color" /> Text color</label>
+                <label class="chip-check"><input type="checkbox" id="group-override-winner-text-color" /> Winner text</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-image" /> Image</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-sfx" /> Land SFX</label>
               </div>
@@ -661,6 +678,11 @@
               <span>Profile text color</span>
               <input type="color" id="group-text-color" value="#ffffff" />
               <small>Default label color for sections in this group</small>
+            </label>
+            <label class="field">
+              <span>Profile winner text color</span>
+              <input type="color" id="group-winner-text-color" value="#ffffff" />
+              <small>Default winning-name color on the result screen for sections in this group</small>
             </label>
 
             <div class="form-block compact">
@@ -749,6 +771,7 @@
                 <div class="profile-parts-row">
                   <label class="chip-check"><input type="checkbox" id="group-apply-color" checked /> Slice color</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-text-color" checked /> Text color</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-winner-text-color" checked /> Winner text</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-image" checked /> Image</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-sfx" /> Land SFX</label>
                 </div>

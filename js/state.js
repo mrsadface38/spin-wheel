@@ -49,6 +49,7 @@ const PALETTE = [
 export const PROFILE_KEYS = [
   "color",
   "textColor",
+  "winnerTextColor",
   "imageData",
   "imageMode",
   "imageFillScale",
@@ -63,6 +64,7 @@ export const PROFILE_KEYS = [
 
 export const COLOR_KEYS = ["color"];
 export const TEXT_COLOR_KEYS = ["textColor"];
+export const WINNER_TEXT_COLOR_KEYS = ["winnerTextColor"];
 export const IMAGE_KEYS = [
   "imageData",
   "imageMode",
@@ -75,7 +77,7 @@ export const IMAGE_KEYS = [
 ];
 export const SFX_KEYS = ["landSfxData", "landSfxName"];
 
-/** @typedef {{ color?: boolean, textColor?: boolean, image?: boolean, sfx?: boolean }} ProfileParts */
+/** @typedef {{ color?: boolean, textColor?: boolean, winnerTextColor?: boolean, image?: boolean, sfx?: boolean }} ProfileParts */
 
 export function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
@@ -85,10 +87,12 @@ export function defaultGroupProfile() {
   return {
     overrideColor: false,
     overrideTextColor: false,
+    overrideWinnerTextColor: false,
     overrideImage: false,
     overrideSfx: false,
     color: "#4a6cf7",
     textColor: "#ffffff",
+    winnerTextColor: "#ffffff",
     imageData: null,
     imageMode: "fill",
     imageFillScale: 1,
@@ -107,6 +111,7 @@ export function groupHasAnyOverride(g) {
     g &&
     (g.overrideColor ||
       g.overrideTextColor ||
+      g.overrideWinnerTextColor ||
       g.overrideImage ||
       g.overrideSfx)
   );
@@ -143,6 +148,10 @@ export function normalizeProfileFields(src = {}) {
   return {
     color: normalizeHexColor(src.color, "#4a6cf7"),
     textColor: normalizeHexColor(src.textColor, "#ffffff"),
+    winnerTextColor: normalizeHexColor(
+      src.winnerTextColor ?? src.textColor,
+      "#ffffff"
+    ),
     imageData: src.imageData || null,
     imageMode: src.imageMode === "tile" ? "tile" : "fill",
     imageFillScale: clampScale(src.imageFillScale),
@@ -170,6 +179,7 @@ export function normalizeGroup(g = {}) {
     overrideTextColor:
       g.overrideTextColor === true ||
       (g.overrideTextColor == null && legacyAll),
+    overrideWinnerTextColor: g.overrideWinnerTextColor === true,
     overrideImage:
       g.overrideImage === true || (g.overrideImage == null && legacyAll),
     overrideSfx:
@@ -200,10 +210,17 @@ export function applyProfileToSection(section, profile, parts) {
       ? {
           color: parts.color === true,
           textColor: parts.textColor === true,
+          winnerTextColor: parts.winnerTextColor === true,
           image: parts.image === true,
           sfx: parts.sfx === true,
         }
-      : { color: true, textColor: true, image: true, sfx: true };
+      : {
+          color: true,
+          textColor: true,
+          winnerTextColor: true,
+          image: true,
+          sfx: true,
+        };
   if (want.color) {
     for (const k of COLOR_KEYS) section[k] = p[k];
     section.customColor = true;
@@ -211,6 +228,10 @@ export function applyProfileToSection(section, profile, parts) {
   if (want.textColor) {
     for (const k of TEXT_COLOR_KEYS) section[k] = p[k];
     section.customTextColor = true;
+  }
+  if (want.winnerTextColor) {
+    for (const k of WINNER_TEXT_COLOR_KEYS) section[k] = p[k];
+    section.customWinnerTextColor = true;
   }
   if (want.image) {
     for (const k of IMAGE_KEYS) section[k] = p[k];
@@ -239,11 +260,13 @@ export function defaultState() {
     // Own colors by default; image/SFX inherit from groups until edited
     customColor: true,
     customTextColor: false,
+    customWinnerTextColor: false,
     customImage: false,
     customSfx: false,
     ...normalizeProfileFields({
       color: PALETTE[i % PALETTE.length],
       textColor: "#ffffff",
+      winnerTextColor: "#ffffff",
     }),
   }));
 
@@ -261,6 +284,11 @@ export function defaultState() {
       textColor: "#ffffff",
       /** Color of the winning name on the result overlay (separate from wheel labels) */
       winnerTextColor: "#ffffff",
+      /**
+       * When true, result screen always uses look.winnerTextColor
+       * (ignores section / group winner colors).
+       */
+      forceWinnerTextColor: false,
       showLabels: true,
       showImages: true,
       resultStyle: "center",
@@ -342,6 +370,7 @@ function migrate(data) {
   if (look.winnerTextColor == null || look.winnerTextColor === "") {
     look.winnerTextColor = look.textColor || base.look.winnerTextColor;
   }
+  look.forceWinnerTextColor = look.forceWinnerTextColor === true;
   const spin = { ...base.spin, ...(data.spin || {}) };
   if (wasOldSave) {
     if (data.spin?.duration == null || data.spin.duration <= 5) {
@@ -469,6 +498,7 @@ export function inheritGroupForChannel(state, section, channel) {
   for (const g of members) {
     if (channel === "color") return g;
     if (channel === "textColor") return g;
+    if (channel === "winnerTextColor") return g;
     if (channel === "image" && g.imageData) return g;
     if (channel === "sfx" && g.landSfxData) return g;
   }
@@ -505,12 +535,14 @@ export function resolveSectionForDisplay(state, section) {
     profileOverrides: {
       color: false,
       textColor: false,
+      winnerTextColor: false,
       image: false,
       sfx: false,
     },
     profileFrom: {
       color: { source: "section", groupId: null },
       textColor: { source: "section", groupId: null },
+      winnerTextColor: { source: "section", groupId: null },
       image: { source: "section", groupId: null },
       sfx: { source: "section", groupId: null },
     },
@@ -552,6 +584,28 @@ export function resolveSectionForDisplay(state, section) {
     }
   }
 
+  // --- Winner text color (result overlay name) ---
+  const forceWinnerText = forceOverrideGroup(
+    state,
+    section,
+    "overrideWinnerTextColor"
+  );
+  if (forceWinnerText) {
+    applyFromGroup(forceWinnerText, WINNER_TEXT_COLOR_KEYS, "winnerTextColor");
+    out.profileOverrides.winnerTextColor = true;
+  } else if (!section.customWinnerTextColor) {
+    const fromG = inheritGroupForChannel(state, section, "winnerTextColor");
+    if (fromG) {
+      applyFromGroup(fromG, WINNER_TEXT_COLOR_KEYS, "winnerTextColor");
+    } else {
+      out.winnerTextColor = normalizeHexColor(
+        state.look?.winnerTextColor || state.look?.textColor,
+        "#ffffff"
+      );
+      out.profileFrom.winnerTextColor = { source: "look", groupId: null };
+    }
+  }
+
   // --- Image (may come from a different group than SFX) ---
   const forceImage = forceOverrideGroup(state, section, "overrideImage");
   if (forceImage) {
@@ -575,6 +629,12 @@ export function resolveSectionForDisplay(state, section) {
     out.textColor || state.look?.textColor,
     "#ffffff"
   );
+  out.winnerTextColor = normalizeHexColor(
+    out.winnerTextColor ||
+      state.look?.winnerTextColor ||
+      state.look?.textColor,
+    "#ffffff"
+  );
 
   // Prefer SFX group id for audio buffer key; else any group source
   if (out.profileFrom.sfx.source === "group") {
@@ -585,6 +645,8 @@ export function resolveSectionForDisplay(state, section) {
     out.profileGroupId = out.profileFrom.color.groupId;
   } else if (out.profileFrom.textColor.source === "group") {
     out.profileGroupId = out.profileFrom.textColor.groupId;
+  } else if (out.profileFrom.winnerTextColor.source === "group") {
+    out.profileGroupId = out.profileFrom.winnerTextColor.groupId;
   }
 
   return out;
@@ -608,23 +670,28 @@ function normalizeSection(s, groups, groupIdsSet) {
   const hasCustomFlags =
     s.customColor != null ||
     s.customTextColor != null ||
+    s.customWinnerTextColor != null ||
     s.customImage != null ||
     s.customSfx != null;
 
   // Legacy saves: keep existing media/color as section-owned so looks don't jump
   let customColor;
   let customTextColor;
+  let customWinnerTextColor;
   let customImage;
   let customSfx;
   if (hasCustomFlags) {
     customColor = s.customColor === true;
     customTextColor = s.customTextColor === true;
+    // New channel: only owned when explicitly flagged (old saves inherit Look/group)
+    customWinnerTextColor = s.customWinnerTextColor === true;
     customImage = s.customImage === true;
     customSfx = s.customSfx === true;
   } else {
     customColor = true;
     // Old projects: inherit text color (Look / group) unless they set one
     customTextColor = s.textColor != null && s.textColor !== "";
+    customWinnerTextColor = false;
     customImage = !!profile.imageData;
     customSfx = !!profile.landSfxData;
   }
@@ -637,6 +704,7 @@ function normalizeSection(s, groups, groupIdsSet) {
     groupIds: gids,
     customColor,
     customTextColor,
+    customWinnerTextColor,
     customImage,
     customSfx,
     ...profile,

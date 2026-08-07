@@ -227,11 +227,13 @@ export function convertWheelOfNames(data) {
         groupIds: [group.id],
         customColor: true,
         customTextColor: false,
+        customWinnerTextColor: false,
         customImage: !!img,
         customSfx: false,
         ...normalizeProfileFields({
           color,
           textColor: "#ffffff",
+          winnerTextColor: "#ffffff",
           imageData: img,
         }),
       });
@@ -303,9 +305,14 @@ export function convertTextList(text) {
       groupIds: [group.id],
       customColor: true,
       customTextColor: false,
+      customWinnerTextColor: false,
       customImage: false,
       customSfx: false,
-      ...normalizeProfileFields({ color, textColor: "#ffffff" }),
+      ...normalizeProfileFields({
+        color,
+        textColor: "#ffffff",
+        winnerTextColor: "#ffffff",
+      }),
     });
   }
 

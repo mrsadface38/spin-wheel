@@ -838,6 +838,7 @@ function renderGroups() {
       const ovParts = [
         g.overrideColor ? "slice" : "",
         g.overrideTextColor ? "text" : "",
+        g.overrideWinnerTextColor ? "win" : "",
         g.overrideImage ? "img" : "",
         g.overrideSfx ? "sfx" : "",
       ].filter(Boolean);
@@ -885,10 +886,12 @@ function cloneSectionForDuplicate(section) {
     groupIds: gids.slice(),
     customColor: section.customColor === true,
     customTextColor: section.customTextColor === true,
+    customWinnerTextColor: section.customWinnerTextColor === true,
     customImage: section.customImage === true,
     customSfx: section.customSfx === true,
     color: section.color,
     textColor: section.textColor,
+    winnerTextColor: section.winnerTextColor,
     imageData: section.imageData || null,
     imageMode: section.imageMode === "tile" ? "tile" : "fill",
     imageFillScale: section.imageFillScale,
@@ -913,10 +916,12 @@ function cloneGroupForDuplicate(group) {
     active: group.active !== false,
     overrideColor: group.overrideColor === true,
     overrideTextColor: group.overrideTextColor === true,
+    overrideWinnerTextColor: group.overrideWinnerTextColor === true,
     overrideImage: group.overrideImage === true,
     overrideSfx: group.overrideSfx === true,
     color: group.color,
     textColor: group.textColor,
+    winnerTextColor: group.winnerTextColor,
     imageData: group.imageData || null,
     imageMode: group.imageMode,
     imageFillScale: group.imageFillScale,
@@ -1513,6 +1518,10 @@ function readGroupProfileFromForm() {
   return normalizeProfileFields({
     color: $("#group-color")?.value || "#4a6cf7",
     textColor: $("#group-text-color")?.value || "#ffffff",
+    winnerTextColor:
+      $("#group-winner-text-color")?.value ||
+      state.look?.winnerTextColor ||
+      "#ffffff",
     imageData: pendingGroupImage,
     imageMode: $("#group-image-mode")?.value === "tile" ? "tile" : "fill",
     imageFillScale: Number($("#group-fill-scale")?.value) || 1,
@@ -1530,6 +1539,8 @@ function readOverridePartsFromForm() {
   return {
     overrideColor: $("#group-override-color")?.checked === true,
     overrideTextColor: $("#group-override-text-color")?.checked === true,
+    overrideWinnerTextColor:
+      $("#group-override-winner-text-color")?.checked === true,
     overrideImage: $("#group-override-image")?.checked === true,
     overrideSfx: $("#group-override-sfx")?.checked === true,
   };
@@ -1539,6 +1550,7 @@ function readApplyPartsFromForm() {
   return {
     color: $("#group-apply-color")?.checked === true,
     textColor: $("#group-apply-text-color")?.checked === true,
+    winnerTextColor: $("#group-apply-winner-text-color")?.checked === true,
     image: $("#group-apply-image")?.checked === true,
     sfx: $("#group-apply-sfx")?.checked === true,
   };
@@ -1552,6 +1564,10 @@ function fillGroupProfileForm(group) {
   if ($("#group-override-text-color")) {
     $("#group-override-text-color").checked = g.overrideTextColor === true;
   }
+  if ($("#group-override-winner-text-color")) {
+    $("#group-override-winner-text-color").checked =
+      g.overrideWinnerTextColor === true;
+  }
   if ($("#group-override-image")) {
     $("#group-override-image").checked = g.overrideImage === true;
   }
@@ -1561,11 +1577,21 @@ function fillGroupProfileForm(group) {
   // Apply chips: default image+color+text on, SFX off (so you don't wipe audio by accident)
   if ($("#group-apply-color")) $("#group-apply-color").checked = true;
   if ($("#group-apply-text-color")) $("#group-apply-text-color").checked = true;
+  if ($("#group-apply-winner-text-color")) {
+    $("#group-apply-winner-text-color").checked = true;
+  }
   if ($("#group-apply-image")) $("#group-apply-image").checked = true;
   if ($("#group-apply-sfx")) $("#group-apply-sfx").checked = false;
   $("#group-color").value = g.color || "#4a6cf7";
   if ($("#group-text-color")) {
     $("#group-text-color").value = g.textColor || "#ffffff";
+  }
+  if ($("#group-winner-text-color")) {
+    $("#group-winner-text-color").value =
+      g.winnerTextColor ||
+      state.look?.winnerTextColor ||
+      g.textColor ||
+      "#ffffff";
   }
   pendingGroupImage = g.imageData || null;
   pendingGroupSfx = g.landSfxData || null;
@@ -1744,6 +1770,10 @@ $("#group-cancel").addEventListener("click", () => groupModal.close());
 $("#group-name")?.addEventListener("input", scheduleGroupLivePreview);
 $("#group-color")?.addEventListener("input", scheduleGroupLivePreview);
 $("#group-text-color")?.addEventListener("input", scheduleGroupLivePreview);
+$("#group-winner-text-color")?.addEventListener(
+  "input",
+  scheduleGroupLivePreview
+);
 $("#group-image-input")?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
@@ -1820,15 +1850,22 @@ $("#btn-apply-group-profile")?.addEventListener("click", async () => {
     return;
   }
   const parts = readApplyPartsFromForm();
-  if (!parts.color && !parts.textColor && !parts.image && !parts.sfx) {
+  if (
+    !parts.color &&
+    !parts.textColor &&
+    !parts.winnerTextColor &&
+    !parts.image &&
+    !parts.sfx
+  ) {
     alert(
-      "Check at least one part to apply: Slice color, Text color, Image, or Land SFX."
+      "Check at least one part to apply: Slice color, Text color, Winner text, Image, or Land SFX."
     );
     return;
   }
   const labels = [
     parts.color ? "slice color" : "",
     parts.textColor ? "text color" : "",
+    parts.winnerTextColor ? "winner text" : "",
     parts.image ? "image" : "",
     parts.sfx ? "land SFX" : "",
   ].filter(Boolean);
@@ -1966,11 +2003,18 @@ let pendingSectionImage = null;
 let pendingSectionSfx = null;
 let pendingSectionSfxName = null;
 /** Tracks which profile channels the user touched in the open editor */
-let sectionEditDirty = { color: false, textColor: false, image: false, sfx: false };
+let sectionEditDirty = {
+  color: false,
+  textColor: false,
+  winnerTextColor: false,
+  image: false,
+  sfx: false,
+};
 /** custom* flags of the section being edited (or defaults for new) */
 let sectionEditCustom = {
   color: false,
   textColor: false,
+  winnerTextColor: false,
   image: false,
   sfx: false,
 };
@@ -1978,6 +2022,7 @@ let sectionEditCustom = {
 function markSectionDirty(channel) {
   if (channel === "color") sectionEditDirty.color = true;
   if (channel === "textColor") sectionEditDirty.textColor = true;
+  if (channel === "winnerTextColor") sectionEditDirty.winnerTextColor = true;
   if (channel === "image") sectionEditDirty.image = true;
   if (channel === "sfx") sectionEditDirty.sfx = true;
 }
@@ -2440,12 +2485,14 @@ function openSectionModal(section) {
   sectionEditDirty = {
     color: false,
     textColor: false,
+    winnerTextColor: false,
     image: false,
     sfx: false,
   };
   sectionEditCustom = {
     color: section ? section.customColor === true : false,
     textColor: section ? section.customTextColor === true : false,
+    winnerTextColor: section ? section.customWinnerTextColor === true : false,
     image: section ? section.customImage === true : false,
     sfx: section ? section.customSfx === true : false,
   };
@@ -2456,6 +2503,9 @@ function openSectionModal(section) {
     : null;
   const colorSrc = sectionEditCustom.color ? section : resolved;
   const textSrc = sectionEditCustom.textColor ? section : resolved;
+  const winnerTextSrc = sectionEditCustom.winnerTextColor
+    ? section
+    : resolved;
   const imageSrc = sectionEditCustom.image ? section : resolved;
   const sfxSrc = sectionEditCustom.sfx ? section : resolved;
 
@@ -2472,6 +2522,13 @@ function openSectionModal(section) {
   if ($("#section-text-color")) {
     $("#section-text-color").value =
       textSrc?.textColor ||
+      state.look?.textColor ||
+      "#ffffff";
+  }
+  if ($("#section-winner-text-color")) {
+    $("#section-winner-text-color").value =
+      winnerTextSrc?.winnerTextColor ||
+      state.look?.winnerTextColor ||
       state.look?.textColor ||
       "#ffffff";
   }
@@ -2596,6 +2653,9 @@ $("#section-text-color")?.addEventListener("input", () => {
   markSectionDirty("textColor");
   scheduleSectionLivePreview();
 });
+$("#section-winner-text-color")?.addEventListener("input", () => {
+  markSectionDirty("winnerTextColor");
+});
 
 $("#section-color")?.addEventListener("input", () => {
   markSectionDirty("color");
@@ -2705,10 +2765,14 @@ $("#section-form").addEventListener("submit", async (e) => {
   // custom* : stay unedited (inherit groups) until the user touches that channel
   let customColor = existing ? existing.customColor === true : false;
   let customTextColor = existing ? existing.customTextColor === true : false;
+  let customWinnerTextColor = existing
+    ? existing.customWinnerTextColor === true
+    : false;
   let customImage = existing ? existing.customImage === true : false;
   let customSfx = existing ? existing.customSfx === true : false;
   if (sectionEditDirty.color) customColor = true;
   if (sectionEditDirty.textColor) customTextColor = true;
+  if (sectionEditDirty.winnerTextColor) customWinnerTextColor = true;
   if (sectionEditDirty.image) {
     // Clear with no image → inherit again; pick/adjust image → own
     customImage = !!pendingSectionImage || sectionEditCustom.image === true;
@@ -2785,10 +2849,17 @@ $("#section-form").addEventListener("submit", async (e) => {
         $("#section-text-color")?.value ||
         state.look?.textColor ||
         "#ffffff",
+    winnerTextColor: customWinnerTextColor
+      ? $("#section-winner-text-color")?.value || "#ffffff"
+      : existing?.winnerTextColor ||
+        $("#section-winner-text-color")?.value ||
+        state.look?.winnerTextColor ||
+        "#ffffff",
     groupIds,
     enabled: $("#section-enabled").checked,
     customColor,
     customTextColor,
+    customWinnerTextColor,
     customImage,
     customSfx,
     ...imageFields,
@@ -2817,6 +2888,7 @@ $("#section-form").addEventListener("submit", async (e) => {
       // Brand-new section: untouched channels stay inherited
       customColor: sectionEditDirty.color,
       customTextColor: sectionEditDirty.textColor,
+      customWinnerTextColor: sectionEditDirty.winnerTextColor,
       customImage: sectionEditDirty.image && !!pendingSectionImage,
       customSfx: sectionEditDirty.sfx && !!pendingSectionSfx,
       color: sectionEditDirty.color
@@ -2825,6 +2897,11 @@ $("#section-form").addEventListener("submit", async (e) => {
       textColor: sectionEditDirty.textColor
         ? $("#section-text-color")?.value || "#ffffff"
         : state.look?.textColor || "#ffffff",
+      winnerTextColor: sectionEditDirty.winnerTextColor
+        ? $("#section-winner-text-color")?.value || "#ffffff"
+        : state.look?.winnerTextColor ||
+          state.look?.textColor ||
+          "#ffffff",
       imageData: sectionEditDirty.image ? pendingSectionImage : null,
       landSfxData: sectionEditDirty.sfx ? pendingSectionSfx : null,
       landSfxName: sectionEditDirty.sfx ? pendingSectionSfxName : null,
@@ -2877,12 +2954,15 @@ $("#bulk-form").addEventListener("submit", async (e) => {
       label,
       color,
       textColor: state.look?.textColor || "#ffffff",
+      winnerTextColor:
+        state.look?.winnerTextColor || state.look?.textColor || "#ffffff",
       weight,
       enabled: true,
       groupIds: bulkGroupId ? [bulkGroupId] : [],
       // Unedited image/SFX inherit group profiles; color only owned if set in bulk line
       customColor: colorGiven,
       customTextColor: false,
+      customWinnerTextColor: false,
       customImage: false,
       customSfx: false,
       imageData: null,
@@ -2915,6 +2995,7 @@ function bindLook() {
     $("#winner-text-color").value =
       state.look.winnerTextColor || state.look.textColor || "#ffffff";
   }
+  updateWinnerTextOverrideButton();
   $("#chk-show-labels").checked = state.look.showLabels !== false;
   $("#chk-show-images").checked = state.look.showImages !== false;
   $("#result-style").value = state.look.resultStyle === "banner" ? "banner" : "center";
@@ -2957,6 +3038,25 @@ function updateWinnerRemoveButton() {
   btn.hidden = !allowed;
   btn.setAttribute("aria-hidden", allowed ? "false" : "true");
 }
+
+/** Sync Look → Winner text color Override button active state */
+function updateWinnerTextOverrideButton() {
+  const btn = $("#btn-winner-text-override");
+  if (!btn) return;
+  const on = state.look?.forceWinnerTextColor === true;
+  btn.classList.toggle("is-active", on);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.title = on
+    ? "Override on — result screen always uses Look winner text color (click to turn off)"
+    : "Override off — use section/group winner text colors when set (click to force Look color)";
+}
+
+$("#btn-winner-text-override")?.addEventListener("click", () => {
+  checkpoint();
+  state.look.forceWinnerTextColor = !(state.look.forceWinnerTextColor === true);
+  updateWinnerTextOverrideButton();
+  persist();
+});
 
 function clearResultCenterBg() {
   const bg = $("#result-center-bg");
@@ -3052,9 +3152,14 @@ function showResult(section, opts = {}) {
   const imageData = disp?.imageData || null;
 
   const style = state.look.resultStyle === "banner" ? "banner" : "center";
-  // Winner screen color is its own Look setting (not wheel label textColor)
+  // Look Override forces Look color; else section/group/Look inheritance
   const winTextColor =
-    state.look?.winnerTextColor || state.look?.textColor || "#ffffff";
+    state.look?.forceWinnerTextColor === true
+      ? state.look?.winnerTextColor || state.look?.textColor || "#ffffff"
+      : disp?.winnerTextColor ||
+        state.look?.winnerTextColor ||
+        state.look?.textColor ||
+        "#ffffff";
   if (style === "banner") {
     resultTextBanner.textContent = label;
     resultTextBanner.style.color = winTextColor;
@@ -3476,6 +3581,7 @@ async function onLookChange() {
   if ($("#winner-text-color")) {
     state.look.winnerTextColor = $("#winner-text-color").value;
   }
+  // forceWinnerTextColor is toggled by the Override button, not these fields
   state.look.showLabels = $("#chk-show-labels").checked;
   state.look.showImages = $("#chk-show-images").checked;
   state.look.resultStyle = $("#result-style").value === "banner" ? "banner" : "center";
