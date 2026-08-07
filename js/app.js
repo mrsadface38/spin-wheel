@@ -780,6 +780,7 @@ function renderSections() {
             <div class="card-actions">
               <button type="button" class="icon-btn" data-act="toggle" title="Toggle on/off">${s.enabled ? "👁" : "🚫"}</button>
               <button type="button" class="icon-btn" data-act="edit" title="Edit">✎</button>
+              <button type="button" class="icon-btn" data-act="dup" title="Duplicate">⧉</button>
               <button type="button" class="icon-btn danger" data-act="del" title="Delete">✕</button>
             </div>
           </div>
@@ -850,6 +851,7 @@ function renderGroups() {
           <div class="card-actions">
             <button type="button" class="icon-btn" data-act="toggle" title="Toggle group">${g.active ? "✓" : "○"}</button>
             <button type="button" class="icon-btn" data-act="rename" title="Edit">✎</button>
+            <button type="button" class="icon-btn" data-act="dup" title="Duplicate">⧉</button>
             <button type="button" class="icon-btn danger" data-act="del" title="Delete">✕</button>
           </div>
         </div>`;
@@ -3447,7 +3449,7 @@ function bindSound() {
   $("#spin-sfx-volume-label").textContent = volumePct(spinVol);
   $("#land-sfx-volume-label").textContent = volumePct(landVol);
   $("#bgm-volume-label").textContent = volumePct(bgmVol);
-  $("#spin-sfx-name").textContent = spinSfxDisplayName();
+  updateSpinTickPresetUI();
   $("#land-sfx-name").textContent = state.sound.landSfxName || "Default (built-in chime)";
   $("#bgm-name").textContent = bgmDisplayName();
   $("#bgm-mode").value = state.sound.bgmMode || "spin";
@@ -3504,6 +3506,26 @@ $("#btn-stop-all-audio").addEventListener("click", () => {
 $("#spin-sfx-mode").addEventListener("change", () => {
   checkpoint();
   state.sound.spinMode = $("#spin-sfx-mode").value;
+  persist();
+});
+
+$("#spin-tick-preset")?.addEventListener("change", async () => {
+  checkpoint();
+  const v = $("#spin-tick-preset")?.value;
+  if (v === "mixkit" || v === "synth" || v === "custom") {
+    state.sound.spinTickPreset = v;
+  }
+  if (v === "mixkit" || v === "synth") {
+    // Keep any uploaded file in storage only while "custom" is selected
+    // (don't wipe data so switching back to custom can still use it if present)
+  }
+  if (v === "custom" && !state.sound.spinSfxData) {
+    // Prompt for a file
+    $("#spin-sfx-input")?.click();
+  }
+  audio.buffers.delete("spin");
+  await ensureSpinSfxBuffer();
+  updateSpinTickPresetUI();
   persist();
 });
 
@@ -3578,29 +3600,46 @@ $("#spin-duration-input")?.addEventListener("keydown", (e) => {
 $("#spin-sfx-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
-  if (!file) return;
+  if (!file) {
+    // Cancelled custom pick — fall back if no file stored
+    if (!state.sound.spinSfxData) {
+      state.sound.spinTickPreset = "mixkit";
+      updateSpinTickPresetUI();
+      persist();
+    }
+    return;
+  }
   checkpoint();
+  state.sound.spinTickPreset = "custom";
   state.sound.spinSfxData = await fileToDataUrl(file);
   state.sound.spinSfxName = file.name;
-  $("#spin-sfx-name").textContent = spinSfxDisplayName();
   audio.buffers.delete("spin");
   await ensureSpinSfxBuffer();
+  updateSpinTickPresetUI();
   persist();
 });
 
 $("#spin-sfx-clear").addEventListener("click", async () => {
   checkpoint();
-  // Restore bundled default tick
+  // Mixkit default
+  state.sound.spinTickPreset = "mixkit";
   state.sound.spinSfxData = null;
   state.sound.spinSfxName = null;
-  $("#spin-sfx-name").textContent = spinSfxDisplayName();
   audio.buffers.delete("spin");
   await ensureSpinSfxBuffer();
+  updateSpinTickPresetUI();
   persist();
 });
 
 $("#spin-sfx-preview").addEventListener("click", async () => {
   audio.ensure();
+  const preset = getSpinTickPreset();
+  if (preset === "synth") {
+    audio.togglePreview("spin", () => {
+      audio.playTick(state.sound.spinVolume, 1, true);
+    });
+    return;
+  }
   if (!audio.buffers.has("spin")) {
     await ensureSpinSfxBuffer();
   }
@@ -3713,6 +3752,8 @@ function startSpinLoopIfNeeded() {
   if (!state.sound.enabled) return;
   const mode = state.sound.spinMode;
   if (mode !== "loop" && mode !== "both") return;
+  // Synth has no sample loop
+  if (getSpinTickPreset() === "synth") return;
   if (audio.buffers.has("spin")) {
     audio.startLoop("spin", state.sound.spinVolume);
   } else {
