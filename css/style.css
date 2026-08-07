@@ -1758,6 +1758,81 @@ body.group-drag-cursor * {
   font-weight: 650;
 }
 
+/* Collapsible form categories (Edit section, Edit group, Look, …) */
+.collapsible-block {
+  /* keeps .form-block spacing */
+}
+
+.collapsible-block > .collapsible-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  margin: 0 0 0.65rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.collapsible-block > .collapsible-toggle:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border);
+}
+
+.collapsible-block > .collapsible-toggle:focus-visible {
+  outline: 2px solid var(--accent, #6c8cff);
+  outline-offset: 2px;
+}
+
+.collapsible-block > .collapsible-toggle h3,
+.collapsible-block > .collapsible-toggle h4 {
+  margin: 0;
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 650;
+  pointer-events: none;
+}
+
+.collapsible-block > .collapsible-toggle h4 {
+  font-size: 0.88rem;
+  font-weight: 600;
+  opacity: 0.95;
+}
+
+.collapsible-block > .collapsible-toggle .collapsible-chevron {
+  flex-shrink: 0;
+  width: 1.1rem;
+  text-align: center;
+  font-size: 0.75rem;
+  opacity: 0.75;
+  transition: transform 0.15s ease;
+  pointer-events: none;
+}
+
+.collapsible-block.is-collapsed > .collapsible-toggle {
+  margin-bottom: 0;
+}
+
+.collapsible-block.is-collapsed > .collapsible-toggle .collapsible-chevron {
+  transform: rotate(-90deg);
+}
+
+.collapsible-block.is-collapsed > .collapsible-body {
+  display: none;
+}
+
+.collapsible-block > .collapsible-body {
+  /* fields keep normal spacing */
+}
+
 .field {
   display: flex;
   flex-direction: column;

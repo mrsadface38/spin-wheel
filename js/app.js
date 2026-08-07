@@ -7829,6 +7829,56 @@ function forceUiInteractive() {
   spinBusy = false;
 }
 
+/**
+ * Make form categories collapsible (click heading to fold/expand).
+ * Targets .form-block / profile / members blocks that start with h3 or h4.
+ * Safe to call more than once.
+ */
+function initCollapsibleSections(root = document) {
+  const blocks = root.querySelectorAll(
+    ".form-block, .group-profile-block, .group-members-block"
+  );
+  for (const block of blocks) {
+    if (block.dataset.collapseReady === "1") continue;
+    const heading = block.querySelector(
+      ":scope > h3, :scope > h4.group-profile-subhead, :scope > h4"
+    );
+    if (!heading) continue;
+
+    block.dataset.collapseReady = "1";
+    block.classList.add("collapsible-block");
+
+    const body = document.createElement("div");
+    body.className = "collapsible-body";
+    while (heading.nextSibling) {
+      body.appendChild(heading.nextSibling);
+    }
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "collapsible-toggle";
+    btn.setAttribute("aria-expanded", "true");
+    const title =
+      heading.textContent?.trim() || heading.getAttribute("aria-label") || "Section";
+    btn.setAttribute("aria-label", `Collapse or expand ${title}`);
+    btn.appendChild(heading);
+    const chevron = document.createElement("span");
+    chevron.className = "collapsible-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = "▾";
+    btn.appendChild(chevron);
+
+    block.appendChild(btn);
+    block.appendChild(body);
+
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const collapsed = block.classList.toggle("is-collapsed");
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    });
+  }
+}
+
 async function init() {
   const verEl = $("#app-version");
   if (verEl) {
@@ -7836,6 +7886,11 @@ async function init() {
     verEl.title = `Update #${APP_UPDATE}`;
   }
   forceUiInteractive();
+  try {
+    initCollapsibleSections();
+  } catch (err) {
+    console.warn("initCollapsibleSections:", err);
+  }
   try {
     fillWheelSelect();
   } catch (err) {

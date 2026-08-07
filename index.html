@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#100</span>
+        <span class="app-version" id="app-version" title="Update number">#101</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -718,40 +718,48 @@
           </div>
         </aside>
 
-        <!-- Form fields -->
+        <!-- Form fields (categories are collapsible — click a heading to fold) -->
         <div class="section-edit-fields">
-          <label class="field">
-            <span>Label</span>
-            <input type="text" id="section-label" maxlength="300" placeholder="Unnamed 1" />
-          </label>
+          <div class="form-block compact">
+            <h3>Basics</h3>
+            <label class="field">
+              <span>Label</span>
+              <input type="text" id="section-label" maxlength="300" placeholder="Unnamed 1" />
+            </label>
 
-          <label class="field">
-            <span>Weight</span>
-            <input type="number" id="section-weight" min="0.1" max="1000" step="any" value="1" />
-            <small>Higher weight = larger slice on the wheel (decimals allowed, e.g. 1.1)</small>
-          </label>
+            <label class="field">
+              <span>Weight</span>
+              <input type="number" id="section-weight" min="0.1" max="1000" step="any" value="1" />
+              <small>Higher weight = larger slice on the wheel (decimals allowed, e.g. 1.1)</small>
+            </label>
 
-          <label class="field">
-            <span>Slice color</span>
-            <input type="color" id="section-color" value="#4a6cf7" />
-          </label>
+            <label class="field">
+              <span>Slice color</span>
+              <input type="color" id="section-color" value="#4a6cf7" />
+            </label>
 
-          <label class="field">
-            <span>Text color</span>
-            <input type="color" id="section-text-color" value="#ffffff" />
-            <small>Label color on the wheel for this section</small>
-          </label>
+            <label class="field">
+              <span>Text color</span>
+              <input type="color" id="section-text-color" value="#ffffff" />
+              <small>Label color on the wheel for this section</small>
+            </label>
 
-          <label class="field">
-            <span>Winner text color</span>
-            <input type="color" id="section-winner-text-color" value="#ffffff" />
-            <small>Color of this name on the result screen (inherits group / Look until you change it)</small>
-          </label>
+            <label class="field">
+              <span>Winner text color</span>
+              <input type="color" id="section-winner-text-color" value="#ffffff" />
+              <small>Color of this name on the result screen (inherits group / Look until you change it)</small>
+            </label>
 
-          <div class="field">
-            <span>Groups</span>
-            <div id="section-groups" class="group-checkboxes" role="group" aria-label="Groups for this section"></div>
-            <small>Pick one or more. Highest-priority group (see Groups tab order) decides show/hide for this section.</small>
+            <div class="field">
+              <span>Groups</span>
+              <div id="section-groups" class="group-checkboxes" role="group" aria-label="Groups for this section"></div>
+              <small>Pick one or more. Highest-priority group (see Groups tab order) decides show/hide for this section.</small>
+            </div>
+
+            <label class="toggle-row">
+              <input type="checkbox" id="section-enabled" checked />
+              <span>Enabled (include when group is active)</span>
+            </label>
           </div>
 
           <div class="form-block compact">
@@ -886,11 +894,6 @@
             </div>
             <small>Custom media: WebM (alpha/transparency), GIF, WebP, APNG/PNG, or MP4. Plays full-screen for a few seconds.</small>
           </div>
-
-          <label class="toggle-row">
-            <input type="checkbox" id="section-enabled" checked />
-            <span>Enabled (include when group is active)</span>
-          </label>
         </div>
       </div>
 
@@ -945,18 +948,21 @@
           </div>
         </aside>
 
-        <!-- Form fields -->
+        <!-- Form fields (categories are collapsible — click a heading to fold) -->
         <div class="section-edit-fields">
-          <label class="field">
-            <span>Group name</span>
-            <input type="text" id="group-name" required maxlength="300" placeholder="e.g. Bonus prizes" autofocus />
-          </label>
-          <label class="toggle-row" id="group-active-row">
-            <input type="checkbox" id="group-active" checked />
-            <span>Active (sections in this group can appear on the wheel)</span>
-          </label>
+          <div class="form-block compact">
+            <h3>Basics</h3>
+            <label class="field">
+              <span>Group name</span>
+              <input type="text" id="group-name" required maxlength="300" placeholder="e.g. Bonus prizes" autofocus />
+            </label>
+            <label class="toggle-row" id="group-active-row">
+              <input type="checkbox" id="group-active" checked />
+              <span>Active (sections in this group can appear on the wheel)</span>
+            </label>
+          </div>
 
-          <div class="group-profile-block">
+          <div class="group-profile-block form-block compact">
             <h3>Group profile</h3>
 
             <div class="profile-parts-block">
