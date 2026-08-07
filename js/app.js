@@ -2911,6 +2911,10 @@ function bindLook() {
   $("#center-size").value = state.look.centerSize;
   $("#border-color").value = state.look.borderColor;
   $("#text-color").value = state.look.textColor;
+  if ($("#winner-text-color")) {
+    $("#winner-text-color").value =
+      state.look.winnerTextColor || state.look.textColor || "#ffffff";
+  }
   $("#chk-show-labels").checked = state.look.showLabels !== false;
   $("#chk-show-images").checked = state.look.showImages !== false;
   $("#result-style").value = state.look.resultStyle === "banner" ? "banner" : "center";
@@ -3048,8 +3052,9 @@ function showResult(section, opts = {}) {
   const imageData = disp?.imageData || null;
 
   const style = state.look.resultStyle === "banner" ? "banner" : "center";
+  // Winner screen color is its own Look setting (not wheel label textColor)
   const winTextColor =
-    disp?.textColor || state.look?.textColor || "#ffffff";
+    state.look?.winnerTextColor || state.look?.textColor || "#ffffff";
   if (style === "banner") {
     resultTextBanner.textContent = label;
     resultTextBanner.style.color = winTextColor;

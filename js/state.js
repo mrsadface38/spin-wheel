@@ -259,6 +259,8 @@ export function defaultState() {
       centerSize: 0.16,
       borderColor: "#f0d78c",
       textColor: "#ffffff",
+      /** Color of the winning name on the result overlay (separate from wheel labels) */
+      winnerTextColor: "#ffffff",
       showLabels: true,
       showImages: true,
       resultStyle: "center",
