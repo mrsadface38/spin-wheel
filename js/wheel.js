@@ -668,11 +668,26 @@ export class Wheel {
     front.lineWidth = 4 * this._dpr;
     front.stroke();
 
-    // Labels last (on top of hub/separators) — full name, scaled to fit
+    // Labels last (on top of hub/separators) — clipped to each wedge so no bleed
     for (const sl of slices) {
       try {
+        front.save();
+        if (!single) {
+          // Keep text strictly inside this slice
+          front.beginPath();
+          front.moveTo(0, 0);
+          front.arc(0, 0, radius, sl.start, sl.end);
+          front.closePath();
+          front.clip();
+        }
         this._drawSliceLabel(front, sl, radius, single, spinFrame);
+        front.restore();
       } catch (err) {
+        try {
+          front.restore();
+        } catch {
+          /* ignore */
+        }
         console.warn("Label draw failed:", err);
       }
     }
@@ -817,13 +832,22 @@ export class Wheel {
       }
       ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
       const tw = Math.max(1, this._measureWidth(ctx, label));
-      const th = baseFont;
+      // Real glyph height is taller than font-size (ascenders/descenders)
+      let th = baseFont * 1.2;
+      try {
+        const m = ctx.measureText(label);
+        const asc = m.actualBoundingBoxAscent || 0;
+        const desc = m.actualBoundingBoxDescent || 0;
+        if (asc + desc > 0) th = Math.max(th, (asc + desc) * 1.05);
+      } catch {
+        /* keep estimate */
+      }
 
       // ——— Full-wheel single section: horizontal near top rim ———
       if (solid) {
-        const maxH = radius * 0.2;
+        const maxH = radius * 0.18;
         const maxW = radius * 1.5;
-        let s = Math.min(maxW / tw, maxH / th, (radius * 0.14) / baseFont);
+        let s = Math.min(maxW / tw, maxH / th, (radius * 0.12) / baseFont);
         if (!Number.isFinite(s) || s <= 0) s = 0.1;
         const textH = th * s;
         const rText = radius - 10 * dpr - textH / 2;
@@ -844,18 +868,22 @@ export class Wheel {
         radius * Math.max(0.18, (this.look.centerSize ?? 0.16) + 0.05);
       const radialBudget = Math.max(8 * dpr, outerR - hubR);
 
-      // Glyph height limited by wedge width at the outer radius (widest)
-      // → bigger type when the slice is wider
-      const tanBudget = Math.max(4 * dpr, outerR * span * 0.9);
-      const maxFontPx = radius * 0.2;
+      // Half-height must stay inside the wedge on BOTH sides of the mid-line.
+      // Chord half-width at outerR ≈ outerR * sin(span/2); leave padding so
+      // neighboring section text never meets.
+      const halfChord = outerR * Math.sin(Math.min(Math.PI / 2, span / 2));
+      const edgePad = Math.max(2 * dpr, halfChord * 0.18);
+      const tanBudget = Math.max(3 * dpr, (halfChord - edgePad) * 2 * 0.92);
+      // Slightly smaller ceiling than before — user asked for less bulk
+      const maxFontPx = radius * 0.14;
 
-      // As large as possible while fitting length + height
+      // Fit length + height; never exceed wedge
       let s = Math.min(
         radialBudget / tw,
         tanBudget / th,
         maxFontPx / baseFont
       );
-      if (!Number.isFinite(s) || s <= 0) s = 0.05;
+      if (!Number.isFinite(s) || s <= 0) s = 0.04;
       let sx = s;
       let sy = s;
       if (tw * sx > radialBudget) sx = radialBudget / tw;
