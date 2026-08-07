@@ -447,7 +447,23 @@ function migrate(data) {
     look.eliminateAfterWin =
       el === "hide" || el === "remove" || el === "off" ? el : "off";
   }
-  look.confettiOnWin = look.confettiOnWin !== false;
+  // After-win effect dropdown (legacy confettiOnWin boolean → winEffect)
+  {
+    const allowed = new Set(["none", "confetti"]);
+    const hadWinEffect =
+      data.look &&
+      Object.prototype.hasOwnProperty.call(data.look, "winEffect");
+    let we = look.winEffect;
+    if (!hadWinEffect) {
+      // Prefer legacy checkbox if present; else default confetti
+      if (data.look && data.look.confettiOnWin === false) we = "none";
+      else if (data.look && data.look.confettiOnWin === true) we = "confetti";
+      else we = "confetti";
+    } else if (!allowed.has(we)) {
+      we = "confetti";
+    }
+    look.winEffect = we;
+  }
   look.keyboardSpin = look.keyboardSpin !== false;
   const spin = { ...base.spin, ...(data.spin || {}) };
   if (wasOldSave) {
