@@ -403,10 +403,24 @@ function updateSpinTickPresetUI() {
   const sel = $("#spin-tick-preset");
   if (sel) sel.value = preset;
   const nameEl = $("#spin-sfx-name");
-  if (nameEl) nameEl.textContent = spinSfxDisplayName();
-  // Hide file row for synth (no sample); show for mixkit/custom
+  if (nameEl) {
+    nameEl.textContent =
+      preset === "custom"
+        ? state.sound?.spinSfxName ||
+          (state.sound?.spinSfxData ? "Custom tick" : "No custom file chosen")
+        : spinSfxDisplayName();
+  }
+  // File name + choose/clear only when Custom file is selected
   const row = $("#spin-sfx-custom-row");
-  if (row) row.style.display = preset === "synth" ? "none" : "";
+  if (row) {
+    if (preset === "custom") {
+      row.hidden = false;
+      row.style.display = "";
+    } else {
+      row.hidden = true;
+      row.style.display = "none";
+    }
+  }
 }
 
 function bgmDisplayName() {
@@ -1335,12 +1349,7 @@ groupsList.addEventListener("click", async (e) => {
         alert("You need at least one group.");
         return;
       }
-      if (
-        !confirm(
-          `Delete group "${group.name}"? It will be removed from sections that used it. Other group memberships stay as they are (sections are not moved into another group).`
-        )
-      )
-        return;
+      // No confirm — Undo restores the group
       checkpoint();
       // Only strip this group id — do not reassign to another / top group
       state.sections.forEach((s) => {
@@ -3736,7 +3745,7 @@ $("#spin-sfx-input").addEventListener("change", async (e) => {
 
 $("#spin-sfx-clear").addEventListener("click", async () => {
   checkpoint();
-  // Mixkit default
+  // Clear custom file and switch back to Mixkit default
   state.sound.spinTickPreset = "mixkit";
   state.sound.spinSfxData = null;
   state.sound.spinSfxName = null;

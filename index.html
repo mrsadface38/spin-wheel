@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#37</span>
+        <span class="app-version" id="app-version" title="Update number">#38</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -279,21 +279,23 @@
             </label>
             <label class="field">
               <span>Tick sound</span>
-              <select id="spin-tick-preset" title="Choose default or custom tick">
-                <option value="mixkit">Mixkit bass hit (default)</option>
-                <option value="synth">Built-in beep (original)</option>
-                <option value="custom">Custom file…</option>
-              </select>
+              <div class="slider-with-value">
+                <select id="spin-tick-preset" title="Choose default or custom tick">
+                  <option value="mixkit">Mixkit bass hit (default)</option>
+                  <option value="synth">Built-in beep (original)</option>
+                  <option value="custom">Custom file…</option>
+                </select>
+                <button type="button" id="spin-sfx-preview" class="btn small ghost">Preview</button>
+              </div>
             </label>
-            <div class="audio-pick" id="spin-sfx-custom-row">
-              <span id="spin-sfx-name" class="audio-name">mixkit-short-bass-hit-2299.wav (default)</span>
+            <div class="audio-pick" id="spin-sfx-custom-row" hidden>
+              <span id="spin-sfx-name" class="audio-name">No custom file</span>
               <div class="image-pick-actions">
                 <label class="btn small">
                   Choose file
                   <input type="file" id="spin-sfx-input" accept="audio/*" hidden />
                 </label>
-                <button type="button" id="spin-sfx-clear" class="btn small ghost" title="Use Mixkit default">Mixkit default</button>
-                <button type="button" id="spin-sfx-preview" class="btn small ghost">Preview</button>
+                <button type="button" id="spin-sfx-clear" class="btn small ghost" title="Clear custom file and use Mixkit default">Clear file</button>
               </div>
             </div>
             <label class="field">
