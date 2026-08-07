@@ -780,7 +780,7 @@ function renderSections() {
             <div class="card-actions">
               <button type="button" class="icon-btn" data-act="toggle" title="Toggle on/off">${s.enabled ? "👁" : "🚫"}</button>
               <button type="button" class="icon-btn" data-act="edit" title="Edit">✎</button>
-              <button type="button" class="icon-btn" data-act="dup" title="Duplicate">⧉</button>
+              <button type="button" class="icon-btn" data-act="dup" title="Duplicate section">Dup</button>
               <button type="button" class="icon-btn danger" data-act="del" title="Delete">✕</button>
             </div>
           </div>
@@ -1125,6 +1125,22 @@ sectionsList.addEventListener("click", async (e) => {
     await refreshWheel();
   } else if (act === "edit") {
     openSectionModal(section);
+  } else if (act === "dup") {
+    checkpoint();
+    const idx = state.sections.findIndex((s) => s.id === id);
+    if (idx < 0) return;
+    const copy = JSON.parse(JSON.stringify(section));
+    copy.id = uid("sec");
+    copy.label = `${section.label || "Untitled"} copy`;
+    delete copy.groupId;
+    copy.groupIds = getSectionGroupIds(section).slice();
+    state.sections.splice(idx + 1, 0, copy);
+    if (copy.customSfx && copy.landSfxData) {
+      await audio.loadDataUrl(`land_${copy.id}`, copy.landSfxData);
+    }
+    persist();
+    renderSections();
+    await refreshWheel();
   } else if (act === "del") {
     if (!confirm(`Delete "${section.label}"?`)) return;
     checkpoint();
@@ -1219,6 +1235,32 @@ groupsList.addEventListener("click", async (e) => {
     await refreshWheel();
   } else if (act === "rename") {
     openGroupModal(group);
+  } else if (act === "dup") {
+    checkpoint();
+    const idx = state.groups.findIndex((g) => g.id === id);
+    if (idx < 0) return;
+    const newId = uid("grp");
+    const copy = normalizeGroup({
+      ...JSON.parse(JSON.stringify(group)),
+      id: newId,
+      name: `${group.name || "Group"} copy`,
+    });
+    state.groups.splice(idx + 1, 0, copy);
+    // Same membership as the original group
+    for (const s of state.sections) {
+      const ids = getSectionGroupIds(s);
+      if (ids.includes(id) && !ids.includes(newId)) {
+        s.groupIds = [...ids, newId];
+        delete s.groupId;
+      }
+    }
+    if (copy.landSfxData) {
+      await audio.loadDataUrl(`land_grp_${copy.id}`, copy.landSfxData);
+    }
+    persist();
+    renderGroups();
+    renderSections();
+    await refreshWheel();
   } else if (act === "del") {
     if (state.groups.length <= 1) {
       alert("You need at least one group.");

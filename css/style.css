@@ -1249,14 +1249,17 @@ body.group-drag-cursor * {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
-  width: 32px;
+  min-width: 32px;
   height: 32px;
   border-radius: 8px;
   cursor: pointer;
   display: grid;
   place-items: center;
-  font-size: 0.9rem;
-  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0 0.35rem;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .icon-btn:hover {
