@@ -1062,6 +1062,21 @@ select optgroup {
   border-color: var(--accent);
 }
 
+#btn-apply-your-order {
+  flex: 0 0 auto;
+  align-self: center;
+  white-space: nowrap;
+}
+
+#btn-apply-your-order[hidden] {
+  display: none !important;
+}
+
+.sort-field select.is-dirty {
+  color: var(--accent-2);
+  font-weight: 650;
+}
+
 .search-field {
   display: flex;
   align-items: center;

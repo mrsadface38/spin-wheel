@@ -273,6 +273,11 @@ export function defaultState() {
   return {
     /** Which + New preset this wheel was created from ("default" | "d20" | …) */
     presetId: "default",
+    /**
+     * Saved custom section order (ids). Independent of temporary list/wheel sorts.
+     * state.sections array order is the current wheel/view order.
+     */
+    yourOrderIds: sections.map((s) => s.id),
     // Array order = priority: index 0 is highest
     groups: [g1, g2],
     sections,
@@ -464,12 +469,29 @@ function migrate(data) {
     landSfxPreset = "default";
   }
 
+  // Custom section order (Your order) — separate from temporary sorts
+  let yourOrderIds = Array.isArray(data.yourOrderIds)
+    ? data.yourOrderIds.map(String).filter(Boolean)
+    : [];
+  {
+    const have = new Set(sections.map((s) => s.id));
+    const cleaned = [];
+    for (const id of yourOrderIds) {
+      if (have.has(id) && !cleaned.includes(id)) cleaned.push(id);
+    }
+    for (const s of sections) {
+      if (!cleaned.includes(s.id)) cleaned.push(s.id);
+    }
+    yourOrderIds = cleaned;
+  }
+
   return {
     /** Starter preset this wheel came from — used by Reset */
     presetId:
       typeof data.presetId === "string" && data.presetId.trim()
         ? data.presetId.trim()
         : base.presetId || "default",
+    yourOrderIds,
     groups,
     sections,
     look,

@@ -155,15 +155,30 @@ let lastWinnerId = null;
 /** Current sections search query */
 let sectionSearchQuery = "";
 /**
- * Section list sort mode.
- * "manual" = Your order (saved array order; drag to reorder).
- * Other modes, when selected, rewrite state.sections (and the wheel) to that order.
+ * Section list sort / view mode.
+ * "manual" = Your order (state.yourOrderIds — permanent custom order).
+ * Other modes = temporary views on list + wheel; do not overwrite Your order
+ * unless the user clicks “Apply to your order”.
  */
 const SECTION_SORT_KEY = "spin-wheel-section-sort";
+/** @type {Record<string, string>} */
+const SECTION_SORT_LABELS = {
+  manual: "Your order",
+  "name-asc": "Name A–Z",
+  "name-desc": "Name Z–A",
+  "weight-desc": "Weight high → low",
+  "weight-asc": "Weight low → high",
+  group: "Group",
+  "on-wheel": "On wheel first",
+  enabled: "Enabled first",
+  "has-image": "Has image first",
+};
 let sectionSortMode = "manual";
+/** True when current view order was hand-tweaked away from the pure sort. */
+let sectionSortDirty = false;
 try {
   const saved = localStorage.getItem(SECTION_SORT_KEY);
-  if (saved) sectionSortMode = saved;
+  if (saved && SECTION_SORT_LABELS[saved]) sectionSortMode = saved;
 } catch {
   /* ignore */
 }
@@ -171,7 +186,6 @@ try {
 /** True when section cards show a grip and can be dragged to reorder the wheel. */
 function canReorderSections() {
   return (
-    (sectionSortMode || "manual") === "manual" &&
     !String(sectionSearchQuery || "").trim() &&
     Array.isArray(state.sections) &&
     state.sections.length >= 2
@@ -882,7 +896,7 @@ function cmpLabel(a, b) {
 
 /**
  * Sort a section list by mode. Does not mutate the input array.
- * "manual" keeps current order.
+ * "manual" keeps current order (caller should pass your-order sequence).
  * @param {object[]} list
  * @param {string} [mode]
  */
@@ -939,23 +953,136 @@ function sortSectionsList(list, mode = sectionSortMode) {
   return arr;
 }
 
-/**
- * Apply a sort mode to state.sections so the wheel matches the list.
- * "manual" is a no-op. Returns true if order changed.
- * @param {string} mode
- */
-function applySectionSortToState(mode) {
-  const m = mode || "manual";
-  if (m === "manual" || !Array.isArray(state.sections) || state.sections.length < 2) {
-    return false;
+/** Keep yourOrderIds in sync with live sections (preserve known order). */
+function ensureYourOrderIds() {
+  if (!state) return;
+  if (!Array.isArray(state.yourOrderIds)) state.yourOrderIds = [];
+  const have = new Map(
+    (state.sections || []).map((s) => [s.id, s])
+  );
+  const next = [];
+  for (const id of state.yourOrderIds) {
+    if (have.has(id) && !next.includes(id)) next.push(id);
   }
-  const sorted = sortSectionsList(state.sections, m);
-  const changed = !sorted.every((s, i) => s.id === state.sections[i]?.id);
-  if (!changed) return false;
+  for (const s of state.sections || []) {
+    if (!next.includes(s.id)) next.push(s.id);
+  }
+  state.yourOrderIds = next;
+}
+
+/**
+ * @param {string[]} ids
+ * @returns {object[]}
+ */
+function orderSectionsByIds(ids) {
+  const byId = new Map((state.sections || []).map((s) => [s.id, s]));
+  const next = [];
+  for (const id of ids || []) {
+    const s = byId.get(id);
+    if (s) {
+      next.push(s);
+      byId.delete(id);
+    }
+  }
+  for (const s of state.sections || []) {
+    if (byId.has(s.id)) next.push(s);
+  }
+  return next;
+}
+
+/**
+ * Set list + wheel to a view mode without overwriting Your order
+ * (unless mode is manual — then restore Your order).
+ * @param {string} mode
+ * @param {{ skipRefresh?: boolean }} [opts]
+ */
+async function setSectionSortMode(mode, opts = {}) {
+  const m =
+    mode && SECTION_SORT_LABELS[mode] ? mode : "manual";
+  ensureYourOrderIds();
+  sectionSortMode = m;
+  sectionSortDirty = false;
+  if (m === "manual") {
+    state.sections = orderSectionsByIds(state.yourOrderIds);
+  } else {
+    // Temporary view order — yourOrderIds untouched
+    state.sections = sortSectionsList(state.sections, m);
+  }
+  try {
+    localStorage.setItem(SECTION_SORT_KEY, m);
+  } catch {
+    /* ignore */
+  }
+  updateSectionSortUI();
+  renderSections();
+  if (!opts.skipRefresh) {
+    try {
+      await refreshWheel();
+    } catch (err) {
+      console.warn("refreshWheel after sort view:", err);
+    }
+  }
+}
+
+/** Save current list/wheel order into Your order. */
+async function applyCurrentViewToYourOrder() {
+  ensureYourOrderIds();
   checkpoint();
-  state.sections = sorted;
+  state.yourOrderIds = (state.sections || []).map((s) => s.id);
+  sectionSortDirty = false;
+  sectionSortMode = "manual";
+  try {
+    localStorage.setItem(SECTION_SORT_KEY, "manual");
+  } catch {
+    /* ignore */
+  }
   persist();
-  return true;
+  updateSectionSortUI();
+  renderSections();
+  try {
+    await refreshWheel();
+  } catch (err) {
+    console.warn("refreshWheel after apply your order:", err);
+  }
+}
+
+/** After add/remove/dup: keep yourOrderIds valid; refresh pure sort view if needed. */
+function onSectionsStructureChanged() {
+  ensureYourOrderIds();
+  if (sectionSortMode !== "manual" && !sectionSortDirty) {
+    state.sections = sortSectionsList(state.sections, sectionSortMode);
+  } else if (sectionSortMode === "manual") {
+    state.sections = orderSectionsByIds(state.yourOrderIds);
+  }
+}
+
+function updateSectionSortUI() {
+  const sel = $("#section-sort");
+  const btn = $("#btn-apply-your-order");
+  if (sel) {
+    for (const opt of sel.options) {
+      const base = SECTION_SORT_LABELS[opt.value] || opt.value;
+      const dirtyHere =
+        sectionSortDirty &&
+        opt.value === sectionSortMode &&
+        opt.value !== "manual";
+      opt.textContent = dirtyHere ? `${base}*` : base;
+    }
+    sel.value = sectionSortMode;
+    sel.classList.toggle(
+      "is-dirty",
+      sectionSortDirty && sectionSortMode !== "manual"
+    );
+    sel.title =
+      sectionSortDirty && sectionSortMode !== "manual"
+        ? "Order was customized — Apply to your order to save it as Your order"
+        : "View order on the list and wheel (Your order is saved separately)";
+  }
+  if (btn) {
+    const show = sectionSortDirty && sectionSortMode !== "manual";
+    btn.hidden = !show;
+    btn.setAttribute("aria-hidden", show ? "false" : "true");
+  }
 }
 
 function updateSectionsCount() {
@@ -990,7 +1117,8 @@ function renderSections() {
     return;
   }
 
-  const filtered = sortSectionsList(getFilteredSections());
+  // List order = current wheel/view order (already applied in setSectionSortMode / drag)
+  const filtered = getFilteredSections();
   const q = sectionSearchQuery.trim();
   const total = state.sections.length;
   const reorderable = canReorderSections();
@@ -1002,7 +1130,12 @@ function renderSections() {
           ? `No matches for “${q}” (of ${total})`
           : `Showing ${filtered.length} of ${total} sections`;
     } else if (reorderable) {
-      sectionSearchMeta.textContent = `${total} section${total === 1 ? "" : "s"} · drag grip to reorder`;
+      const view =
+        SECTION_SORT_LABELS[sectionSortMode] || sectionSortMode;
+      const dirty = sectionSortDirty && sectionSortMode !== "manual" ? "*" : "";
+      sectionSearchMeta.textContent = `${total} section${
+        total === 1 ? "" : "s"
+      } · ${view}${dirty} · drag grip to reorder`;
     } else {
       sectionSearchMeta.textContent = `${total} section${total === 1 ? "" : "s"}`;
     }
@@ -1505,6 +1638,15 @@ sectionsList.addEventListener("click", async (e) => {
       if (idx < 0) return;
       const copy = cloneSectionForDuplicate(section);
       state.sections.splice(idx + 1, 0, copy);
+      ensureYourOrderIds();
+      {
+        const yo = state.yourOrderIds || [];
+        const at = yo.indexOf(id);
+        if (at >= 0) yo.splice(at + 1, 0, copy.id);
+        else yo.push(copy.id);
+        state.yourOrderIds = yo;
+      }
+      onSectionsStructureChanged();
       if (copy.landSfxData) {
         try {
           await audio.loadDataUrl(`land_${copy.id}`, copy.landSfxData);
@@ -1513,6 +1655,7 @@ sectionsList.addEventListener("click", async (e) => {
         }
       }
       persist();
+      updateSectionSortUI();
       renderSections();
       updateSectionsCount();
       await refreshWheel();
@@ -1520,11 +1663,14 @@ sectionsList.addEventListener("click", async (e) => {
       // No confirm — Undo restores the section
       checkpoint();
       state.sections = state.sections.filter((s) => s.id !== id);
+      ensureYourOrderIds();
+      onSectionsStructureChanged();
       if (lastWinnerId === id) {
         lastWinnerId = null;
         hideResults();
       }
       persist();
+      updateSectionSortUI();
       renderSections();
       await refreshWheel();
     }
@@ -1905,6 +2051,15 @@ function endSectionDrag(commit) {
     if (changed) {
       checkpoint();
       state.sections = next;
+      ensureYourOrderIds();
+      if (sectionSortMode === "manual") {
+        // Permanent custom order
+        state.yourOrderIds = next.map((s) => s.id);
+        sectionSortDirty = false;
+      } else {
+        // Temporary view was hand-edited — Your order stays put until Apply
+        sectionSortDirty = true;
+      }
       persist();
     }
   }
@@ -1913,6 +2068,7 @@ function endSectionDrag(commit) {
   resetSectionDragState();
   document.body.classList.remove("group-drag-cursor");
   try {
+    updateSectionSortUI();
     renderSections();
   } catch (err) {
     console.warn("renderSections after reorder:", err);
@@ -2634,43 +2790,26 @@ sectionSearchClear.addEventListener("click", () => {
 const sectionSortSelect = $("#section-sort");
 if (sectionSortSelect) {
   sectionSortSelect.value = sectionSortMode;
+  updateSectionSortUI();
   sectionSortSelect.addEventListener("change", async () => {
     const chosen = sectionSortSelect.value || "manual";
     try {
-      // Non-manual sorts rewrite the wheel order to match
-      if (chosen !== "manual") {
-        const changed = applySectionSortToState(chosen);
-        // Order is now saved — treat as Your order so drag-reorder works
-        sectionSortMode = "manual";
-        sectionSortSelect.value = "manual";
-        try {
-          localStorage.setItem(SECTION_SORT_KEY, "manual");
-        } catch {
-          /* ignore */
-        }
-        renderSections();
-        if (changed) {
-          try {
-            await refreshWheel();
-          } catch (err) {
-            console.warn("refreshWheel after section sort:", err);
-          }
-        }
-        return;
-      }
-      sectionSortMode = "manual";
-      try {
-        localStorage.setItem(SECTION_SORT_KEY, sectionSortMode);
-      } catch {
-        /* ignore */
-      }
-      renderSections();
+      // Switching views discards unapplied hand-edits in the previous view
+      await setSectionSortMode(chosen);
     } catch (err) {
       console.error("Section sort failed:", err);
+      updateSectionSortUI();
       renderSections();
     }
   });
 }
+
+$("#btn-apply-your-order")?.addEventListener("click", () => {
+  applyCurrentViewToYourOrder().catch((err) => {
+    console.error("Apply your order failed:", err);
+    alert(err.message || String(err));
+  });
+});
 
 // --- Section modal ---
 let pendingSectionImage = null;
@@ -3710,11 +3849,15 @@ $("#section-form").addEventListener("submit", async (e) => {
       landSfxVolume: getSectionSfxVolumeFromForm(),
     };
     state.sections.push(s);
+    ensureYourOrderIds();
+    if (!state.yourOrderIds.includes(s.id)) state.yourOrderIds.push(s.id);
+    onSectionsStructureChanged();
     if (s.customSfx && s.landSfxData) {
       await audio.loadDataUrl(`land_${s.id}`, s.landSfxData);
     }
   }
   persist();
+  updateSectionSortUI();
   renderSections();
   renderGroups();
   await refreshWheel();
@@ -3780,7 +3923,10 @@ $("#bulk-form").addEventListener("submit", async (e) => {
       landSfxVolume: state.sound.landVolume ?? 0.4,
     });
   }
+  ensureYourOrderIds();
+  onSectionsStructureChanged();
   persist();
+  updateSectionSortUI();
   renderSections();
   await refreshWheel();
   bulkModal.close();
@@ -5295,9 +5441,12 @@ async function removeWinnerPart() {
   if (!confirm(`Remove "${section.label}" from the wheel permanently?`)) return;
   checkpoint();
   state.sections = state.sections.filter((s) => s.id !== lastWinnerId);
+  ensureYourOrderIds();
+  onSectionsStructureChanged();
   lastWinnerId = null;
   hideResults();
   persist();
+  updateSectionSortUI();
   renderSections();
   await refreshWheel();
 }
@@ -6143,6 +6292,13 @@ $("#btn-reset").addEventListener("click", async () => {
     console.error("Reset preset build failed:", err);
     state = buildPresetState("default");
   }
+  sectionSortDirty = false;
+  sectionSortMode = "manual";
+  try {
+    localStorage.setItem(SECTION_SORT_KEY, "manual");
+  } catch {
+    /* ignore */
+  }
   persist();
   bindAll();
   await preloadAudio();
@@ -6205,6 +6361,19 @@ function bindAll() {
   bindLook();
   bindSound();
   bindSpinDuration();
+  // Restore Your order vs temporary sort view (never clobber yourOrderIds here)
+  try {
+    ensureYourOrderIds();
+    sectionSortDirty = false;
+    if (sectionSortMode === "manual") {
+      state.sections = orderSectionsByIds(state.yourOrderIds);
+    } else {
+      state.sections = sortSectionsList(state.sections, sectionSortMode);
+    }
+    updateSectionSortUI();
+  } catch (err) {
+    console.warn("section sort view:", err);
+  }
   renderSections();
   renderGroups();
   updateSecretTabVisibility();

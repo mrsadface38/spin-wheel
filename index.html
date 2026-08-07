@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#75</span>
+        <span class="app-version" id="app-version" title="Update number">#77</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -121,7 +121,7 @@
             </label>
             <label class="sort-field">
               <span class="sort-field-label">Sort</span>
-              <select id="section-sort" title="Reorder sections on the list and wheel">
+              <select id="section-sort" title="View order on the list and wheel (Your order is saved separately)">
                 <option value="manual">Your order</option>
                 <option value="name-asc">Name A–Z</option>
                 <option value="name-desc">Name Z–A</option>
@@ -133,6 +133,13 @@
                 <option value="has-image">Has image first</option>
               </select>
             </label>
+            <button
+              type="button"
+              id="btn-apply-your-order"
+              class="btn small ghost"
+              hidden
+              title="Save the current list/wheel order as Your order"
+            >Apply to your order</button>
           </div>
           <p id="section-search-meta" class="search-meta hidden"></p>
           <div id="sections-list" class="sections-list"></div>

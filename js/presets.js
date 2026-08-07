@@ -66,6 +66,7 @@ export function d20State() {
     presetId: "d20",
     groups: [g],
     sections,
+    yourOrderIds: sections.map((s) => s.id),
     look: {
       ...base.look,
       backgroundColor: "#0c1210",
