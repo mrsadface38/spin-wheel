@@ -1,6 +1,6 @@
 {
   "name": "spin-wheel",
-  "version": "1.0.83",
+  "version": "1.0.84",
   "description": "Cross-platform spin-the-wheel with images, SFX, and group toggles",
   "main": "electron/main.js",
   "scripts": {

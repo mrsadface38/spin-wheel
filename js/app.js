@@ -3993,12 +3993,29 @@ function updateWinnerLabelDisplay() {
   if (el) el.textContent = getWinnerLabel();
 }
 
+/**
+ * Show/hide Hide & Remove on the win screen.
+ * When "after a win" auto-eliminates, those buttons are redundant — only Continue stays.
+ */
 function updateWinnerRemoveButton() {
-  const btn = $("#btn-result-remove");
-  if (!btn) return;
-  const allowed = state.look.allowWinnerRemove !== false;
-  btn.hidden = !allowed;
-  btn.setAttribute("aria-hidden", allowed ? "false" : "true");
+  const removeBtn = $("#btn-result-remove");
+  const hideBtn = resultActionsBar?.querySelector?.(
+    '[data-result-act="hide"]'
+  );
+  const elim = state.look?.eliminateAfterWin;
+  const autoElim = elim === "hide" || elim === "remove";
+
+  if (hideBtn) {
+    hideBtn.hidden = autoElim;
+    hideBtn.setAttribute("aria-hidden", autoElim ? "true" : "false");
+  }
+  if (removeBtn) {
+    // Auto-eliminate mode: never show Remove. Otherwise respect Look toggle.
+    const showRemove =
+      !autoElim && state.look.allowWinnerRemove !== false;
+    removeBtn.hidden = !showRemove;
+    removeBtn.setAttribute("aria-hidden", showRemove ? "false" : "true");
+  }
 }
 
 /** Sync Look → Winner text color Override button active state */
@@ -5602,7 +5619,12 @@ async function removeWinnerPart() {
   ensureYourOrderIds();
   onSectionsStructureChanged();
   lastWinnerId = null;
-  hideResults();
+  resultBanner.classList.add("hidden");
+  resultCenter.classList.add("hidden");
+  resultActionsBar.classList.add("hidden");
+  clearResultCenterBg();
+  resultShowsRigged = false;
+  setResultRiggedVisible(isRigItActive() || isReverseRigActive());
   persist();
   updateSectionSortUI();
   renderSections();
