@@ -986,16 +986,14 @@ groupsList.addEventListener("click", async (e) => {
     }
     if (
       !confirm(
-        `Delete group "${group.name}"? It will be removed from all sections. Sections with no groups left go to the top group.`
+        `Delete group "${group.name}"? It will be removed from sections that used it. Other group memberships stay as they are (sections are not moved into another group).`
       )
     )
       return;
     checkpoint();
-    const fallback = state.groups.find((g) => g.id !== id);
+    // Only strip this group id — do not reassign to another / top group
     state.sections.forEach((s) => {
-      let ids = getSectionGroupIds(s).filter((gid) => gid !== id);
-      if (!ids.length && fallback) ids = [fallback.id];
-      s.groupIds = ids;
+      s.groupIds = getSectionGroupIds(s).filter((gid) => gid !== id);
       delete s.groupId;
     });
     state.groups = state.groups.filter((g) => g.id !== id);
