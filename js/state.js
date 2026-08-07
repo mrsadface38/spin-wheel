@@ -312,6 +312,11 @@ export function defaultState() {
       winEffect: "confetti",
       /** Space / Enter to spin when not typing (default on). */
       keyboardSpin: true,
+      /**
+       * Auto-dismiss win screen after N seconds (0 = off).
+       * Clamped 0–120 in migrate / UI.
+       */
+      autoDismissSec: 0,
       // Section list weight range slider (manual number field can still use decimals)
       weightSliderMin: 1,
       weightSliderMax: 20,
@@ -465,6 +470,11 @@ function migrate(data) {
     look.winEffect = we;
   }
   look.keyboardSpin = look.keyboardSpin !== false;
+  {
+    let ad = Number(look.autoDismissSec);
+    if (!Number.isFinite(ad) || ad < 0) ad = 0;
+    look.autoDismissSec = Math.min(120, Math.round(ad));
+  }
   const spin = { ...base.spin, ...(data.spin || {}) };
   if (wasOldSave) {
     if (data.spin?.duration == null || data.spin.duration <= 5) {

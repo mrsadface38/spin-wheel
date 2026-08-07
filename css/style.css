@@ -97,6 +97,55 @@ body.focus-mode .stage-panel {
   display: none !important;
 }
 
+/* Spin history */
+.history-toolbar {
+  margin-bottom: 0.65rem;
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: min(60vh, 520px);
+  overflow: auto;
+}
+.history-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 0.75rem;
+  padding: 0.55rem 0.65rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.88rem;
+}
+.history-row .h-label {
+  font-weight: 700;
+  color: var(--text);
+}
+.history-row .h-meta {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.history-row .h-time {
+  color: var(--accent-2);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.history-row .h-rigged {
+  color: var(--danger);
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.history-empty {
+  color: var(--muted);
+  padding: 1rem 0.25rem;
+  font-size: 0.9rem;
+}
+
 /* Win confetti layer */
 #confetti-layer {
   position: fixed;

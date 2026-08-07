@@ -774,6 +774,9 @@ document.querySelectorAll(".tab").forEach((tab) => {
       panel.hidden = false;
       panel.classList.add("active");
     }
+    if (tab.dataset.tab === "history") {
+      renderHistory();
+    }
     if (tab.dataset.tab === "secret") {
       const sec = ensureSecretState();
       if ($("#secret-rig-it")) $("#secret-rig-it").checked = !!sec.rigIt;
@@ -2222,6 +2225,24 @@ $("#btn-enable-all-sections")?.addEventListener("click", () => {
 
 $("#btn-disable-all-sections")?.addEventListener("click", () => {
   setAllSectionsEnabled(false);
+});
+
+$("#btn-equalize-weights")?.addEventListener("click", async () => {
+  if (!state.sections.length) return;
+  const already = state.sections.every(
+    (s) => Math.abs(normalizeWeight(s.weight) - 1) < 1e-9
+  );
+  if (already) {
+    alert("All section weights are already 1.");
+    return;
+  }
+  checkpoint();
+  for (const s of state.sections) {
+    s.weight = 1;
+  }
+  persist();
+  renderSections();
+  await refreshWheel();
 });
 
 $("#btn-add-group").addEventListener("click", () => {
@@ -3969,6 +3990,12 @@ function bindLook() {
   if ($("#chk-keyboard-spin")) {
     $("#chk-keyboard-spin").checked = state.look.keyboardSpin !== false;
   }
+  if ($("#auto-dismiss-sec")) {
+    const ad = Number(state.look.autoDismissSec) || 0;
+    const allowed = ["0", "3", "5", "8", "10", "15", "30"];
+    const v = String(ad);
+    $("#auto-dismiss-sec").value = allowed.includes(v) ? v : "0";
+  }
   {
     const opts = getWeightSliderOpts();
     if ($("#weight-slider-min")) $("#weight-slider-min").value = String(opts.min);
@@ -4324,6 +4351,7 @@ async function applyPendingEliminate() {
 }
 
 function hideResults() {
+  clearAutoDismissTimer();
   resultBanner.classList.add("hidden");
   resultCenter.classList.add("hidden");
   resultActionsBar.classList.add("hidden");
@@ -4356,6 +4384,158 @@ function hideResults() {
 
 /** Whether the open win screen should keep showing “rigged” */
 let resultShowsRigged = false;
+
+// --- Spin history (device-wide log) ---
+const HISTORY_KEY = "spin-wheel-history-v1";
+const HISTORY_MAX = 200;
+/** @type {ReturnType<typeof setTimeout>|0} */
+let autoDismissTimer = 0;
+
+/**
+ * @returns {Array<{
+ *   id: string,
+ *   at: string,
+ *   wheelId: string,
+ *   wheelName: string,
+ *   sectionId: string,
+ *   sectionLabel: string,
+ *   rigged: boolean
+ * }>}
+ */
+function loadSpinHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((e) => e && e.sectionLabel != null)
+      .slice(0, HISTORY_MAX);
+  } catch {
+    return [];
+  }
+}
+
+/** @param {ReturnType<typeof loadSpinHistory>} entries */
+function saveSpinHistory(entries) {
+  try {
+    localStorage.setItem(
+      HISTORY_KEY,
+      JSON.stringify((entries || []).slice(0, HISTORY_MAX))
+    );
+  } catch (err) {
+    console.warn("Could not save spin history:", err);
+  }
+}
+
+/**
+ * @param {{ id: string, label: string }} section
+ * @param {{ rigged?: boolean }} [opts]
+ */
+function recordSpinHistory(section, opts = {}) {
+  if (!section) return;
+  const slot = getActiveSlot(library);
+  const entry = {
+    id: uid("hist"),
+    at: new Date().toISOString(),
+    wheelId: slot?.id || library?.activeId || "",
+    wheelName: slot?.name || "Wheel",
+    sectionId: section.id,
+    sectionLabel: section.label || "Winner",
+    rigged: !!opts.rigged,
+  };
+  const list = loadSpinHistory();
+  list.unshift(entry);
+  saveSpinHistory(list);
+  // Refresh history tab if open
+  if ($("#tab-history")?.classList.contains("active")) {
+    renderHistory();
+  }
+}
+
+function clearAutoDismissTimer() {
+  if (autoDismissTimer) {
+    clearTimeout(autoDismissTimer);
+    autoDismissTimer = 0;
+  }
+}
+
+function scheduleAutoDismiss() {
+  clearAutoDismissTimer();
+  let sec = Number(state.look?.autoDismissSec);
+  if (!Number.isFinite(sec) || sec <= 0) return;
+  sec = Math.min(120, Math.max(1, Math.round(sec)));
+  autoDismissTimer = setTimeout(() => {
+    autoDismissTimer = 0;
+    try {
+      hideResults();
+    } catch (err) {
+      console.warn("auto-dismiss:", err);
+    }
+  }, sec * 1000);
+}
+
+function formatHistoryTime(iso) {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso || "";
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso || "";
+  }
+}
+
+function renderHistory() {
+  const listEl = $("#history-list");
+  const countEl = $("#history-count");
+  if (!listEl) return;
+  const entries = loadSpinHistory();
+  if (countEl) {
+    countEl.textContent =
+      entries.length === 1 ? "1 entry" : `${entries.length} entries`;
+  }
+  if (!entries.length) {
+    listEl.innerHTML = `<div class="history-empty">No spins yet. Winners will show up here.</div>`;
+    return;
+  }
+  listEl.innerHTML = entries
+    .map(
+      (e) => `
+    <div class="history-row">
+      <span class="h-label">${escapeHtml(e.sectionLabel || "Winner")}</span>
+      <span class="h-time">${escapeHtml(formatHistoryTime(e.at))}</span>
+      <span class="h-meta">${escapeHtml(e.wheelName || "Wheel")}${
+        e.rigged ? ` · <span class="h-rigged">rigged</span>` : ""
+      }</span>
+    </div>`
+    )
+    .join("");
+}
+
+$("#btn-history-clear")?.addEventListener("click", () => {
+  const n = loadSpinHistory().length;
+  if (!n) {
+    alert("History is already empty.");
+    return;
+  }
+  if (!confirm(`Clear all ${n} history entr${n === 1 ? "y" : "ies"}?`)) return;
+  saveSpinHistory([]);
+  renderHistory();
+});
+
+$("#btn-history-export")?.addEventListener("click", () => {
+  const entries = loadSpinHistory();
+  downloadJson(`spin-history-${new Date().toISOString().slice(0, 10)}.json`, {
+    format: "sad-wheel-history-v1",
+    exportedAt: new Date().toISOString(),
+    entries,
+  });
+});
 
 /**
  * After-win visual effect (Look → After-win effect dropdown).
@@ -4508,7 +4688,13 @@ function showResult(section, opts = {}) {
       pendingEliminateId = null;
       pendingEliminateMode = null;
     }
+    try {
+      recordSpinHistory(section, opts);
+    } catch (err) {
+      console.warn("history:", err);
+    }
     playWinEffect();
+    scheduleAutoDismiss();
     const label = section.label || "Winner";
     // Resolve inherited group image if the section itself has no image
     const raw =
@@ -5721,6 +5907,11 @@ async function onLookChange() {
   if ($("#chk-keyboard-spin")) {
     state.look.keyboardSpin = $("#chk-keyboard-spin").checked;
   }
+  if ($("#auto-dismiss-sec")) {
+    let ad = Number($("#auto-dismiss-sec").value);
+    if (!Number.isFinite(ad) || ad < 0) ad = 0;
+    state.look.autoDismissSec = Math.min(120, Math.round(ad));
+  }
   {
     let min = Number($("#weight-slider-min")?.value);
     let max = Number($("#weight-slider-max")?.value);
@@ -5745,7 +5936,7 @@ async function onLookChange() {
   renderSections();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -6617,12 +6808,103 @@ resultCenter.addEventListener("click", (e) => {
 
 // --- Import / Export / Reset ---
 $("#btn-export").addEventListener("click", () => {
+  // Export active wheel project (same as before) — full library is Backup
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `spin-wheel-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
+});
+
+/** Full library backup (every wheel + which is active). */
+function backupLibrary() {
+  library = writeActiveState(library, state);
+  const payload = {
+    format: "sad-wheel-library-v1",
+    exportedAt: new Date().toISOString(),
+    library: {
+      activeId: library.activeId,
+      wheels: (library.wheels || []).map((w) => ({
+        id: w.id,
+        name: w.name,
+        updatedAt: w.updatedAt,
+        data: w.data,
+      })),
+    },
+  };
+  downloadJson(
+    `sad-wheel-backup-${new Date().toISOString().slice(0, 10)}.json`,
+    payload
+  );
+}
+
+async function restoreLibraryFromFile(file) {
+  const text = await file.text();
+  const raw = JSON.parse(text);
+  // Accept { format, library } or raw { activeId, wheels }
+  const libRaw = raw?.library?.wheels ? raw.library : raw;
+  if (!libRaw || !Array.isArray(libRaw.wheels) || !libRaw.wheels.length) {
+    throw new Error("Not a valid library backup (missing wheels)");
+  }
+  if (
+    !confirm(
+      `Restore library backup with ${libRaw.wheels.length} wheel(s)?\n\nThis replaces ALL wheels currently saved on this device.`
+    )
+  ) {
+    return;
+  }
+  // Normalize via save/load path
+  const next = {
+    activeId: libRaw.activeId,
+    wheels: libRaw.wheels.map((w) => ({
+      id: w.id,
+      name: w.name,
+      updatedAt: w.updatedAt || Date.now(),
+      data: hydrateState(w.data || {}),
+    })),
+  };
+  if (!next.wheels.some((w) => w.id === next.activeId)) {
+    next.activeId = next.wheels[0].id;
+  }
+  if (!saveLibrary(next)) {
+    throw new Error("Could not save restored library (storage may be full)");
+  }
+  library = next;
+  const slot = getActiveSlot(library);
+  state = hydrateState(
+    JSON.parse(JSON.stringify(slot?.data || defaultState()))
+  );
+  undoStack.length = 0;
+  lastWinnerId = null;
+  hideResults();
+  fillWheelSelect();
+  bindAll();
+  await preloadAudio();
+  await refreshWheel();
+  alert(`Restored ${library.wheels.length} wheel(s).`);
+}
+
+$("#btn-backup-library")?.addEventListener("click", () => {
+  try {
+    backupLibrary();
+  } catch (err) {
+    alert("Backup failed: " + (err.message || err));
+  }
+});
+$("#btn-restore-library")?.addEventListener("click", () => {
+  $("#restore-file")?.click();
+});
+$("#restore-file")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    await restoreLibraryFromFile(file);
+  } catch (err) {
+    console.error(err);
+    alert("Restore failed: " + (err.message || err));
+  }
 });
 
 $("#btn-import").addEventListener("click", () => $("#import-file").click());

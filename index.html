@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#87</span>
+        <span class="app-version" id="app-version" title="Update number">#88</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -38,6 +38,9 @@
       <div class="top-actions">
         <button type="button" id="btn-focus-mode" class="btn ghost" title="Hide chrome for a big wheel (Esc to exit)">Focus</button>
         <button type="button" id="btn-share-wheel" class="btn ghost" title="Share or download this wheel only">Share</button>
+        <button type="button" id="btn-backup-library" class="btn ghost" title="Download a full backup of every saved wheel">Backup</button>
+        <button type="button" id="btn-restore-library" class="btn ghost" title="Restore library from a backup file">Restore</button>
+        <input type="file" id="restore-file" accept="application/json,.json" hidden />
         <button type="button" id="btn-undo" class="btn ghost" title="Undo last change (Ctrl+Z)" disabled>Undo</button>
         <button type="button" id="btn-export" class="btn ghost" title="Export all wheels (library) as JSON">Export all</button>
         <button type="button" id="btn-import" class="btn ghost" title="Import project JSON">Import</button>
@@ -104,6 +107,7 @@
           <button type="button" class="tab" data-tab="groups">Groups</button>
           <button type="button" class="tab" data-tab="look">Look</button>
           <button type="button" class="tab" data-tab="sound">Sound</button>
+          <button type="button" class="tab" data-tab="history">History</button>
           <button type="button" class="tab tab-secret hidden" data-tab="secret" id="tab-btn-secret" hidden>Secret</button>
         </nav>
 
@@ -112,6 +116,7 @@
           <div class="panel-toolbar">
             <button type="button" id="btn-add-section" class="btn small">+ Add section</button>
             <button type="button" id="btn-add-many" class="btn small ghost">+ Bulk add</button>
+            <button type="button" id="btn-equalize-weights" class="btn small ghost" title="Set every section weight to 1">Equalize weights</button>
             <button type="button" id="btn-enable-all-sections" class="btn small ghost" title="Enable every section">Enable all</button>
             <button type="button" id="btn-disable-all-sections" class="btn small ghost" title="Disable every section">Disable all</button>
             <span class="sections-count-pill" id="sections-count" title="Total sections">0 sections</span>
@@ -296,6 +301,19 @@
               <input type="checkbox" id="chk-keyboard-spin" checked />
               <span>Keyboard spin (Space / Enter)</span>
             </label>
+            <label class="field">
+              <span>Auto-dismiss result</span>
+              <select id="auto-dismiss-sec" title="Automatically close the win screen after a delay">
+                <option value="0">Off</option>
+                <option value="3">3 seconds</option>
+                <option value="5">5 seconds</option>
+                <option value="8">8 seconds</option>
+                <option value="10">10 seconds</option>
+                <option value="15">15 seconds</option>
+                <option value="30">30 seconds</option>
+              </select>
+              <small>When on, Continue is still available; auto-dismiss also runs eliminate-after-win.</small>
+            </label>
           </div>
 
           <div class="form-block">
@@ -445,6 +463,20 @@
                 <span id="land-sfx-volume-label" class="slider-value">70%</span>
               </div>
             </label>
+          </div>
+        </div>
+
+        <!-- History tab -->
+        <div class="tab-panel" id="tab-history">
+          <div class="form-block">
+            <h3>Spin history</h3>
+            <p class="hint">Recent winners across all wheels (newest first). Stored on this device.</p>
+            <div class="panel-toolbar history-toolbar">
+              <button type="button" id="btn-history-export" class="btn small ghost" title="Download history as JSON">Export history</button>
+              <button type="button" id="btn-history-clear" class="btn small ghost danger" title="Clear all history">Clear</button>
+              <span class="sections-count-pill" id="history-count" title="Entries">0</span>
+            </div>
+            <div id="history-list" class="history-list"></div>
           </div>
         </div>
 
