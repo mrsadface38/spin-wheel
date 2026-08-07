@@ -154,7 +154,11 @@ const sectionSearchMeta = $("#section-search-meta");
 let lastWinnerId = null;
 /** Current sections search query */
 let sectionSearchQuery = "";
-/** List sort mode (display only — does not change saved order) */
+/**
+ * Section list sort mode.
+ * "manual" = Your order (saved array order; drag to reorder).
+ * Other modes are display-only sorts.
+ */
 const SECTION_SORT_KEY = "spin-wheel-section-sort";
 let sectionSortMode = "manual";
 try {
@@ -162,6 +166,16 @@ try {
   if (saved) sectionSortMode = saved;
 } catch {
   /* ignore */
+}
+
+/** True when section cards show a grip and can be dragged to reorder the wheel. */
+function canReorderSections() {
+  return (
+    (sectionSortMode || "manual") === "manual" &&
+    !String(sectionSearchQuery || "").trim() &&
+    Array.isArray(state.sections) &&
+    state.sections.length >= 2
+  );
 }
 
 const wheel = new Wheel(wheelCanvas, bgCanvas, {
@@ -866,7 +880,9 @@ function cmpLabel(a, b) {
 }
 
 /**
- * Sort a section list for display only (does not mutate state.sections).
+ * Sort a section list for display.
+ * "manual" (Your order) keeps state.sections order — drag reorders that array.
+ * Other modes are display-only and do not mutate state.
  * @param {object[]} list
  */
 function sortSectionsList(list) {
@@ -936,6 +952,8 @@ function updateSectionsCount() {
 }
 
 function renderSections() {
+  // Don't clobber the list mid phone-style drag
+  if (sectionDrag.active || sectionDrag.pending) return;
   updateSectionsCount();
   if (!state.sections.length) {
     sectionsList.innerHTML = `<div class="empty-state">No sections yet. Add one to get started.</div>`;
@@ -949,6 +967,7 @@ function renderSections() {
   const filtered = sortSectionsList(getFilteredSections());
   const q = sectionSearchQuery.trim();
   const total = state.sections.length;
+  const reorderable = canReorderSections();
   if (sectionSearchMeta) {
     sectionSearchMeta.classList.remove("hidden");
     if (q) {
@@ -956,6 +975,8 @@ function renderSections() {
         filtered.length === 0
           ? `No matches for “${q}” (of ${total})`
           : `Showing ${filtered.length} of ${total} sections`;
+    } else if (reorderable) {
+      sectionSearchMeta.textContent = `${total} section${total === 1 ? "" : "s"} · drag grip to reorder`;
     } else {
       sectionSearchMeta.textContent = `${total} section${total === 1 ? "" : "s"}`;
     }
@@ -967,6 +988,7 @@ function renderSections() {
   }
 
   const ws = getWeightSliderOpts();
+  sectionsList.classList.toggle("can-reorder", reorderable);
   sectionsList.innerHTML = filtered
     .map((s) => {
       const ctrl = controllingGroup(state, s);
@@ -1001,9 +1023,15 @@ function renderSections() {
       const bg = disp.imageData
         ? `background-image:url(${disp.imageData});background-color:${disp.color}`
         : `background:${disp.color}`;
+      const dragHandle = reorderable
+        ? `<div class="section-drag-handle" title="Drag to reorder (Your order)" aria-label="Drag to reorder" role="button">
+            <span class="drag-grip" aria-hidden="true"></span>
+          </div>`
+        : "";
       return `
-        <div class="section-card ${off ? "disabled-card" : ""}" data-id="${s.id}">
-          <div class="section-card-top">
+        <div class="section-card ${off ? "disabled-card" : ""}${reorderable ? " is-reorderable" : ""}" data-id="${s.id}">
+          <div class="section-card-top${reorderable ? " has-drag-handle" : ""}">
+            ${dragHandle}
             <div class="swatch" style="${bg}"></div>
             <div class="section-meta">
               <strong>${escapeHtml(s.label)}</strong>
@@ -1185,6 +1213,30 @@ function updateGroupPriorityLabels() {
  * Floating ghost + live FLIP shifts so neighbors slide out of the way.
  */
 const groupDrag = {
+  pending: false,
+  active: false,
+  pointerId: null,
+  fromId: null,
+  fromIndex: -1,
+  /** Insert index in the list *without* the dragged item (0..n-1) */
+  insertIndex: 0,
+  startX: 0,
+  startY: 0,
+  offsetX: 0,
+  offsetY: 0,
+  stride: 0,
+  card: null,
+  ghost: null,
+  /** @type {{ el: HTMLElement, id: string, index: number, mid: number }[]} */
+  layout: [],
+  didDrag: false,
+};
+
+/**
+ * Phone-style drag reorder for sections (Your order / manual sort only).
+ * Declared early so renderSections can guard mid-drag re-renders.
+ */
+const sectionDrag = {
   pending: false,
   active: false,
   pointerId: null,
@@ -1657,6 +1709,283 @@ function handleGroupDragEnd(e, commit) {
 window.addEventListener("pointermove", handleGroupDragMove, { passive: false });
 window.addEventListener("pointerup", (e) => handleGroupDragEnd(e, true));
 window.addEventListener("pointercancel", (e) => handleGroupDragEnd(e, false));
+
+// --- Section phone-style drag reorder (Your order only) ---
+const SECTION_DRAG_THRESHOLD = 6;
+
+const sectionDrag = {
+  pending: false,
+  active: false,
+  pointerId: null,
+  fromId: null,
+  fromIndex: -1,
+  /** Insert index in the list *without* the dragged item (0..n-1) */
+  insertIndex: 0,
+  startX: 0,
+  startY: 0,
+  offsetX: 0,
+  offsetY: 0,
+  stride: 0,
+  card: null,
+  ghost: null,
+  /** @type {{ el: HTMLElement, id: string, index: number, mid: number }[]} */
+  layout: [],
+  didDrag: false,
+};
+
+function getSectionCards() {
+  return [...sectionsList.querySelectorAll(".section-card")];
+}
+
+function clearSectionDragTransforms() {
+  getSectionCards().forEach((c) => {
+    c.style.transform = "";
+    c.style.transition = "";
+    c.classList.remove("is-drag-source", "is-slot-open");
+  });
+  sectionsList.classList.remove("is-reordering");
+}
+
+function applySectionLiveShifts() {
+  const from = sectionDrag.fromIndex;
+  const insert = sectionDrag.insertIndex;
+  const stride = sectionDrag.stride;
+  getSectionCards().forEach((card, i) => {
+    if (i === from) {
+      card.style.transform = "none";
+      return;
+    }
+    const without = i > from ? i - 1 : i;
+    const final = without >= insert ? without + 1 : without;
+    const shift = (final - i) * stride;
+    card.style.transform = shift
+      ? `translate3d(0, ${shift}px, 0)`
+      : "translate3d(0,0,0)";
+  });
+}
+
+function sectionInsertIndexFromY(clientY) {
+  const from = sectionDrag.fromIndex;
+  let insert = 0;
+  sectionDrag.layout.forEach((l, i) => {
+    if (i === from) return;
+    if (clientY > l.mid) insert += 1;
+  });
+  return insert;
+}
+
+function moveSectionGhost(clientX, clientY) {
+  if (!sectionDrag.ghost) return;
+  const x = clientX - sectionDrag.offsetX;
+  const y = clientY - sectionDrag.offsetY;
+  sectionDrag.ghost.style.transform = `translate3d(${x}px, ${y}px, 0) scale(1.03) rotate(-0.5deg)`;
+}
+
+function startSectionDrag(card, e) {
+  const cards = getSectionCards();
+  const fromIndex = cards.indexOf(card);
+  if (fromIndex < 0) return;
+
+  const rect = card.getBoundingClientRect();
+  sectionDrag.active = true;
+  sectionDrag.pending = false;
+  sectionDrag.didDrag = true;
+  sectionDrag.fromId = card.dataset.id;
+  sectionDrag.fromIndex = fromIndex;
+  sectionDrag.card = card;
+  sectionDrag.pointerId = e.pointerId;
+  sectionDrag.offsetX = e.clientX - rect.left;
+  sectionDrag.offsetY = e.clientY - rect.top;
+
+  const gap =
+    cards.length > 1
+      ? Math.max(
+          0,
+          cards[1].getBoundingClientRect().top -
+            cards[0].getBoundingClientRect().bottom
+        )
+      : 8;
+  sectionDrag.stride = rect.height + gap;
+
+  sectionDrag.layout = cards.map((el, index) => {
+    const r = el.getBoundingClientRect();
+    return {
+      el,
+      id: el.dataset.id,
+      index,
+      mid: r.top + r.height / 2,
+    };
+  });
+  sectionDrag.insertIndex = sectionInsertIndexFromY(e.clientY);
+
+  const ghost = card.cloneNode(true);
+  ghost.classList.add("group-drag-ghost", "section-drag-ghost");
+  ghost.classList.remove("is-drag-source");
+  ghost.removeAttribute("data-id");
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  ghost.style.left = "0";
+  ghost.style.top = "0";
+  document.body.appendChild(ghost);
+  sectionDrag.ghost = ghost;
+  moveSectionGhost(e.clientX, e.clientY);
+
+  sectionsList.classList.add("is-reordering");
+  card.classList.add("is-drag-source");
+  cards.forEach((c) => {
+    if (c !== card) {
+      c.style.transition =
+        "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)";
+    }
+  });
+  applySectionLiveShifts();
+
+  try {
+    card.setPointerCapture(e.pointerId);
+  } catch {
+    /* ignore */
+  }
+  document.body.classList.add("group-drag-cursor");
+}
+
+function endSectionDrag(commit) {
+  if (!sectionDrag.active && !sectionDrag.pending) {
+    resetSectionDragState();
+    return;
+  }
+  const fromIndex = sectionDrag.fromIndex;
+  const insertIndex = sectionDrag.insertIndex;
+  const ghost = sectionDrag.ghost;
+
+  if (ghost) {
+    ghost.classList.add("group-drag-ghost-exit");
+    const g = ghost;
+    setTimeout(() => g.remove(), 180);
+  }
+
+  if (commit && fromIndex >= 0 && canReorderSections()) {
+    // Visual list === state.sections when Your order + no search
+    const next = state.sections.slice();
+    const [item] = next.splice(fromIndex, 1);
+    if (item) {
+      const clamped = Math.max(0, Math.min(insertIndex, next.length));
+      next.splice(clamped, 0, item);
+      const changed = !next.every((s, i) => s.id === state.sections[i]?.id);
+      if (changed) {
+        checkpoint();
+        state.sections = next;
+        persist();
+      }
+    }
+  }
+
+  clearSectionDragTransforms();
+  resetSectionDragState();
+  document.body.classList.remove("group-drag-cursor");
+  renderSections();
+  refreshWheel();
+}
+
+function resetSectionDragState() {
+  sectionDrag.pending = false;
+  sectionDrag.active = false;
+  sectionDrag.pointerId = null;
+  sectionDrag.fromId = null;
+  sectionDrag.fromIndex = -1;
+  sectionDrag.insertIndex = 0;
+  sectionDrag.card = null;
+  sectionDrag.ghost = null;
+  sectionDrag.layout = [];
+}
+
+function finishSectionDragClickGuard() {
+  if (!sectionDrag.didDrag) return;
+  const block = (ev) => {
+    ev.stopPropagation();
+    ev.preventDefault();
+    sectionsList.removeEventListener("click", block, true);
+    sectionDrag.didDrag = false;
+  };
+  sectionsList.addEventListener("click", block, true);
+  setTimeout(() => {
+    sectionsList.removeEventListener("click", block, true);
+    sectionDrag.didDrag = false;
+  }, 40);
+}
+
+sectionsList.addEventListener("pointerdown", (e) => {
+  if (!canReorderSections()) return;
+  if (e.button != null && e.button !== 0) return;
+  // Grip only — leave weight sliders / buttons free
+  if (!e.target.closest(".section-drag-handle")) return;
+  if (e.target.closest("button, [data-act], a, input, select, textarea, label")) {
+    return;
+  }
+  const card = e.target.closest(".section-card");
+  if (!card || !sectionsList.contains(card)) return;
+  if (state.sections.length < 2) return;
+
+  sectionDrag.pending = true;
+  sectionDrag.didDrag = false;
+  sectionDrag.card = card;
+  sectionDrag.fromId = card.dataset.id;
+  sectionDrag.pointerId = e.pointerId;
+  sectionDrag.startX = e.clientX;
+  sectionDrag.startY = e.clientY;
+  e.preventDefault();
+});
+
+function handleSectionDragMove(e) {
+  if (!sectionDrag.active && !sectionDrag.pending) return;
+  if (sectionDrag.pointerId != null && e.pointerId !== sectionDrag.pointerId) {
+    return;
+  }
+
+  if (sectionDrag.pending && !sectionDrag.active) {
+    const dx = e.clientX - sectionDrag.startX;
+    const dy = e.clientY - sectionDrag.startY;
+    if (Math.hypot(dx, dy) < SECTION_DRAG_THRESHOLD) return;
+    if (!sectionDrag.card) return;
+    e.preventDefault();
+    startSectionDrag(sectionDrag.card, e);
+  }
+
+  if (!sectionDrag.active) return;
+  e.preventDefault();
+  moveSectionGhost(e.clientX, e.clientY);
+  const nextInsert = sectionInsertIndexFromY(e.clientY);
+  if (nextInsert !== sectionDrag.insertIndex) {
+    sectionDrag.insertIndex = nextInsert;
+    applySectionLiveShifts();
+  }
+}
+
+function handleSectionDragEnd(e, commit) {
+  if (!sectionDrag.active && !sectionDrag.pending) return;
+  if (
+    e &&
+    sectionDrag.pointerId != null &&
+    e.pointerId !== sectionDrag.pointerId
+  ) {
+    return;
+  }
+  if (sectionDrag.active) {
+    if (e) e.preventDefault();
+    endSectionDrag(commit);
+    finishSectionDragClickGuard();
+  } else {
+    resetSectionDragState();
+    sectionDrag.didDrag = false;
+  }
+}
+
+window.addEventListener("pointermove", handleSectionDragMove, {
+  passive: false,
+});
+window.addEventListener("pointerup", (e) => handleSectionDragEnd(e, true));
+window.addEventListener("pointercancel", (e) =>
+  handleSectionDragEnd(e, false)
+);
 
 $("#btn-add-section").addEventListener("click", () => {
   openSectionModal(null);
@@ -5698,6 +6027,15 @@ function forceUiInteractive() {
     document.body.classList.remove("group-drag-cursor");
     document.querySelectorAll(".group-drag-ghost").forEach((g) => g.remove());
     groupsList?.classList?.remove("is-reordering");
+    sectionsList?.classList?.remove("is-reordering");
+    try {
+      if (typeof resetSectionDragState === "function") resetSectionDragState();
+      if (typeof clearSectionDragTransforms === "function") {
+        clearSectionDragTransforms();
+      }
+    } catch {
+      /* ignore */
+    }
   } catch {
     /* ignore */
   }

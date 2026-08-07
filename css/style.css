@@ -825,6 +825,16 @@ select optgroup {
   gap: 0.5rem;
 }
 
+.sections-list {
+  position: relative;
+  touch-action: pan-y;
+}
+
+.sections-list.is-reordering {
+  touch-action: none;
+  user-select: none;
+}
+
 .section-card {
   display: flex;
   flex-direction: column;
@@ -833,7 +843,14 @@ select optgroup {
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 10px;
-  transition: opacity 0.15s, border-color 0.15s;
+  transition: opacity 0.15s, border-color 0.15s, box-shadow 0.22s ease;
+  position: relative;
+  z-index: 1;
+  will-change: transform;
+}
+
+.section-card.is-reorderable:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
 }
 
 .section-card-top {
@@ -841,6 +858,62 @@ select optgroup {
   grid-template-columns: auto 1fr auto;
   gap: 0.65rem;
   align-items: center;
+}
+
+.section-card-top.has-drag-handle {
+  grid-template-columns: auto auto 1fr auto;
+}
+
+.section-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 2rem;
+  border-radius: 6px;
+  cursor: grab;
+  opacity: 0.75;
+  color: var(--muted);
+  flex-shrink: 0;
+  touch-action: none;
+}
+
+.section-drag-handle:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+}
+
+/* Empty slot while reordering sections (same language as groups) */
+.section-card.is-drag-source {
+  opacity: 1;
+  cursor: grabbing;
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel-2));
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 65%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
+  color: transparent;
+  z-index: 0;
+}
+
+.section-card.is-drag-source > * {
+  visibility: hidden;
+}
+
+.section-card.is-drag-source::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: 8px;
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--accent) 8%, transparent),
+    color-mix(in srgb, var(--accent) 18%, transparent),
+    color-mix(in srgb, var(--accent) 8%, transparent)
+  );
+  background-size: 200% 100%;
+  animation: group-slot-shimmer 1.1s ease-in-out infinite;
+  pointer-events: none;
+  visibility: visible;
 }
 
 .section-weight-row {
