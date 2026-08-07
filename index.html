@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#92</span>
+        <span class="app-version" id="app-version" title="Update number">#93</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -37,7 +37,7 @@
       </div>
       <div class="top-actions">
         <button type="button" id="btn-focus-mode" class="btn ghost" title="Hide chrome for a big wheel (Esc to exit)">Focus</button>
-        <button type="button" id="btn-share-wheel" class="btn ghost" title="Share or download this wheel only">Share</button>
+        <button type="button" id="btn-share-wheel" class="btn ghost" title="Copy a share link for this wheel (prompt also shows the link)">Share</button>
         <button type="button" id="btn-backup-library" class="btn ghost" title="Download a full backup of every saved wheel">Backup</button>
         <button type="button" id="btn-restore-library" class="btn ghost" title="Restore library from a backup file">Restore</button>
         <input type="file" id="restore-file" accept="application/json,.json" hidden />
@@ -300,7 +300,7 @@
                 <option value="confetti" selected>Confetti</option>
                 <option value="custom">Custom media…</option>
               </select>
-              <small>Used when a section/group does not set its own effect. Custom = image, GIF, or short video overlay.</small>
+              <small>Used when a section/group does not set its own effect. Custom media: <strong>WebM (best transparency)</strong>, GIF, WebP, APNG/PNG, or MP4.</small>
             </label>
             <div class="audio-pick" id="look-win-effect-custom-row" hidden>
               <span id="look-win-effect-name" class="audio-name">No custom file</span>
@@ -859,12 +859,12 @@
               <div class="image-pick-actions">
                 <label class="btn small">
                   Choose file
-                  <input type="file" id="section-win-effect-input" accept="image/*,video/*,.gif,.webp,.mp4,.webm" hidden />
+                  <input type="file" id="section-win-effect-input" accept="video/webm,.webm,image/gif,.gif,image/webp,.webp,image/png,.png,image/apng,.apng,video/mp4,.mp4,image/*,video/*" hidden />
                 </label>
                 <button type="button" id="section-win-effect-clear" class="btn small ghost">Clear file</button>
               </div>
             </div>
-            <small>Custom media plays as a full-screen overlay for a few seconds.</small>
+            <small>Custom media: WebM (alpha/transparency), GIF, WebP, APNG/PNG, or MP4. Plays full-screen for a few seconds.</small>
           </div>
 
           <label class="toggle-row">
@@ -1073,7 +1073,7 @@
                 <div class="image-pick-actions">
                   <label class="btn small">
                     Choose file
-                    <input type="file" id="group-win-effect-input" accept="image/*,video/*,.gif,.webp,.mp4,.webm" hidden />
+                    <input type="file" id="group-win-effect-input" accept="video/webm,.webm,image/gif,.gif,image/webp,.webp,image/png,.png,image/apng,.apng,video/mp4,.mp4,image/*,video/*" hidden />
                   </label>
                   <button type="button" id="group-win-effect-clear" class="btn small ghost">Clear file</button>
                 </div>

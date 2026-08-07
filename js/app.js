@@ -2704,10 +2704,16 @@ $("#group-win-effect-input")?.addEventListener("change", async (e) => {
     updateGroupWinEffectCustomUI();
     return;
   }
-  pendingGroupWinEffectData = await fileToDataUrl(file);
-  pendingGroupWinEffectName = file.name;
-  if ($("#group-win-effect")) $("#group-win-effect").value = "custom";
-  updateGroupWinEffectCustomUI();
+  try {
+    const { data, name } = await loadWinEffectFile(file);
+    pendingGroupWinEffectData = data;
+    pendingGroupWinEffectName = name;
+    if ($("#group-win-effect")) $("#group-win-effect").value = "custom";
+    updateGroupWinEffectCustomUI();
+  } catch (err) {
+    alert("Could not load file: " + (err.message || err));
+    updateGroupWinEffectCustomUI();
+  }
 });
 $("#group-win-effect-clear")?.addEventListener("click", () => {
   pendingGroupWinEffectData = null;
@@ -3800,12 +3806,18 @@ $("#section-win-effect-input")?.addEventListener("change", async (e) => {
     updateSectionWinEffectUI();
     return;
   }
-  pendingSectionWinEffectData = await fileToDataUrl(file);
-  pendingSectionWinEffectName = file.name;
-  markSectionDirty("winEffect");
-  sectionEditCustom.winEffect = true;
-  if ($("#section-win-effect")) $("#section-win-effect").value = "custom";
-  updateSectionWinEffectUI();
+  try {
+    const { data, name } = await loadWinEffectFile(file);
+    pendingSectionWinEffectData = data;
+    pendingSectionWinEffectName = name;
+    markSectionDirty("winEffect");
+    sectionEditCustom.winEffect = true;
+    if ($("#section-win-effect")) $("#section-win-effect").value = "custom";
+    updateSectionWinEffectUI();
+  } catch (err) {
+    alert("Could not load file: " + (err.message || err));
+    updateSectionWinEffectUI();
+  }
 });
 
 $("#section-win-effect-clear")?.addEventListener("click", () => {
@@ -4747,7 +4759,8 @@ function playWinEffect(section = null) {
   const { effect, data } = resolveWinEffectForSection(section);
   if (effect === "none") return;
   if (effect === "custom" && data) {
-    playCustomWinMedia(data);
+    const { name } = resolveWinEffectForSection(section);
+    playCustomWinMedia(data, { fileName: name || "" });
     return;
   }
   if (effect === "confetti" || (effect === "custom" && !data)) {
@@ -6427,9 +6440,9 @@ $("#look-win-effect-input")?.addEventListener("change", async (e) => {
   if (!file) return;
   try {
     checkpoint();
-    const data = await fileToDataUrl(file);
+    const { data, name } = await loadWinEffectFile(file);
     state.look.winEffectData = data;
-    state.look.winEffectName = file.name || "Custom media";
+    state.look.winEffectName = name;
     state.look.winEffect = "custom";
     if ($("#win-effect")) $("#win-effect").value = "custom";
     persist();
@@ -6454,9 +6467,13 @@ $("#look-win-effect-preview")?.addEventListener("click", () => {
   if (we === "none") return;
   if (we === "confetti") fireConfetti();
   else if (we === "custom" && state.look?.winEffectData) {
-    playCustomWinMedia(state.look.winEffectData);
+    playCustomWinMedia(state.look.winEffectData, {
+      fileName: state.look.winEffectName || "",
+    });
   } else {
-    alert("Choose a custom media file first.");
+    alert(
+      "Choose a custom media file first (WebM, GIF, WebP, APNG/PNG, or MP4)."
+    );
   }
 });
 
@@ -7133,34 +7150,44 @@ async function shareCurrentWheel() {
     .replace(/^-|-$/g, "")
     .slice(0, 40) || "wheel";
 
-  // Prefer short share link in hash; fall back to file download if huge
+  // Always build a share link (no size cap). Auto-copy, then always prompt
+  // so the user can copy again if needed.
   try {
     const json = JSON.stringify(payload);
     const b64 = btoa(unescape(encodeURIComponent(json)));
-    if (b64.length <= 12000) {
-      const base =
-        `${location.origin}${location.pathname}${location.search}`.replace(
-          /#$/,
-          ""
-        );
-      const url = `${base}#wheel=${b64}`;
+    const base =
+      `${location.origin}${location.pathname}${location.search}`.replace(
+        /#$/,
+        ""
+      );
+    const url = `${base}#wheel=${b64}`;
+
+    let copied = false;
+    try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
-        alert(
-          "Share link copied to the clipboard.\n\nAnyone opening it can import this wheel. Large images may make the link too long — use the file download if that happens."
-        );
-        return;
+        copied = true;
       }
-      // Clipboard blocked — still offer the link
-      prompt("Copy this share link:", url);
-      return;
+    } catch (clipErr) {
+      console.warn("Clipboard write failed:", clipErr);
+      copied = false;
     }
+
+    // Always show the link so they can copy again (Ctrl+C in the field)
+    prompt(
+      copied
+        ? "Share link copied to the clipboard.\n\nCopy again from here if you need it (Ctrl+C, then Enter):"
+        : "Could not auto-copy. Select the link and press Ctrl+C, then Enter:",
+      url
+    );
+    return;
   } catch (err) {
     console.warn("Share link failed, downloading file:", err);
   }
+  // Only if encoding the link itself fails
   downloadJson(`sad-wheel-${safeName}.json`, payload);
   alert(
-    "Wheel is large (or clipboard unavailable) — downloaded a JSON file instead. Use Import to load it."
+    "Could not build a share link — downloaded a JSON file instead. Use Import to load it."
   );
 }
 
