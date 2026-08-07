@@ -305,8 +305,11 @@ export function defaultState() {
        * After a spin is dismissed: "off" | "hide" (disable section) | "remove" (delete).
        */
       eliminateAfterWin: "off",
-      /** Celebrate wins with confetti (default on). */
-      confettiOnWin: true,
+      /**
+       * After-win visual effect: "none" | "confetti" (more effects later).
+       * Default confetti. Legacy confettiOnWin boolean is migrated.
+       */
+      winEffect: "confetti",
       /** Space / Enter to spin when not typing (default on). */
       keyboardSpin: true,
       // Section list weight range slider (manual number field can still use decimals)

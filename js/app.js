@@ -3962,8 +3962,9 @@ function bindLook() {
     $("#eliminate-after-win").value =
       e === "hide" || e === "remove" ? e : "off";
   }
-  if ($("#chk-confetti-on-win")) {
-    $("#chk-confetti-on-win").checked = state.look.confettiOnWin !== false;
+  if ($("#win-effect")) {
+    const we = state.look.winEffect;
+    $("#win-effect").value = we === "none" ? "none" : "confetti";
   }
   if ($("#chk-keyboard-spin")) {
     $("#chk-keyboard-spin").checked = state.look.keyboardSpin !== false;

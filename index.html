@@ -284,9 +284,13 @@
               </select>
               <small>Hide or delete applies when you dismiss the result (Continue). Undo restores it.</small>
             </label>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-confetti-on-win" checked />
-              <span>Confetti on win</span>
+            <label class="field">
+              <span>After-win effect</span>
+              <select id="win-effect" title="Visual celebration when a spin lands">
+                <option value="none">None</option>
+                <option value="confetti" selected>Confetti</option>
+              </select>
+              <small>More effects can be added here later</small>
             </label>
             <label class="toggle-row">
               <input type="checkbox" id="chk-keyboard-spin" checked />

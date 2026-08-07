@@ -70,7 +70,7 @@ export function coinFlipState() {
       borderColor: "#c9a84c",
       textColor: "#f5f0d8",
       winnerLabel: "Flip",
-      confettiOnWin: true,
+      winEffect: "confetti",
     },
     spin: { ...base.spin, duration: 4 },
   };
