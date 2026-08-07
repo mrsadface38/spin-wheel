@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#101</span>
+        <span class="app-version" id="app-version" title="Update number">#103</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -906,7 +906,7 @@
 
   <!-- Group add / edit modal (live profile preview on the left, same as section edit) -->
   <dialog id="group-modal" class="modal modal-section-edit modal-group-edit">
-    <form method="dialog" id="group-form">
+    <form method="dialog" id="group-form" novalidate>
       <h2 id="group-modal-title">Add group</h2>
       <input type="hidden" id="group-edit-id" />
 
@@ -932,8 +932,8 @@
             <label class="field" id="group-preview-custom-weight-field">
               <span>Custom size</span>
               <div class="slider-with-value">
-                <input type="range" id="group-preview-custom-weight" min="1" max="100" step="1" value="100" />
-                <span id="group-preview-custom-weight-label" class="slider-value">100%</span>
+                <input type="range" id="group-preview-custom-weight" min="1" max="100" step="1" value="20" />
+                <span id="group-preview-custom-weight-label" class="slider-value">20%</span>
               </div>
             </label>
             <label class="field" id="group-preview-weight-value-field" hidden>
@@ -954,7 +954,7 @@
             <h3>Basics</h3>
             <label class="field">
               <span>Group name</span>
-              <input type="text" id="group-name" required maxlength="300" placeholder="e.g. Bonus prizes" autofocus />
+              <input type="text" id="group-name" maxlength="300" placeholder="e.g. Bonus prizes" autofocus />
             </label>
             <label class="toggle-row" id="group-active-row">
               <input type="checkbox" id="group-active" checked />

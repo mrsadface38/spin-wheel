@@ -277,6 +277,21 @@ function persist() {
   }
   updateUndoButton();
   fillWheelSelect();
+  return ok;
+}
+
+/** Expand collapsible block(s) that contain this element so the user can see it. */
+function expandCollapsibleContaining(el) {
+  if (!el) return;
+  let node = el.parentElement;
+  while (node) {
+    if (node.classList?.contains("collapsible-block") && node.classList.contains("is-collapsed")) {
+      node.classList.remove("is-collapsed");
+      const btn = node.querySelector(":scope > .collapsible-toggle");
+      if (btn) btn.setAttribute("aria-expanded", "true");
+    }
+    node = node.parentElement;
+  }
 }
 
 function fillWheelSelect() {
@@ -1262,8 +1277,9 @@ function renderGroups() {
       ]
         .filter(Boolean)
         .join(" · ");
+      // Quote data URLs — unquoted "data:image/png;base64,…" breaks at the semicolon
       const swatchBg = g.imageData
-        ? `background-image:url(${g.imageData});background-color:${g.color || "#3ecf8e"}`
+        ? `background-image:url(${JSON.stringify(g.imageData)});background-color:${g.color || "#3ecf8e"}`
         : `background:${g.active ? g.color || "#3ecf8e" : "#555"}`;
       return `
         <div class="group-card ${g.active ? "" : "inactive-card"} ${groupHasAnyOverride(g) ? "group-override-on" : ""}" data-id="${g.id}">
@@ -2281,6 +2297,8 @@ $("#btn-add-group").addEventListener("click", () => {
 // --- Group modal (add / edit + manage sections + profile) ---
 /** @type {Set<string>} section ids that will belong to the group on save */
 let pendingGroupMemberIds = new Set();
+/** True after openGroupModal finishes wiring membership (avoids save wiping members). */
+let groupModalMembersReady = false;
 let groupMemberSearchQuery = "";
 /** @type {string|null} */
 let pendingGroupImage = null;
@@ -2411,7 +2429,7 @@ function fillGroupProfileForm(group) {
   if ($("#group-apply-image")) $("#group-apply-image").checked = true;
   if ($("#group-apply-sfx")) $("#group-apply-sfx").checked = false;
   if ($("#group-apply-win-effect")) $("#group-apply-win-effect").checked = false;
-  $("#group-color").value = g.color || "#4a6cf7";
+  if ($("#group-color")) $("#group-color").value = g.color || "#4a6cf7";
   if ($("#group-text-color")) {
     $("#group-text-color").value = g.textColor || "#ffffff";
   }
@@ -2436,13 +2454,23 @@ function fillGroupProfileForm(group) {
         : "look";
   }
   updateGroupWinEffectCustomUI();
-  $("#group-image-mode").value = g.imageMode === "tile" ? "tile" : "fill";
-  $("#group-fill-scale").value = g.imageFillScale ?? 1;
-  $("#group-fill-offset-x").value = g.imageFillOffsetX ?? 0;
-  $("#group-fill-offset-y").value = g.imageFillOffsetY ?? 0;
-  $("#group-tile-scale").value = g.imageTileScale ?? 1;
-  $("#group-tile-offset-x").value = g.imageTileOffsetX ?? 0;
-  $("#group-tile-offset-y").value = g.imageTileOffsetY ?? 0;
+  if ($("#group-image-mode")) {
+    $("#group-image-mode").value = g.imageMode === "tile" ? "tile" : "fill";
+  }
+  if ($("#group-fill-scale")) $("#group-fill-scale").value = g.imageFillScale ?? 1;
+  if ($("#group-fill-offset-x")) {
+    $("#group-fill-offset-x").value = g.imageFillOffsetX ?? 0;
+  }
+  if ($("#group-fill-offset-y")) {
+    $("#group-fill-offset-y").value = g.imageFillOffsetY ?? 0;
+  }
+  if ($("#group-tile-scale")) $("#group-tile-scale").value = g.imageTileScale ?? 1;
+  if ($("#group-tile-offset-x")) {
+    $("#group-tile-offset-x").value = g.imageTileOffsetX ?? 0;
+  }
+  if ($("#group-tile-offset-y")) {
+    $("#group-tile-offset-y").value = g.imageTileOffsetY ?? 0;
+  }
   if ($("#group-image-rotation")) {
     $("#group-image-rotation").value = clampImageRotation(g.imageRotation);
   }
@@ -2461,10 +2489,16 @@ function fillGroupProfileForm(group) {
 }
 
 function openGroupModal(group) {
+  groupModalMembersReady = false;
   $("#group-modal-title").textContent = group ? "Edit group" : "Add group";
   $("#group-edit-id").value = group?.id || "";
-  $("#group-name").value = group?.name || `Group ${state.groups.length + 1}`;
-  $("#group-active").checked = group ? group.active !== false : true;
+  const nameEl = $("#group-name");
+  if (nameEl) {
+    nameEl.value = group?.name || `Group ${state.groups.length + 1}`;
+  }
+  if ($("#group-active")) {
+    $("#group-active").checked = group ? group.active !== false : true;
+  }
   groupMemberSearchQuery = "";
   const searchEl = $("#group-member-search");
   if (searchEl) searchEl.value = "";
@@ -2476,13 +2510,24 @@ function openGroupModal(group) {
   } else {
     pendingGroupMemberIds = new Set();
   }
-  fillGroupProfileForm(group);
-  renderGroupMembers();
+  try {
+    fillGroupProfileForm(group);
+  } catch (err) {
+    console.error("fillGroupProfileForm:", err);
+  }
+  try {
+    renderGroupMembers();
+  } catch (err) {
+    console.error("renderGroupMembers:", err);
+  }
+  groupModalMembersReady = true;
   groupModal.showModal();
   requestAnimationFrame(() => {
     const input = $("#group-name");
-    input.focus();
-    input.select();
+    if (input) {
+      input.focus();
+      input.select();
+    }
     updateGroupLivePreview();
     requestAnimationFrame(updateGroupLivePreview);
   });
@@ -2610,7 +2655,10 @@ $("#group-members-out")?.addEventListener("click", (e) => {
   scheduleGroupLivePreview();
 });
 
-$("#group-cancel").addEventListener("click", () => groupModal.close());
+$("#group-cancel").addEventListener("click", () => {
+  groupModalMembersReady = false;
+  groupModal.close();
+});
 
 // Group profile media / sliders + live preview
 $("#group-name")?.addEventListener("input", scheduleGroupLivePreview);
@@ -2829,69 +2877,104 @@ $("#btn-apply-group-profile")?.addEventListener("click", async () => {
 
 $("#group-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const name = $("#group-name").value.trim();
-  if (!name) return;
-  let id = $("#group-edit-id").value;
-  const active = $("#group-active").checked;
-  const overrideParts = readOverridePartsFromForm();
-  const profile = readGroupProfileFromForm();
-
-  checkpoint();
-  if (id) {
-    const group = state.groups.find((g) => g.id === id);
-    if (group) {
-      Object.assign(group, normalizeGroup({
-        ...group,
-        name,
-        active,
-        ...overrideParts,
-        ...profile,
-      }));
+  e.stopPropagation();
+  try {
+    const nameEl = $("#group-name");
+    const name = (nameEl?.value || "").trim();
+    if (!name) {
+      expandCollapsibleContaining(nameEl);
+      alert("Please enter a group name.");
+      nameEl?.focus();
+      return;
     }
-  } else {
-    id = uid("grp");
-    state.groups.push(
-      normalizeGroup({
-        id,
-        name,
-        active,
-        ...overrideParts,
-        ...profile,
-      })
-    );
-    $("#group-edit-id").value = id;
-  }
+    let id = $("#group-edit-id")?.value || "";
+    const active = $("#group-active")?.checked !== false;
+    const overrideParts = readOverridePartsFromForm();
+    const profile = readGroupProfileFromForm();
 
-  // Multi-group: add this id to pending members; remove only this id from others.
-  const fallback =
-    state.groups.find((g) => g.id !== id) || state.groups[0];
-  if (!fallback) {
-    alert("You need at least one group.");
-    return;
-  }
-
-  for (const s of state.sections) {
-    let ids = getSectionGroupIds(s).filter((gid) =>
-      state.groups.some((g) => g.id === gid)
-    );
-    if (pendingGroupMemberIds.has(s.id)) {
-      if (!ids.includes(id)) ids.push(id);
-    } else {
-      ids = ids.filter((gid) => gid !== id);
+    checkpoint();
+    if (id) {
+      const group = state.groups.find((g) => g.id === id);
+      if (group) {
+        Object.assign(
+          group,
+          normalizeGroup({
+            ...group,
+            name,
+            active,
+            ...overrideParts,
+            ...profile,
+          })
+        );
+      } else {
+        // Edit id missing from state — treat as create
+        id = "";
+      }
     }
-    if (!ids.length) ids = [fallback.id];
-    setSectionGroupIds(s, ids);
-  }
+    if (!id) {
+      id = uid("grp");
+      state.groups.push(
+        normalizeGroup({
+          id,
+          name,
+          active,
+          ...overrideParts,
+          ...profile,
+        })
+      );
+      if ($("#group-edit-id")) $("#group-edit-id").value = id;
+    }
 
-  if (profile.landSfxData) {
-    await audio.loadDataUrl(`land_grp_${id}`, profile.landSfxData);
-  }
+    // Multi-group membership — only rewrite if the member lists were loaded
+    if (groupModalMembersReady) {
+      const fallback =
+        state.groups.find((g) => g.id !== id) || state.groups[0];
+      if (!fallback) {
+        alert("You need at least one group.");
+        return;
+      }
 
-  persist();
-  renderGroups();
-  renderSections();
-  await refreshWheel();
-  groupModal.close();
+      for (const s of state.sections) {
+        const hadGroups = getSectionGroupIds(s).length > 0;
+        let ids = getSectionGroupIds(s).filter((gid) =>
+          state.groups.some((g) => g.id === gid)
+        );
+        if (pendingGroupMemberIds.has(s.id)) {
+          if (!ids.includes(id)) ids.push(id);
+        } else {
+          ids = ids.filter((gid) => gid !== id);
+        }
+        // Keep every section in at least one group if it already had membership
+        if (!ids.length && (hadGroups || pendingGroupMemberIds.has(s.id))) {
+          ids = [fallback.id];
+        }
+        setSectionGroupIds(s, ids);
+      }
+    }
+
+    if (profile.landSfxData) {
+      try {
+        await audio.loadDataUrl(`land_grp_${id}`, profile.landSfxData);
+      } catch (err) {
+        console.warn("Group land SFX load failed:", err);
+      }
+    }
+
+    const ok = persist();
+    if (!ok) {
+      alert(
+        "Could not save to browser storage (it may be full). Try removing large images or using Backup."
+      );
+    }
+    renderGroups();
+    renderSections();
+    await refreshWheel();
+    groupModalMembersReady = false;
+    groupModal.close();
+  } catch (err) {
+    console.error("Group save failed:", err);
+    alert("Could not save group: " + (err?.message || err));
+  }
 });
 
 // --- Section search + sort ---
@@ -3681,12 +3764,12 @@ function openSectionModal(section) {
     }
   }
   updateSectionImageModeUI();
-  // Default preview: custom % of wheel at 100% (full circle)
+  // Default preview: custom % of wheel at 20% (typical multi-slice wedge)
   if ($("#preview-weight-mode")) {
     $("#preview-weight-mode").value = "custom";
   }
   if ($("#preview-custom-weight")) {
-    $("#preview-custom-weight").value = "100";
+    $("#preview-custom-weight").value = "20";
   }
   // Seed custom-weight preview from this section's weight
   syncPreviewWeightValueControls(
