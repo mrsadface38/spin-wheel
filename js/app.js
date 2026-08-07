@@ -448,36 +448,48 @@ function sortSectionsList(list) {
 }
 
 function updateSectionsCount() {
-  const el = $("#sections-count");
-  if (!el) return;
-  const n = state.sections?.length || 0;
-  const num = el.querySelector(".sections-count-num");
-  const lab = el.querySelector(".sections-count-label");
-  if (num) num.textContent = String(n);
-  else el.textContent = String(n);
-  if (lab) lab.textContent = n === 1 ? "section" : "sections";
-  el.title = n === 1 ? "1 section" : `${n} sections`;
-  el.setAttribute("data-count", String(n));
+  // Always total sections in the project (not filtered / on-wheel only)
+  const n = Array.isArray(state.sections) ? state.sections.length : 0;
+  const text = n === 1 ? "1 section" : `${n} sections`;
+  const el =
+    document.getElementById("sections-count") || $("#sections-count");
+  if (el) {
+    el.textContent = text;
+    el.title = text;
+    el.setAttribute("data-count", String(n));
+  }
+  // Also stamp the Bulk add button so the number is impossible to miss
+  const bulk = document.getElementById("btn-add-many") || $("#btn-add-many");
+  if (bulk) {
+    bulk.textContent = `+ Bulk add (${n})`;
+    bulk.title = `Bulk add names — you currently have ${text}`;
+  }
 }
 
 function renderSections() {
   updateSectionsCount();
   if (!state.sections.length) {
     sectionsList.innerHTML = `<div class="empty-state">No sections yet. Add one to get started.</div>`;
-    sectionSearchMeta.classList.add("hidden");
+    if (sectionSearchMeta) {
+      sectionSearchMeta.classList.remove("hidden");
+      sectionSearchMeta.textContent = "0 sections";
+    }
     return;
   }
 
   const filtered = sortSectionsList(getFilteredSections());
   const q = sectionSearchQuery.trim();
-  if (q) {
+  const total = state.sections.length;
+  if (sectionSearchMeta) {
     sectionSearchMeta.classList.remove("hidden");
-    sectionSearchMeta.textContent =
-      filtered.length === 0
-        ? `No matches for “${q}”`
-        : `Showing ${filtered.length} of ${state.sections.length}`;
-  } else {
-    sectionSearchMeta.classList.add("hidden");
+    if (q) {
+      sectionSearchMeta.textContent =
+        filtered.length === 0
+          ? `No matches for “${q}” (of ${total})`
+          : `Showing ${filtered.length} of ${total} sections`;
+    } else {
+      sectionSearchMeta.textContent = `${total} section${total === 1 ? "" : "s"}`;
+    }
   }
 
   if (!filtered.length) {
@@ -3465,10 +3477,12 @@ async function init() {
     verEl.title = `Update #${APP_UPDATE}`;
   }
   bindAll();
+  updateSectionsCount();
   updateUndoButton();
   wheel.resize();
   await preloadAudio();
   await refreshWheel();
+  updateSectionsCount();
   // Continuous BGM waits for a user gesture (browser autoplay rules);
   // first SPIN / Sound interaction will start it via syncBgm / startBgmForSpin.
   syncBgm();

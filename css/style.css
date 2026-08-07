@@ -699,30 +699,19 @@ select optgroup {
 
 .sections-count-pill {
   display: inline-flex;
-  align-items: baseline;
-  gap: 0.3rem;
+  align-items: center;
   margin-left: 0.15rem;
-  padding: 0.2rem 0.55rem;
+  padding: 0.28rem 0.65rem;
   border-radius: 999px;
-  background: rgba(108, 140, 255, 0.15);
-  border: 1px solid rgba(108, 140, 255, 0.45);
-  color: var(--text);
-  line-height: 1.2;
-  user-select: none;
-}
-
-.sections-count-num {
-  font-size: 0.95rem;
+  background: rgba(108, 140, 255, 0.18);
+  border: 1px solid rgba(108, 140, 255, 0.55);
+  color: var(--accent);
+  font-size: 0.85rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--accent);
-}
-
-.sections-count-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: lowercase;
+  line-height: 1.2;
+  user-select: none;
+  white-space: nowrap;
 }
 
 .hint {

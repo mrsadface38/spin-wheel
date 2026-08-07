@@ -614,10 +614,6 @@ export class Wheel {
       front.fill();
     }
 
-    for (const sl of slices) {
-      this._drawSliceLabel(front, sl, radius, single, spinFrame);
-    }
-
     // Separators between multi slices (on top of images)
     if (!single) {
       front.strokeStyle = "rgba(0,0,0,0.35)";
@@ -662,7 +658,7 @@ export class Wheel {
       }
     }
 
-    // Center hub
+    // Center hub BEFORE labels so names are never painted under the hub
     const hubR = radius * (this.look.centerSize ?? 0.16);
     front.beginPath();
     front.arc(0, 0, hubR, 0, Math.PI * 2);
@@ -671,6 +667,11 @@ export class Wheel {
     front.strokeStyle = this.look.borderColor || "#f0d78c";
     front.lineWidth = 4 * this._dpr;
     front.stroke();
+
+    // Labels last (on top of hub/separators) — full name, scaled to fit
+    for (const sl of slices) {
+      this._drawSliceLabel(front, sl, radius, single, spinFrame);
+    }
 
     front.restore();
   }
@@ -764,8 +765,8 @@ export class Wheel {
   }
 
   /**
-   * Labels run along the radius (center → rim). That gives long names room
-   * even on thin slices; we only shrink/wrap — never truncate with "…".
+   * Full label along the slice radius (hub → rim). Never ellipsized.
+   * Scales uniformly so the entire string fits even with many thin slices.
    * @param {boolean} spinFrame lighter text (no shadow) while spinning
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
@@ -776,79 +777,58 @@ export class Wheel {
 
     const solid = asSolidDisc || sl.span >= Math.PI * 2 - 1e-4;
     const dpr = this._dpr || 1;
+    const hubSize = this.look.centerSize ?? 0.16;
+    // Start just outside the hub so the hub never covers the name
+    const startR = radius * (solid ? Math.max(0.18, hubSize + 0.04) : Math.max(0.22, hubSize + 0.06));
+    const endR = radius * 0.96;
+    const radialBudget = Math.max(8 * dpr, endR - startR);
+    // How tall the text may be across the wedge at mid radius
+    const midR = (startR + endR) / 2;
+    const tanBudget = solid
+      ? radius * 0.28
+      : Math.max(4 * dpr, midR * sl.span * 0.9);
 
     ctx.save();
-    // Local +x = outward along slice mid-angle (radial)
-    // Local +y = tangential (across the wedge)
+    // Local +x = outward along mid-angle; +y = across the wedge
     ctx.rotate(solid ? 0 : mid);
+    ctx.translate(startR, 0);
 
-    const hubR = radius * (solid ? 0.2 : 0.26);
-    const outerR = radius * 0.94;
-    const radialBudget = Math.max(24 * dpr, outerR - hubR);
-    const midR = (hubR + outerR) / 2;
-    ctx.translate(midR, 0);
-
-    // Font height must fit across the wedge (tangential)
-    const tanBudget = solid
-      ? radius * 0.35
-      : Math.max(8 * dpr, midR * sl.span * 0.92);
-
-    const maxFont = Math.min(
-      solid ? 22 * dpr : 16 * dpr,
-      tanBudget * 0.95,
-      radius * 0.055
+    // Comfortable base size, then scale the whole string into the slot
+    const weight = solid ? 700 : 650;
+    const baseFont = Math.min(
+      solid ? 20 * dpr : 15 * dpr,
+      radius * 0.05,
+      Math.max(10 * dpr, tanBudget * 1.4)
     );
-    const minFont = Math.max(5 * dpr, 5);
+    ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
+    const metrics = ctx.measureText(label);
+    const textW = Math.max(1, metrics.width);
+    const textH = baseFont; // approximate em box
 
-    const weight = solid ? 700 : 600;
-    let fontSize = Math.max(minFont, maxFont);
-    let lines = [label];
-    let lineH = fontSize * 1.12;
-
-    for (let attempt = 0; attempt < 30; attempt++) {
-      ctx.font = `${weight} ${fontSize}px system-ui,sans-serif`;
-      // Prefer one line along the radius; wrap only if still too long at small size
-      const oneW = ctx.measureText(label).width;
-      if (oneW <= radialBudget) {
-        lines = [label];
-      } else if (fontSize <= minFont * 1.15) {
-        lines = this._wrapLabelLines(ctx, label, radialBudget);
-      } else {
-        lines = [label];
-      }
-      lineH = fontSize * 1.12;
-      const blockH = lines.length * lineH;
-      const widest = lines.reduce(
-        (m, ln) => Math.max(m, ctx.measureText(ln).width),
-        0
-      );
-      const fits =
-        widest <= radialBudget + 0.5 && blockH <= tanBudget + 0.5;
-      if (fits || fontSize <= minFont + 0.01) break;
-      fontSize = Math.max(minFont, fontSize * 0.9);
+    // Uniform scale so the FULL name is always drawn (no …, no clip by fit logic)
+    let scale = Math.min(1, radialBudget / textW, tanBudget / textH);
+    // Keep a tiny floor so ultra-crowded wheels still show something readable
+    scale = Math.max(scale, 0.15);
+    // If still wider than radial budget at floor, allow extra X squash only
+    let scaleX = scale;
+    let scaleY = scale;
+    if (textW * scaleX > radialBudget) {
+      scaleX = radialBudget / textW;
+    }
+    if (textH * scaleY > tanBudget) {
+      scaleY = tanBudget / textH;
     }
 
-    // Last resort: wrap at min font so every character is drawn
-    ctx.font = `${weight} ${fontSize}px system-ui,sans-serif`;
-    if (lines.length === 1 && ctx.measureText(lines[0]).width > radialBudget) {
-      lines = this._wrapLabelLines(ctx, label, radialBudget);
-      lineH = fontSize * 1.12;
-    }
-
+    ctx.scale(scaleX, scaleY);
     ctx.fillStyle = this.look.textColor || "#fff";
-    ctx.textAlign = "center";
+    ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     if (!spinFrame) {
-      ctx.shadowColor = "rgba(0,0,0,0.75)";
-      ctx.shadowBlur = 4 * dpr;
+      ctx.shadowColor = "rgba(0,0,0,0.8)";
+      ctx.shadowBlur = Math.max(2, 3 * dpr / Math.max(scaleY, 0.2));
     }
-
-    const blockH = lines.length * lineH;
-    let y = -blockH / 2 + lineH / 2;
-    for (const ln of lines) {
-      ctx.fillText(ln, 0, y);
-      y += lineH;
-    }
+    // Draw the complete label — never truncated
+    ctx.fillText(label, 0, 0);
     ctx.restore();
   }
 
