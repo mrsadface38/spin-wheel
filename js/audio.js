@@ -75,6 +75,24 @@ export class AudioManager {
   }
 
   /**
+   * Load audio from a same-origin URL (e.g. bundled assets).
+   * @param {string} key
+   * @param {string} url
+   */
+  async loadUrl(key, url) {
+    if (!url) {
+      this.buffers.delete(key);
+      return;
+    }
+    const ctx = this.ensure();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to load audio: ${url}`);
+    const arr = await res.arrayBuffer();
+    const buf = await ctx.decodeAudioData(arr.slice(0));
+    this.buffers.set(key, buf);
+  }
+
+  /**
    * Short per-segment tick (built-in).
    * @param {number} volume 0..1
    * @param {number} pitchScale higher when spinning faster

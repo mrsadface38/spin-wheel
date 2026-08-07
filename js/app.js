@@ -2915,7 +2915,7 @@ function bindSecretDivertSfxUI() {
   const sec = ensureSecretState();
   const nameEl = $("#secret-divert-sfx-name");
   if (nameEl) {
-    nameEl.textContent = sec.divertSfxName || "None";
+    nameEl.textContent = divertSfxDisplayName();
   }
   const vol = Math.min(
     1,
@@ -2949,19 +2949,54 @@ let bgmMutedForDivert = false;
 /** True while the last-moment rig divert is in progress. */
 let rigDivertActive = false;
 
+/** Bundled default divert sound (used when no custom upload). */
+const DEFAULT_DIVERT_SFX = {
+  url: "assets/sounds/divert-default.mp3",
+  name: "scp-173-concrete-grind-moving.mp3",
+};
+
+/**
+ * Ensure divert buffer is loaded (custom data URL or bundled default).
+ * @returns {Promise<boolean>}
+ */
+async function ensureDivertSfxBuffer(bufferKey = "rig_divert") {
+  const sec = ensureSecretState();
+  if (audio.buffers.has(bufferKey) && bufferKey === "rig_divert") {
+    // Reload if source type may have changed after clear/upload
+  }
+  try {
+    if (sec.divertSfxData) {
+      await audio.loadDataUrl(bufferKey, sec.divertSfxData);
+      return true;
+    }
+    await audio.loadUrl(bufferKey, DEFAULT_DIVERT_SFX.url);
+    return true;
+  } catch (err) {
+    console.warn("Divert SFX load failed:", err);
+    return false;
+  }
+}
+
+function divertSfxDisplayName() {
+  const sec = ensureSecretState();
+  if (sec.divertSfxData && sec.divertSfxName) return sec.divertSfxName;
+  if (sec.divertSfxData) return "Custom audio";
+  return `${DEFAULT_DIVERT_SFX.name} (default)`;
+}
+
 function playRigDivertSfx() {
   const sec = ensureSecretState();
   if (!state.sound?.enabled) return;
-  if (!sec.divertSfxData) return;
   const vol = Math.min(1, Math.max(0, Number(sec.divertSfxVolume) || 0.7));
   audio.ensure();
   const play = () => audio.playDivert("rig_divert", vol);
   if (audio.buffers.has("rig_divert")) {
     play();
   } else {
-    audio
-      .loadDataUrl("rig_divert", sec.divertSfxData)
-      .then(play)
+    ensureDivertSfxBuffer("rig_divert")
+      .then((ok) => {
+        if (ok) play();
+      })
       .catch(() => {});
   }
 }
@@ -3080,16 +3115,19 @@ $("#secret-divert-sfx-input")?.addEventListener("change", async (e) => {
   const sec = ensureSecretState();
   sec.divertSfxData = await fileToDataUrl(file);
   sec.divertSfxName = file.name;
-  await audio.loadDataUrl("rig_divert", sec.divertSfxData);
+  audio.buffers?.delete?.("rig_divert");
+  await ensureDivertSfxBuffer("rig_divert");
   bindSecretDivertSfxUI();
   persist();
 });
 
-$("#secret-divert-sfx-clear")?.addEventListener("click", () => {
+$("#secret-divert-sfx-clear")?.addEventListener("click", async () => {
   const sec = ensureSecretState();
+  // Back to bundled default (not silent)
   sec.divertSfxData = null;
   sec.divertSfxName = null;
   audio.buffers?.delete?.("rig_divert");
+  await ensureDivertSfxBuffer("rig_divert");
   bindSecretDivertSfxUI();
   persist();
 });
@@ -3123,10 +3161,9 @@ $("#secret-divert-sfx-preview")?.addEventListener("click", async () => {
     return;
   }
   const sec = ensureSecretState();
-  if (!sec.divertSfxData) return;
   const vol = Math.min(1, Math.max(0, Number(sec.divertSfxVolume) || 0.7));
-  await audio.loadDataUrl("preview_rig_divert", sec.divertSfxData);
-  if (audio.isPreviewPlaying) return;
+  const ok = await ensureDivertSfxBuffer("preview_rig_divert");
+  if (!ok || audio.isPreviewPlaying) return;
   audio.playOneShot("preview_rig_divert", vol, "land", true);
 });
 
@@ -3700,9 +3737,7 @@ function bindAll() {
     }
     bindSecretDivertSfxUI();
     const sec = ensureSecretState();
-    if (sec.divertSfxData) {
-      audio.loadDataUrl("rig_divert", sec.divertSfxData).catch(() => {});
-    }
+    ensureDivertSfxBuffer("rig_divert").catch(() => {});
   }
   updateUndoButton();
 }
