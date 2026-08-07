@@ -5328,7 +5328,7 @@ async function onLookChange() {
 
 // --- Movable winner pointer (Look → unlock to drag) ---
 const POINTER_SNAP_DEGS = [0, 90, 180, 270];
-const POINTER_SNAP_WINDOW = 14; // degrees
+const POINTER_SNAP_WINDOW = 5; // degrees — tight magnetic snap only near cardinals
 
 /** @param {number} deg */
 function normalizePointerDeg(deg) {
