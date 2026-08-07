@@ -788,8 +788,8 @@ export class Wheel {
   }
 
   /**
-   * Radial labels: text runs inside → outside (along the radius), packed
-   * against the outer rim, scaled as large as the wedge allows.
+   * Radial labels: text runs inside → outside (along the radius).
+   * Packed against the outer rim and scaled as large as the wedge allows.
    * Never ellipsized. Guarded so a bad label cannot crash the whole UI.
    * @param {boolean} spinFrame lighter text (no shadow) while spinning
    */
@@ -805,7 +805,7 @@ export class Wheel {
       const solid = asSolidDisc || span >= Math.PI * 2 - 1e-4;
       const dpr = this._dpr || 1;
       const weight = 700;
-      // Measure at a fixed size, then scale freely (can be > 1)
+      // Fixed measure size; scale freely afterward (may be > 1)
       const baseFont = Math.max(16, 48 * dpr);
 
       ctx.save();
@@ -835,28 +835,27 @@ export class Wheel {
         return;
       }
 
-      // ——— Multi-slice: radial (center → rim), hugged to the outside ———
-      // Outer end of the text sits just inside the border/pegs
+      // ——— Multi-slice: radial inside → outside, hugged to the rim ———
+      // Outer tip of the text sits just inside the border
       const rimPad = Math.max(5 * dpr, radius * 0.015);
       const outerR = radius - rimPad;
-      // Don't draw under the hub
-      const hubR = radius * Math.max(0.18, (this.look.centerSize ?? 0.16) + 0.05);
+      // Keep clear of the hub
+      const hubR =
+        radius * Math.max(0.18, (this.look.centerSize ?? 0.16) + 0.05);
       const radialBudget = Math.max(8 * dpr, outerR - hubR);
 
-      // Font height limited by wedge width at the outer radius (widest part)
+      // Glyph height limited by wedge width at the outer radius (widest)
       // → bigger type when the slice is wider
       const tanBudget = Math.max(4 * dpr, outerR * span * 0.9);
-      // Absolute ceiling so short names on huge slices don't swallow the disc
       const maxFontPx = radius * 0.2;
 
-      // Scale as large as possible: fit along radius AND across the wedge
+      // As large as possible while fitting length + height
       let s = Math.min(
         radialBudget / tw,
         tanBudget / th,
         maxFontPx / baseFont
       );
       if (!Number.isFinite(s) || s <= 0) s = 0.05;
-      // Prefer keeping aspect ratio; only squash width if still too long
       let sx = s;
       let sy = s;
       if (tw * sx > radialBudget) sx = radialBudget / tw;
@@ -864,149 +863,14 @@ export class Wheel {
 
       const textW = tw * sx;
 
-      // Align so the OUTER end of the string is at outerR (as close to rim as possible).
-      // First character is more inward; reading left→right = inside → outside.
-      let a = mid % (Math.PI * 2);
-      if (a < 0) a += Math.PI * 2;
-      const flip = a > Math.PI / 2 && a < (Math.PI * 3) / 2;
-
-      if (!flip) {
-        // +x = radial out. Outer end at outerR → start at outerR - textW
-        ctx.rotate(mid);
-        ctx.translate(outerR - textW, 0);
-        ctx.textAlign = "left";
-        ctx.scale(sx, sy);
-        ctx.fillText(label, 0, 0);
-      } else {
-        // Flip 180° so glyphs aren't upside-down on the left half.
-        // After flip, +x points inward; place outer end at outerR still.
-        ctx.rotate(mid + Math.PI);
-        // World point at outerR along mid is at local x = -outerR after mid+π... 
-        // Simpler: rotate(mid), translate(outerR), rotate(π), textAlign left
-        // After rotate(mid): at outerR, +x out. After +π: +x in, origin still at outerR.
-        // textAlign left → text extends +x = inward. First char at rim, last toward hub
-        // = reading outside→inside. User wants inside→outside, so textAlign right:
-        // text extends -x = outward from a point inward... 
-        // With origin at outerR and +x inward: textAlign "right" draws toward -x (outward)
-        // from origin - wrong past rim.
-        // Origin at outerR - textW in flipped space:
-        // After mid+π, outward is -x. outerR in wheel coords along mid is...
-        // Clean approach: use non-flip path math in flipped orientation:
-        ctx.rotate(mid);
-        ctx.translate(outerR, 0);
-        ctx.rotate(Math.PI);
-        // Now +x = inward. textAlign "left" → chars go rim → hub (outside to inside).
-        // To get inside → outside: textAlign "right" with origin further in:
-        // origin at (outerR) after mid only; rotate π; translate(textW, 0); left align
-        // After π at outerR: +x inward. translate(textW): move inward by text length.
-        // left align: text goes further inward. Still outside→inside reading.
-        // For inside→outside with +x inward: we need last char at rim.
-        // textAlign "left" from (hub side): first char hub-side, extends toward rim?
-        // +x is inward, so left align extends deeper inward - wrong.
-        // textAlign "right" from outerR: text extends to -x = outward from rim - off wheel.
-        //
-        // Correct flip for radial inside→outside upright text:
-        // Keep +x = outward (no π on axes), but draw mirrored... 
-        // Classic: rotate(mid+π), position at -outerR (which is outer in flipped frame)
-        // In frame after mid+π: local +x points to mid+π = opposite of mid = inward.
-        // Point at wheel-radius outerR along mid has local coords (after mid+π rotate only
-        // at origin): the outer rim point is at local x = -outerR.
-        // So translate(-outerR, 0), textAlign "left", +x is inward so text goes into hub.
-        // Reading left-to-right = rim to hub. For hub to rim: textAlign "right" at -outerR
-        // means text extends toward more negative? "right" aligns end of text at point,
-        // text extends in -x direction in canvas... In canvas, textAlign right means the
-        // right end of the text is at x, and text extends to the left (-x).
-        // At x=-outerR with +x inward: -x is outward. Text extends outward past rim. Bad.
-        //
-        // textAlign left at x = -outerR + textW (more inward by textW in flipped frame
-        // where +x is inward... -outerR is rim, -outerR + textW is inward from rim).
-        // left align: text from that point in +x = further inward. Rim-side char is first?
-        // First char at start (more outer), last further in. Reading = outside to inside.
-        //
-        // For inside→outside with flip: first char inner, last outer.
-        // Start at more-inward point, textAlign left with +x toward rim.
-        // Need +x toward rim when flipped: +x should be outward = after mid only, no π.
-        // When flipped for upright letters, people often accept outside→inside reading
-        // OR use scale(-1, -1).
-        //
-        // Practical upright radial: rotate(mid); if flip { rotate(π); textAlign end at outer }
-        // Use: no flip of reading — always rotate(mid), scale(1, flip ? -1 : 1) to flip
-        // vertically for upright? That mirrors letters.
-        //
-        // Standard wheel-of-names style: always rotate(mid), text from center out,
-        // flip 180 when needed so the text isn't inverted (then it reads out→in on left).
-        //
-        // User asked inside→outside. On left half, true upright often reads out→in.
-        // I'll keep inside→outside always (no π flip of direction), only flip for
-        // upright by rotating π and using right-align from outer so last char at rim...
-        //
-        // Final approach (clean):
-        // Always: rotate(mid); translate(outerR - textW, 0); textAlign left; scale.
-        // Inside→outside always. On left side text is upside-down but direction correct.
-        // Optional: if flip, also scale(1,-1) after rotate so letters are mirrored upright
-        // - actually scale(-1,1) with different placement...
-        //
-        // Many UIs just live with upside-down on one side OR flip and reverse reading.
-        // I'll flip 180 and reverse start so visual reading is still center→rim for
-        // upright text on left:
-        // After mid+π at origin: +x = inward.
-        // We want first char (start of string) more toward center (further +x = inward)
-        // and last char near rim (less +x / at rim).
-        // Place origin at rim (-outerR in this frame if we only rotated mid+π at 0,0):
-        // translate(-outerR + textW, 0) — wait local x after mid+π:
-        // World point outerR*cos(mid), outerR*sin(mid). After rotate(mid+π), that point
-        // is at x = outerR * cos(mid - (mid+π)) = outerR * cos(-π) = -outerR.
-        // So rim is at x=-outerR. Center direction is +x (inward from rim is toward 0).
-        // From rim (-outerR), inward is toward 0 which is +x direction.
-        // For string inside→outside with first char inside: start further inward
-        // (x = -outerR + textW), textAlign left extends +x more inward. First char at
-        // start is more outer... left align at -outerR+textW: first char at that x
-        // (more inward than rim by textW? -outerR is -R, -outerR+textW is greater =
-        // more toward 0 = inward). First char at inner position, extends +x further
-        // inward. Last char is most inward. Reading inside to more inside. Wrong.
-        //
-        // textAlign left at x=-outerR (rim): first char at rim, extends +x inward.
-        // Reading outside→inside.
-        //
-        // textAlign right at x=-outerR (rim): end of text at rim, text extends -x
-        // (outward). Off wheel.
-        //
-        // textAlign right at x=-outerR + textW? 
-        //
-        // With +x outward (no flip): start outerR-textW, left align → first inner, last outer. ✓
-        // With flip for upright: rotate(mid+π), +x inward. Want first inner, last outer.
-        // Outer is -outerR, inner is toward 0 (larger x). First at more inward (e.g. -outerR+textW? 
-        // -0.9R vs -R: -0.9R is closer to 0 = more inward). Last at -outerR (rim).
-        // textAlign left from x_inner: first at x_inner, last at x_inner+textW.
-        // Need x_inner+textW = -outerR (rim), so x_inner = -outerR - textW.
-        // -outerR - textW is further outward past rim in this coordinate... 
-        // rim -outerR = -R. textW>0, -R - textW is more negative = more outward. Bad.
-        //
-        // textAlign left, first at x_f, last at x_f+tw*sx. Want first more inward (higher x), last at rim (-R).
-        // So x_f + textW = -outerR, x_f = -outerR - textW. That's more negative than rim = outside. Impossible for left-align with +x inward.
-        //
-        // With +x inward: last char at rim needs text to grow toward rim which is -x direction = textAlign "right" at rim: end at rim, body extends -x = outward. Bad.
-        // OR textAlign "right" at a point inside: end at inner point, body extends -x toward rim.
-        // End (last char side) at x_end, text extends to x_end - textW. First char at x_end - textW, last at x_end.
-        // Want last at rim (-outerR), first more inward (-outerR + something).
-        // first = -outerR - textW if last = -outerR and extends -x... first = last - textW = -R - textW (more out). Wrong.
-        //
-        // Conclusion: with +x inward, left-to-right canvas text always increases x (inward), so first is always more outward than last. Reading is always outside→inside when flipped.
-        //
-        // So for true inside→outside always, do NOT flip with π. Only use mid rotation.
-        // Upside-down text on bottom/left is acceptable OR we use vertical flip scale(1,-1).
-        //
-        // I'll go with always inside→outside, no π flip (simpler, matches user request).
-        // If text is inverted on one side, that's normal for radial labels.
-        
-        ctx.rotate(mid);
-        ctx.translate(outerR - textW, 0);
-        ctx.textAlign = "left";
-        ctx.scale(sx, sy);
-        ctx.fillText(label, 0, 0);
-      }
-
-      // Remove the dead flip branch - simplify to single path
+      // +x = radial out. Place so the LAST character is at outerR
+      // (as close to the circumference as possible). First char is more
+      // inward → reading left-to-right = inside → outside.
+      ctx.rotate(mid);
+      ctx.translate(outerR - textW, 0);
+      ctx.textAlign = "left";
+      ctx.scale(sx, sy);
+      ctx.fillText(label, 0, 0);
       ctx.restore();
     } catch (err) {
       try {
