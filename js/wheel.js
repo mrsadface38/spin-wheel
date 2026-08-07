@@ -1149,6 +1149,7 @@ export class Wheel {
    * @param {{
    *   forceSectionId?: string|null,
    *   avoidSectionIds?: string[]|Set<string>|null,
+   *   avoidGroupId?: string|null,
    *   onSteerStart?: () => void,
    *   onReverseSteerStart?: () => void,
    *   steerMs?: number,
@@ -1176,7 +1177,12 @@ export class Wheel {
     this.draw({ spinFrame: false });
 
     const forceId = opts.forceSectionId || null;
-    const avoidIds = this._asIdSet(opts.avoidSectionIds);
+    // Group reverse: include EVERY on-wheel member of avoidGroupId, not one random
+    const avoidIds = this._buildAvoidIdSet(
+      slices,
+      opts.avoidSectionIds,
+      opts.avoidGroupId
+    );
     const comboOrder =
       opts.comboOrder === "rig-first" ? "rig-first" : "reverse-first";
     const canForce =
@@ -1188,12 +1194,16 @@ export class Wheel {
       slices.some((s) => !avoidIds.has(s.section.id));
 
     // Natural aim:
-    // - reverse-first (or reverse only): land on an avoided slice so slide-off is visible
+    // - reverse-first (or reverse only): land on an avoided slice (any group member)
+    //   so slide-off is visible, then crawl to a NON-avoided slice
     // - rig-first / force only: never natural-land on the forced section
     let winnerIndex;
     if (canReverse && (comboOrder === "reverse-first" || !canForce)) {
+      // Random among ALL avoided ids (every section in the reverse group)
       winnerIndex = this._pickIndexAmongIds(slices, avoidIds);
     } else {
+      // Also never natural-land on reverse-avoided if reverse is armed (rig-first):
+      // still allow random, reverse reacts if under is avoid after force
       winnerIndex = this._pickNaturalWinnerIndex(slices, forceId);
     }
     const winnerSlice = slices[winnerIndex];
@@ -1611,10 +1621,12 @@ export class Wheel {
    * @param {{
    *   forceSectionId?: string|null,
    *   avoidSectionIds?: string[]|Set<string>|null,
+   *   avoidGroupId?: string|null,
    *   onSteerStart?: () => void,
    *   onReverseSteerStart?: () => void,
    *   steerMs?: number,
    *   reverseSteerMs?: number,
+   *   comboOrder?: "reverse-first"|"rig-first",
    * }} [opts]
    * @returns {Promise<object|null>}
    */
@@ -1631,12 +1643,16 @@ export class Wheel {
     }
 
     const forceId = opts.forceSectionId || null;
-    const avoidIds = this._asIdSet(opts.avoidSectionIds);
 
     // Freeze geometry
     this._spinSlices = this._computeSlices();
     this._slicesCache = this._spinSlices;
     const slices = this._spinSlices;
+    const avoidIds = this._buildAvoidIdSet(
+      slices,
+      opts.avoidSectionIds,
+      opts.avoidGroupId
+    );
     const w = this.wheelCanvas.width;
     const h = this.wheelCanvas.height;
     this._spinCx = w / 2;

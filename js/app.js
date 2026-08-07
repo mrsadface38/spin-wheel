@@ -629,15 +629,11 @@ document.querySelectorAll(".tab").forEach((tab) => {
       panel.classList.add("active");
     }
     if (tab.dataset.tab === "secret") {
-      fillSecretSectionSelect();
-      fillSecretReverseSelects();
       const sec = ensureSecretState();
       if ($("#secret-rig-it")) $("#secret-rig-it").checked = !!sec.rigIt;
-      if ($("#secret-rig-target-kind")) {
-        $("#secret-rig-target-kind").value =
-          sec.rigTargetKind === "group" ? "group" : "section";
-      }
-      updateSecretRigTargetFields();
+      bindSecretRigKindFromState();
+      fillSecretSectionSelect();
+      fillSecretReverseSelects();
       if ($("#secret-reverse-rig-it")) {
         $("#secret-reverse-rig-it").checked = !!sec.reverseRigIt;
       }
@@ -1704,8 +1700,7 @@ function fillGroupProfileForm(group) {
   $("#group-tile-offset-x").value = g.imageTileOffsetX ?? 0;
   $("#group-tile-offset-y").value = g.imageTileOffsetY ?? 0;
   setImgPreview($("#group-img-preview"), pendingGroupImage);
-  $("#group-sfx-name").textContent =
-    pendingGroupSfxName || "Use default land SFX";
+  updateGroupSfxPresetUI();
   setGroupProfileSliderLabels();
   updateGroupImageModeUI();
   if ($("#group-preview-weight-mode")) {
@@ -2777,11 +2772,15 @@ function openSectionModal(section) {
   $("#section-tile-offset-y").value = oy;
   $("#section-tile-offset-y-label").textContent = `${Math.round(oy)}%`;
   setImgPreview($("#section-img-preview"), pendingSectionImage);
-  $("#section-sfx-name").textContent = pendingSectionSfxName
-    ? pendingSectionSfxName
-    : sectionEditCustom.sfx
-      ? "Use default land SFX"
-      : "From group / default";
+  // For custom channel, only the section's own file counts as custom
+  if (!sectionEditCustom.sfx) {
+    pendingSectionSfx = null;
+    pendingSectionSfxName = null;
+  } else {
+    pendingSectionSfx = section?.landSfxData ?? null;
+    pendingSectionSfxName = section?.landSfxName ?? null;
+  }
+  updateSectionSfxPresetUI();
   {
     const vol =
       section?.landSfxVolume != null && Number.isFinite(Number(section.landSfxVolume))
@@ -3773,6 +3772,7 @@ function unlockSecretTab(switchTo = true) {
   sec.unlocked = true;
   persist();
   updateSecretTabVisibility();
+  bindSecretRigKindFromState();
   fillSecretSectionSelect();
   fillSecretReverseSelects();
   if ($("#secret-rig-it")) $("#secret-rig-it").checked = !!sec.rigIt;
