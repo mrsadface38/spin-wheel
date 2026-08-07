@@ -927,6 +927,10 @@ export class Wheel {
       const label = String(sl.section?.label || "").trim();
       if (!label) return;
 
+      // Wrap only when there is more than one word; single tokens stay one line
+      const wordCount = label.split(/\s+/).filter(Boolean).length;
+      const allowWrap = wordCount > 1;
+
       const solid = asSolidDisc || span >= Math.PI * 2 - 1e-4;
       const dpr = this._dpr || 1;
       const weight = 700;
@@ -956,22 +960,25 @@ export class Wheel {
       }
       const lineH = th * lineGap;
 
-      // ——— Full-wheel single section: horizontal near top rim (multi-line OK) ———
+      // ——— Full-wheel single section: horizontal near top rim (multi-line only if multi-word) ———
       if (solid) {
         const maxBlockH = radius * 0.28;
         const maxW = radius * 1.55;
-        const maxLines = Math.max(
-          1,
-          Math.min(6, Math.floor(maxBlockH / (th * 0.35)))
-        );
+        const maxLines = allowWrap
+          ? Math.max(1, Math.min(6, Math.floor(maxBlockH / (th * 0.35))))
+          : 1;
         const layoutSolid = (s) => {
           if (!(s > 0) || !Number.isFinite(s)) return null;
           const maxWm = maxW / s;
-          const maxLinesS = Math.max(
-            1,
-            Math.min(maxLines, Math.floor(maxBlockH / (lineH * s)))
-          );
-          const lines = this._wrapLabelLinesMax(ctx, label, maxWm, maxLinesS);
+          const maxLinesS = allowWrap
+            ? Math.max(
+                1,
+                Math.min(maxLines, Math.floor(maxBlockH / (lineH * s)))
+              )
+            : 1;
+          const lines = allowWrap
+            ? this._wrapLabelLinesMax(ctx, label, maxWm, maxLinesS)
+            : [label];
           if (!lines.length) return null;
           const longest = Math.max(
             ...lines.map((ln) => this._measureWidth(ctx, ln)),
@@ -1025,7 +1032,7 @@ export class Wheel {
       };
 
       const maxFontPx = radius * 0.3;
-      const maxLinesCap = 8;
+      const maxLinesCap = allowWrap ? 8 : 1;
 
       /**
        * @param {number} s
@@ -1035,11 +1042,16 @@ export class Wheel {
         if (!(s > 0) || !Number.isFinite(s)) return null;
         const maxWm = maxRadial / s;
         const chordOuter = chordH(outerR);
-        const maxLinesS = Math.max(
-          1,
-          Math.min(maxLinesCap, Math.floor((chordOuter + 0.5) / (lineH * s)))
-        );
-        const lines = this._wrapLabelLinesMax(ctx, label, maxWm, maxLinesS);
+        // Single-word labels never wrap — stay one line and scale to fit
+        const maxLinesS = allowWrap
+          ? Math.max(
+              1,
+              Math.min(maxLinesCap, Math.floor((chordOuter + 0.5) / (lineH * s)))
+            )
+          : 1;
+        const lines = allowWrap
+          ? this._wrapLabelLinesMax(ctx, label, maxWm, maxLinesS)
+          : [label];
         if (!lines.length || lines.length > maxLinesS) return null;
         const longest = Math.max(
           ...lines.map((ln) => this._measureWidth(ctx, ln)),
