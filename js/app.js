@@ -952,8 +952,14 @@ function updateSectionsCount() {
 }
 
 function renderSections() {
-  // Don't clobber the list mid phone-style drag
-  if (sectionDrag.active || sectionDrag.pending) return;
+  // Don't clobber the list mid active drag (ghost + live shifts).
+  // Pending-only must NOT block forever — a stuck pending freezes the whole list.
+  if (sectionDrag.active) return;
+  if (sectionDrag.pending) {
+    // DOM is about to rebuild; abandon incomplete grip press
+    resetSectionDragState();
+  }
+  if (!sectionsList) return;
   updateSectionsCount();
   if (!state.sections.length) {
     sectionsList.innerHTML = `<div class="empty-state">No sections yet. Add one to get started.</div>`;
@@ -1713,27 +1719,8 @@ window.addEventListener("pointercancel", (e) => handleGroupDragEnd(e, false));
 // --- Section phone-style drag reorder (Your order only) ---
 const SECTION_DRAG_THRESHOLD = 6;
 
-const sectionDrag = {
-  pending: false,
-  active: false,
-  pointerId: null,
-  fromId: null,
-  fromIndex: -1,
-  /** Insert index in the list *without* the dragged item (0..n-1) */
-  insertIndex: 0,
-  startX: 0,
-  startY: 0,
-  offsetX: 0,
-  offsetY: 0,
-  stride: 0,
-  card: null,
-  ghost: null,
-  /** @type {{ el: HTMLElement, id: string, index: number, mid: number }[]} */
-  layout: [],
-  didDrag: false,
-};
-
 function getSectionCards() {
+  if (!sectionsList) return [];
   return [...sectionsList.querySelectorAll(".section-card")];
 }
 
@@ -1743,7 +1730,7 @@ function clearSectionDragTransforms() {
     c.style.transition = "";
     c.classList.remove("is-drag-source", "is-slot-open");
   });
-  sectionsList.classList.remove("is-reordering");
+  sectionsList?.classList?.remove("is-reordering");
 }
 
 function applySectionLiveShifts() {
@@ -1784,7 +1771,11 @@ function moveSectionGhost(clientX, clientY) {
 function startSectionDrag(card, e) {
   const cards = getSectionCards();
   const fromIndex = cards.indexOf(card);
-  if (fromIndex < 0) return;
+  if (fromIndex < 0 || !card?.dataset?.id) {
+    // Never leave pending stuck — that freezes renderSections
+    resetSectionDragState();
+    return;
+  }
 
   const rect = card.getBoundingClientRect();
   sectionDrag.active = true;
@@ -1830,7 +1821,7 @@ function startSectionDrag(card, e) {
   sectionDrag.ghost = ghost;
   moveSectionGhost(e.clientX, e.clientY);
 
-  sectionsList.classList.add("is-reordering");
+  sectionsList?.classList?.add("is-reordering");
   card.classList.add("is-drag-source");
   cards.forEach((c) => {
     if (c !== card) {
@@ -1853,37 +1844,63 @@ function endSectionDrag(commit) {
     resetSectionDragState();
     return;
   }
-  const fromIndex = sectionDrag.fromIndex;
+  const fromId = sectionDrag.fromId;
   const insertIndex = sectionDrag.insertIndex;
   const ghost = sectionDrag.ghost;
+  // Snapshot order of ids at drag start (layout), not live DOM
+  const startIds = sectionDrag.layout.map((l) => l.id).filter(Boolean);
 
   if (ghost) {
     ghost.classList.add("group-drag-ghost-exit");
     const g = ghost;
-    setTimeout(() => g.remove(), 180);
+    setTimeout(() => {
+      try {
+        g.remove();
+      } catch {
+        /* ignore */
+      }
+    }, 180);
   }
 
-  if (commit && fromIndex >= 0 && canReorderSections()) {
-    // Visual list === state.sections when Your order + no search
-    const next = state.sections.slice();
-    const [item] = next.splice(fromIndex, 1);
-    if (item) {
-      const clamped = Math.max(0, Math.min(insertIndex, next.length));
-      next.splice(clamped, 0, item);
-      const changed = !next.every((s, i) => s.id === state.sections[i]?.id);
-      if (changed) {
-        checkpoint();
-        state.sections = next;
-        persist();
+  let changed = false;
+  if (commit && fromId && startIds.length) {
+    // Reorder by id so we never depend on a stale visual index
+    const without = startIds.filter((id) => id !== fromId);
+    const clamped = Math.max(0, Math.min(insertIndex, without.length));
+    without.splice(clamped, 0, fromId);
+    const byId = new Map(state.sections.map((s) => [s.id, s]));
+    const next = [];
+    for (const id of without) {
+      const s = byId.get(id);
+      if (s) {
+        next.push(s);
+        byId.delete(id);
       }
+    }
+    // Keep any sections not in the dragged list (search edge cases)
+    for (const s of state.sections) {
+      if (byId.has(s.id)) next.push(s);
+    }
+    changed = !next.every((s, i) => s.id === state.sections[i]?.id);
+    if (changed) {
+      checkpoint();
+      state.sections = next;
+      persist();
     }
   }
 
   clearSectionDragTransforms();
   resetSectionDragState();
   document.body.classList.remove("group-drag-cursor");
-  renderSections();
-  refreshWheel();
+  try {
+    renderSections();
+  } catch (err) {
+    console.warn("renderSections after reorder:", err);
+  }
+  void Promise.resolve(refreshWheel()).catch((err) => {
+    console.warn("refreshWheel after reorder:", err);
+  });
+  void changed;
 }
 
 function resetSectionDragState() {
@@ -1894,12 +1911,19 @@ function resetSectionDragState() {
   sectionDrag.fromIndex = -1;
   sectionDrag.insertIndex = 0;
   sectionDrag.card = null;
+  if (sectionDrag.ghost) {
+    try {
+      sectionDrag.ghost.remove();
+    } catch {
+      /* ignore */
+    }
+  }
   sectionDrag.ghost = null;
   sectionDrag.layout = [];
 }
 
 function finishSectionDragClickGuard() {
-  if (!sectionDrag.didDrag) return;
+  if (!sectionDrag.didDrag || !sectionsList) return;
   const block = (ev) => {
     ev.stopPropagation();
     ev.preventDefault();
@@ -1913,7 +1937,7 @@ function finishSectionDragClickGuard() {
   }, 40);
 }
 
-sectionsList.addEventListener("pointerdown", (e) => {
+sectionsList?.addEventListener("pointerdown", (e) => {
   if (!canReorderSections()) return;
   if (e.button != null && e.button !== 0) return;
   // Grip only — leave weight sliders / buttons free
@@ -1932,7 +1956,8 @@ sectionsList.addEventListener("pointerdown", (e) => {
   sectionDrag.pointerId = e.pointerId;
   sectionDrag.startX = e.clientX;
   sectionDrag.startY = e.clientY;
-  e.preventDefault();
+  // Don't preventDefault here — it can break clicks/scrolls if the drag
+  // never starts. preventDefault once the drag actually begins.
 });
 
 function handleSectionDragMove(e) {
@@ -1945,7 +1970,10 @@ function handleSectionDragMove(e) {
     const dx = e.clientX - sectionDrag.startX;
     const dy = e.clientY - sectionDrag.startY;
     if (Math.hypot(dx, dy) < SECTION_DRAG_THRESHOLD) return;
-    if (!sectionDrag.card) return;
+    if (!sectionDrag.card || !sectionDrag.card.isConnected) {
+      resetSectionDragState();
+      return;
+    }
     e.preventDefault();
     startSectionDrag(sectionDrag.card, e);
   }
@@ -1974,6 +2002,7 @@ function handleSectionDragEnd(e, commit) {
     endSectionDrag(commit);
     finishSectionDragClickGuard();
   } else {
+    // Pending grip press without enough movement — just clear
     resetSectionDragState();
     sectionDrag.didDrag = false;
   }
@@ -1986,6 +2015,12 @@ window.addEventListener("pointerup", (e) => handleSectionDragEnd(e, true));
 window.addEventListener("pointercancel", (e) =>
   handleSectionDragEnd(e, false)
 );
+// If the tab loses focus mid-drag, don't leave the list frozen
+window.addEventListener("blur", () => {
+  if (sectionDrag.active || sectionDrag.pending) {
+    endSectionDrag(false);
+  }
+});
 
 $("#btn-add-section").addEventListener("click", () => {
   openSectionModal(null);
@@ -6029,10 +6064,19 @@ function forceUiInteractive() {
     groupsList?.classList?.remove("is-reordering");
     sectionsList?.classList?.remove("is-reordering");
     try {
-      if (typeof resetSectionDragState === "function") resetSectionDragState();
-      if (typeof clearSectionDragTransforms === "function") {
-        clearSectionDragTransforms();
-      }
+      sectionDrag.pending = false;
+      sectionDrag.active = false;
+      sectionDrag.pointerId = null;
+      sectionDrag.card = null;
+      sectionDrag.ghost = null;
+      sectionDrag.layout = [];
+      sectionDrag.fromId = null;
+      sectionDrag.fromIndex = -1;
+      getSectionCards().forEach((c) => {
+        c.style.transform = "";
+        c.style.transition = "";
+        c.classList.remove("is-drag-source");
+      });
     } catch {
       /* ignore */
     }
