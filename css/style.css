@@ -1305,6 +1305,11 @@ body.group-drag-cursor * {
   font-size: 0.88rem;
 }
 
+/* Author display:flex would otherwise override the native [hidden] attribute */
+.field[hidden] {
+  display: none !important;
+}
+
 .field span {
   color: var(--muted);
 }

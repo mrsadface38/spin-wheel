@@ -3526,13 +3526,12 @@ function updateSecretReverseTargetFields() {
     $("#secret-reverse-target-kind")?.value === "group" ? "group" : "section";
   const secField = $("#secret-reverse-section-field");
   const grpField = $("#secret-reverse-group-field");
+  // Only show the control that matches Avoid type
   if (secField) {
-    if (kind === "section") secField.removeAttribute("hidden");
-    else secField.setAttribute("hidden", "");
+    secField.hidden = kind !== "section";
   }
   if (grpField) {
-    if (kind === "group") grpField.removeAttribute("hidden");
-    else grpField.setAttribute("hidden", "");
+    grpField.hidden = kind !== "group";
   }
 }
 
