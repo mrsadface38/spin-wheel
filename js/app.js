@@ -25,6 +25,7 @@ import { AudioManager } from "./audio.js";
 import { Wheel } from "./wheel.js";
 import { computeFillImageLayout } from "./slice-image-layout.js";
 import { parseImportFile } from "./import-converters.js";
+import { APP_UPDATE } from "./version.js";
 
 const audio = new AudioManager();
 let state = loadState();
@@ -3444,6 +3445,11 @@ function bindAll() {
 
 // --- Boot ---
 async function init() {
+  const verEl = $("#app-version");
+  if (verEl) {
+    verEl.textContent = `#${APP_UPDATE}`;
+    verEl.title = `Update #${APP_UPDATE}`;
+  }
   bindAll();
   updateUndoButton();
   wheel.resize();

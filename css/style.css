@@ -81,6 +81,20 @@ select optgroup {
   letter-spacing: 0.02em;
 }
 
+.app-version {
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--muted, #8b93a7);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  line-height: 1.2;
+  user-select: none;
+}
+
 .top-actions {
   display: flex;
   gap: 0.5rem;
