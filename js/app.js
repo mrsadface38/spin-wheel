@@ -818,13 +818,32 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 // --- Render sections list ---
+/** Raw group name by id (no disambiguation). */
 function groupName(id) {
   return state.groups.find((g) => g.id === id)?.name || "—";
 }
 
+/**
+ * Display label for a group. If several groups share the same name, append
+ * priority (#1, #2, …) so they stay distinct from each other and from
+ * sections that happen to use the same label.
+ */
+function groupDisplayName(id) {
+  const g = state.groups.find((x) => x.id === id);
+  if (!g) return "—";
+  const name = String(g.name || "Group").trim() || "Group";
+  const sameName = state.groups.filter(
+    (x) => (String(x.name || "Group").trim() || "Group") === name
+  );
+  if (sameName.length <= 1) return name;
+  const idx = state.groups.findIndex((x) => x.id === id);
+  return `${name} (#${idx + 1})`;
+}
+
+/** Group display names for a section (by membership ids, not name strings). */
 function sectionGroupNames(section) {
   return getSectionGroupIds(section)
-    .map((id) => groupName(id))
+    .map((id) => groupDisplayName(id))
     .filter((n) => n && n !== "—");
 }
 
@@ -1182,8 +1201,10 @@ function renderSections() {
       const disp = resolveSectionForDisplay(state, s);
       const groupsBadge = gNames.length
         ? gNames.length === 1
-          ? gNames[0]
-          : `${gNames.join(", ")} (ctrl: ${ctrl?.name || "—"})`
+          ? `group: ${gNames[0]}`
+          : `groups: ${gNames.join(", ")} (ctrl: ${
+              ctrl ? groupDisplayName(ctrl.id) : "—"
+            })`
         : "no group";
       const fromBits = [];
       if (disp.profileFrom?.image?.source === "group") fromBits.push("img←grp");
@@ -1198,12 +1219,16 @@ function renderSections() {
             : "🖼 fill"
           : "",
         disp.landSfxData ? "🔊" : "",
-        !s.enabled ? "off" : inactiveGroup ? `group off (${ctrl?.name || "?"})` : "",
+        !s.enabled
+          ? "off"
+          : inactiveGroup
+            ? `group off (${ctrl ? groupDisplayName(ctrl.id) : "?"})`
+            : "",
       ]
         .filter(Boolean)
         .join(" · ");
       const bg = disp.imageData
-        ? `background-image:url(${disp.imageData});background-color:${disp.color}`
+        ? `background-image:url(${JSON.stringify(disp.imageData)});background-color:${disp.color}`
         : `background:${disp.color}`;
       const dragHandle = reorderable
         ? `<div class="section-drag-handle" title="Drag to reorder (Your order)" aria-label="Drag to reorder" role="button">
@@ -1289,7 +1314,7 @@ function renderGroups() {
           <span class="group-priority" title="Priority (1 = highest)">#${index + 1}</span>
           <div class="swatch" style="${swatchBg}"></div>
           <div class="group-meta">
-            <strong>${escapeHtml(g.name)}</strong>
+            <strong>${escapeHtml(groupDisplayName(g.id))}</strong>
             <small>${activeCount}/${count} sections · ${g.active ? "ACTIVE" : "OFF"}${isTop ? " · highest" : ""}${profileBits ? ` · ${profileBits}` : ""}</small>
           </div>
           <div class="card-actions">
@@ -2576,11 +2601,14 @@ function renderGroupMembers() {
           const removeAttrs = ok
             ? `data-member-act="remove"`
             : `disabled title="Create another group first (section needs at least one group)"`;
-          const otherNames = sectionGroupNames(s)
-            .filter((n) => n !== groupName(editingId))
+          // Filter other groups by id (never by name — names can match sections or each other)
+          const otherNames = getSectionGroupIds(s)
+            .filter((gid) => gid && gid !== editingId)
+            .map((gid) => groupDisplayName(gid))
+            .filter((n) => n && n !== "—")
             .join(", ");
           const extra = otherNames
-            ? ` <small class="member-extra">also: ${escapeHtml(otherNames)}</small>`
+            ? ` <small class="member-extra">also in: ${escapeHtml(otherNames)}</small>`
             : "";
           return `
       <div class="group-member-row" data-id="${s.id}">
@@ -2597,9 +2625,11 @@ function renderGroupMembers() {
   outList.innerHTML = outMembers.length
     ? outMembers
         .map((s) => {
-          const names = sectionGroupNames(s);
+          const names = getSectionGroupIds(s)
+            .map((gid) => groupDisplayName(gid))
+            .filter((n) => n && n !== "—");
           const extra = names.length
-            ? ` · ${escapeHtml(names.join(", "))}`
+            ? ` · in: ${escapeHtml(names.join(", "))}`
             : "";
           return `
       <div class="group-member-row" data-id="${s.id}">
@@ -3061,7 +3091,7 @@ function fillGroupSelects() {
             (g, i) => `
       <label class="group-check-row">
         <input type="checkbox" class="section-group-check" value="${g.id}" />
-        <span class="group-check-name">${escapeHtml(g.name)}</span>
+        <span class="group-check-name">${escapeHtml(groupDisplayName(g.id))}</span>
         <span class="prio" title="Priority (1 = highest)">#${i + 1}</span>
       </label>`
           )
@@ -3073,7 +3103,10 @@ function fillGroupSelects() {
     bulk.innerHTML =
       `<option value="">None (no group)</option>` +
       state.groups
-        .map((g) => `<option value="${g.id}">${escapeHtml(g.name)}</option>`)
+        .map(
+          (g) =>
+            `<option value="${g.id}">${escapeHtml(groupDisplayName(g.id))}</option>`
+        )
         .join("");
   }
 }
@@ -5397,7 +5430,7 @@ function fillSecretSectionSelect() {
     const opts = state.groups
       .map(
         (g) =>
-          `<option value="${g.id}">${escapeHtml(g.name || "Group")}${
+          `<option value="${g.id}">${escapeHtml(groupDisplayName(g.id))}${
             g.active === false ? " (inactive)" : ""
           }</option>`
       )
@@ -5473,7 +5506,7 @@ function fillSecretReverseSelects() {
     const opts = state.groups
       .map(
         (g) =>
-          `<option value="${g.id}">${escapeHtml(g.name || "Group")}${
+          `<option value="${g.id}">${escapeHtml(groupDisplayName(g.id))}${
             g.active === false ? " (inactive)" : ""
           }</option>`
       )
