@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#50</span>
+        <span class="app-version" id="app-version" title="Update number">#51</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -396,8 +396,20 @@
               <span><strong>Rig it</strong></span>
             </label>
             <label class="field">
+              <span>Rig type</span>
+              <select id="secret-rig-target-kind">
+                <option value="section">Section</option>
+                <option value="group">Group (random member each spin)</option>
+              </select>
+            </label>
+            <label class="field" id="secret-rig-section-field">
               <span>Rigged section</span>
               <select id="secret-rig-section"></select>
+            </label>
+            <label class="field" id="secret-rig-group-field" hidden>
+              <span>Rigged group</span>
+              <select id="secret-rig-group"></select>
+              <small>Each spin picks a random section from this group that is on the wheel</small>
             </label>
             <label class="field">
               <span>Divert speed</span>

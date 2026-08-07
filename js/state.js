@@ -324,7 +324,10 @@ export function defaultState() {
     secret: {
       unlocked: false,
       rigIt: false,
+      /** "section" | "group" — group picks a random on-wheel member each spin */
+      rigTargetKind: "section",
       targetSectionId: null,
+      targetGroupId: null,
       /** SFX when the wheel does the last-moment divert to the rigged section */
       divertSfxData: null,
       divertSfxName: null,
@@ -441,7 +444,10 @@ function migrate(data) {
       ...(data.secret && typeof data.secret === "object" ? data.secret : {}),
       unlocked: !!(data.secret && data.secret.unlocked),
       rigIt: !!(data.secret && data.secret.rigIt),
+      rigTargetKind:
+        data.secret?.rigTargetKind === "group" ? "group" : "section",
       targetSectionId: data.secret?.targetSectionId || null,
+      targetGroupId: data.secret?.targetGroupId || null,
       divertSfxData: data.secret?.divertSfxData || null,
       divertSfxName: data.secret?.divertSfxName || null,
       divertSfxVolume:

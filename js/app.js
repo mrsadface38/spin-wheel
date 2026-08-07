@@ -3319,7 +3319,9 @@ function ensureSecretState() {
     state.secret = {
       unlocked: false,
       rigIt: false,
+      rigTargetKind: "section",
       targetSectionId: null,
+      targetGroupId: null,
       reverseRigIt: false,
       reverseTargetKind: "section",
       reverseTargetSectionId: null,
@@ -3333,9 +3335,24 @@ function ensureSecretState() {
   return state.secret;
 }
 
+function getRigTargetKind() {
+  const s = ensureSecretState();
+  const live = $("#secret-rig-target-kind")?.value;
+  if (live === "group" || live === "section") return live;
+  return s.rigTargetKind === "group" ? "group" : "section";
+}
+
 function isRigItActive() {
   const s = ensureSecretState();
-  return !!(s.rigIt && s.targetSectionId);
+  if (!s.rigIt) return false;
+  if (getRigTargetKind() === "group") {
+    const gid =
+      $("#secret-rig-group")?.value || s.targetGroupId || null;
+    return !!(gid && state.groups.some((g) => g.id === gid));
+  }
+  const id =
+    $("#secret-rig-section")?.value || s.targetSectionId || null;
+  return !!(id && state.sections.some((sec) => sec.id === id));
 }
 
 function isReverseRigActive() {
@@ -3350,11 +3367,41 @@ function isReverseRigActive() {
   );
 }
 
+/**
+ * Section id to force-land on this spin.
+ * Group mode: weighted random among on-wheel members of the rigged group.
+ * @returns {string|null}
+ */
 function getRigForceSectionId() {
   if (!isRigItActive()) return null;
-  const id = ensureSecretState().targetSectionId;
-  // Only if that section is currently on the wheel
+  const s = ensureSecretState();
   const active = getActiveSections(state);
+  if (!active.length) return null;
+
+  if (getRigTargetKind() === "group") {
+    const gid =
+      $("#secret-rig-group")?.value || s.targetGroupId || null;
+    if (!gid) return null;
+    const pool = active.filter((sec) =>
+      getSectionGroupIds(sec).includes(gid)
+    );
+    if (!pool.length) return null;
+    // Weighted by section weight (same idea as natural pick)
+    let total = 0;
+    for (const sec of pool) {
+      total += Math.max(0.1, normalizeWeight(sec.weight));
+    }
+    let r = Math.random() * total;
+    for (const sec of pool) {
+      r -= Math.max(0.1, normalizeWeight(sec.weight));
+      if (r <= 0) return sec.id;
+    }
+    return pool[pool.length - 1].id;
+  }
+
+  const id =
+    $("#secret-rig-section")?.value || s.targetSectionId || null;
+  if (!id) return null;
   if (!active.some((sec) => sec.id === id)) return null;
   return id;
 }
@@ -3464,23 +3511,61 @@ function showResult(section, opts = {}) {
 let secretRiggedClicks = [];
 
 function fillSecretSectionSelect() {
-  const sel = $("#secret-rig-section");
-  if (!sel) return;
   const sec = ensureSecretState();
-  const opts = state.sections
-    .map((s) => {
-      const on = isSectionActiveOnWheel(state, s);
-      const mark = on ? "" : " (off wheel)";
-      return `<option value="${s.id}">${escapeHtml(s.label || "Untitled")}${mark}</option>`;
-    })
-    .join("");
-  sel.innerHTML = opts || `<option value="">No sections</option>`;
-  if (sec.targetSectionId && state.sections.some((s) => s.id === sec.targetSectionId)) {
-    sel.value = sec.targetSectionId;
-  } else if (state.sections[0]) {
-    sel.value = state.sections[0].id;
-    sec.targetSectionId = state.sections[0].id;
+  const sel = $("#secret-rig-section");
+  if (sel) {
+    const opts = state.sections
+      .map((s) => {
+        const on = isSectionActiveOnWheel(state, s);
+        const mark = on ? "" : " (off wheel)";
+        return `<option value="${s.id}">${escapeHtml(s.label || "Untitled")}${mark}</option>`;
+      })
+      .join("");
+    sel.innerHTML = opts || `<option value="">No sections</option>`;
+    if (
+      sec.targetSectionId &&
+      state.sections.some((s) => s.id === sec.targetSectionId)
+    ) {
+      sel.value = sec.targetSectionId;
+    } else if (state.sections[0]) {
+      sel.value = state.sections[0].id;
+      sec.targetSectionId = state.sections[0].id;
+    }
   }
+  const grpSel = $("#secret-rig-group");
+  if (grpSel) {
+    const opts = state.groups
+      .map(
+        (g) =>
+          `<option value="${g.id}">${escapeHtml(g.name || "Group")}${
+            g.active === false ? " (inactive)" : ""
+          }</option>`
+      )
+      .join("");
+    grpSel.innerHTML = opts || `<option value="">No groups</option>`;
+    if (
+      sec.targetGroupId &&
+      state.groups.some((g) => g.id === sec.targetGroupId)
+    ) {
+      grpSel.value = sec.targetGroupId;
+    } else if (state.groups[0]) {
+      grpSel.value = state.groups[0].id;
+      sec.targetGroupId = state.groups[0].id;
+    }
+  }
+  if ($("#secret-rig-target-kind")) {
+    $("#secret-rig-target-kind").value =
+      sec.rigTargetKind === "group" ? "group" : "section";
+  }
+  updateSecretRigTargetFields();
+}
+
+function updateSecretRigTargetFields() {
+  const kind = getRigTargetKind();
+  const secField = $("#secret-rig-section-field");
+  const grpField = $("#secret-rig-group-field");
+  if (secField) secField.hidden = kind !== "section";
+  if (grpField) grpField.hidden = kind !== "group";
 }
 
 function fillSecretReverseSelects() {
