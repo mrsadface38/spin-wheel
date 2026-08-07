@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#46</span>
+        <span class="app-version" id="app-version" title="Update number">#47</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -464,6 +464,7 @@
               <span>Preview slice size</span>
               <select id="preview-weight-mode">
                 <option value="custom" selected>Custom % of wheel</option>
+                <option value="weight">Custom weight</option>
                 <option value="current">At current weight</option>
               </select>
             </label>
@@ -474,6 +475,14 @@
                 <span id="preview-custom-weight-label" class="slider-value">100%</span>
               </div>
               <small>Preview only — % of the full wheel (100% = entire circle). Does not change real weight.</small>
+            </label>
+            <label class="field" id="preview-weight-value-field" hidden>
+              <span>Preview weight</span>
+              <div class="slider-with-value">
+                <input type="range" id="preview-weight-value" min="1" max="20" step="1" value="1" />
+                <input type="number" id="preview-weight-value-num" min="0.1" max="1000" step="any" value="1" />
+              </div>
+              <small>Preview only — slice size as if this section had this weight vs other enabled sections. Does not change real weight.</small>
             </label>
             <p id="preview-weight-meta" class="hint section-preview-meta"></p>
           </div>
@@ -641,6 +650,7 @@
               <span>Preview slice size</span>
               <select id="group-preview-weight-mode">
                 <option value="custom" selected>Custom % of wheel</option>
+                <option value="weight">Custom weight</option>
                 <option value="current">At member weight</option>
               </select>
             </label>
@@ -650,6 +660,14 @@
                 <input type="range" id="group-preview-custom-weight" min="1" max="100" step="1" value="100" />
                 <span id="group-preview-custom-weight-label" class="slider-value">100%</span>
               </div>
+            </label>
+            <label class="field" id="group-preview-weight-value-field" hidden>
+              <span>Preview weight</span>
+              <div class="slider-with-value">
+                <input type="range" id="group-preview-weight-value" min="1" max="20" step="1" value="1" />
+                <input type="number" id="group-preview-weight-value-num" min="0.1" max="1000" step="any" value="1" />
+              </div>
+              <small>Preview only — vs other enabled sections on the wheel.</small>
             </label>
             <p id="group-preview-weight-meta" class="hint section-preview-meta"></p>
           </div>

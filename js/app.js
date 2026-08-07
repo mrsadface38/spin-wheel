@@ -1704,6 +1704,7 @@ function fillGroupProfileForm(group) {
   if ($("#group-preview-custom-weight")) {
     $("#group-preview-custom-weight").value = "100";
   }
+  syncPreviewWeightValueControls("group-preview", 1);
   updateGroupPreviewWeightUI();
 }
 
@@ -2238,8 +2239,15 @@ function previewWedgeClip(start, end, r) {
  * - custom: slider = % of full wheel
  * - current: weight vs rest of active wheel
  */
+/** @returns {"custom"|"weight"|"current"} */
+function parsePreviewWeightMode(raw) {
+  if (raw === "custom" || raw === "weight" || raw === "current") return raw;
+  return "custom";
+}
+
 function computePreviewWedgeMetrics({ mode, customPct, weight, excludeSectionId }) {
-  if (mode === "custom") {
+  const m = parsePreviewWeightMode(mode);
+  if (m === "custom") {
     const pct = Math.min(100, Math.max(1, Math.round(Number(customPct) || 1)));
     const span = (pct / 100) * Math.PI * 2;
     return {
@@ -2247,11 +2255,12 @@ function computePreviewWedgeMetrics({ mode, customPct, weight, excludeSectionId 
       weight: pct,
       total: 100,
       pct,
-      mode,
+      mode: "custom",
       otherCount: pct >= 100 ? 0 : 1,
     };
   }
 
+  // "current" | "weight" — relative to other enabled sections on the wheel
   const w = normalizeWeight(weight);
   let otherTotal = 0;
   let otherCount = 0;
@@ -2271,26 +2280,36 @@ function computePreviewWedgeMetrics({ mode, customPct, weight, excludeSectionId 
     weight: w,
     total,
     pct: Math.round(fraction * 100),
-    mode: "current",
+    mode: m,
     otherCount,
   };
 }
 
 function getPreviewWedgeMetrics() {
+  const mode = parsePreviewWeightMode($("#preview-weight-mode")?.value);
+  const weight =
+    mode === "weight"
+      ? $("#preview-weight-value-num")?.value ??
+        $("#preview-weight-value")?.value
+      : $("#section-weight")?.value;
   return computePreviewWedgeMetrics({
-    mode: $("#preview-weight-mode")?.value === "custom" ? "custom" : "current",
+    mode,
     customPct: $("#preview-custom-weight")?.value,
-    weight: $("#section-weight")?.value,
+    weight,
     excludeSectionId: $("#section-edit-id")?.value || "",
   });
 }
 
 /** Group preview: "current" uses average weight of members in this group (or 1). */
 function getGroupPreviewWedgeMetrics() {
-  const mode =
-    $("#group-preview-weight-mode")?.value === "custom" ? "custom" : "current";
+  const mode = parsePreviewWeightMode($("#group-preview-weight-mode")?.value);
   let weight = 1;
-  if (mode === "current") {
+  if (mode === "weight") {
+    weight =
+      $("#group-preview-weight-value-num")?.value ??
+      $("#group-preview-weight-value")?.value ??
+      1;
+  } else if (mode === "current") {
     const members = state.sections.filter((s) =>
       pendingGroupMemberIds.has(s.id)
     );
@@ -2310,35 +2329,81 @@ function getGroupPreviewWedgeMetrics() {
   });
 }
 
+/** Sync preview weight range + number fields from Look slider opts / a seed value. */
+function syncPreviewWeightValueControls(prefix, seedWeight) {
+  const opts = getWeightSliderOpts();
+  const range = $(`#${prefix}-weight-value`);
+  const num = $(`#${prefix}-weight-value-num`);
+  if (range) {
+    range.min = String(opts.min);
+    range.max = String(opts.max);
+    range.step = String(opts.step);
+  }
+  const w = normalizeWeight(
+    seedWeight != null && seedWeight !== ""
+      ? seedWeight
+      : num?.value ?? range?.value ?? opts.min
+  );
+  const scrub = snapWeightSliderValue(w, opts);
+  if (range) range.value = String(scrub);
+  if (num) num.value = String(w);
+  return w;
+}
+
 function updatePreviewWeightUI() {
-  const mode = $("#preview-weight-mode")?.value === "custom" ? "custom" : "current";
+  const mode = parsePreviewWeightMode($("#preview-weight-mode")?.value);
   const customField = $("#preview-custom-weight-field");
+  const weightField = $("#preview-weight-value-field");
   if (customField) {
     if (mode === "custom") customField.removeAttribute("hidden");
     else customField.setAttribute("hidden", "");
   }
-  const custom = Math.min(
-    100,
-    Math.max(1, Math.round(Number($("#preview-custom-weight")?.value) || 1))
-  );
-  const customLabel = $("#preview-custom-weight-label");
-  if (customLabel) customLabel.textContent = `${custom}%`;
+  if (weightField) {
+    if (mode === "weight") weightField.removeAttribute("hidden");
+    else weightField.setAttribute("hidden", "");
+  }
+  if (mode === "custom") {
+    const custom = Math.min(
+      100,
+      Math.max(1, Math.round(Number($("#preview-custom-weight")?.value) || 1))
+    );
+    const customLabel = $("#preview-custom-weight-label");
+    if (customLabel) customLabel.textContent = `${custom}%`;
+  }
+  if (mode === "weight") {
+    syncPreviewWeightValueControls(
+      "preview",
+      $("#preview-weight-value-num")?.value ?? $("#section-weight")?.value
+    );
+  }
 }
 
 function updateGroupPreviewWeightUI() {
-  const mode =
-    $("#group-preview-weight-mode")?.value === "custom" ? "custom" : "current";
+  const mode = parsePreviewWeightMode($("#group-preview-weight-mode")?.value);
   const customField = $("#group-preview-custom-weight-field");
+  const weightField = $("#group-preview-weight-value-field");
   if (customField) {
     if (mode === "custom") customField.removeAttribute("hidden");
     else customField.setAttribute("hidden", "");
   }
-  const custom = Math.min(
-    100,
-    Math.max(1, Math.round(Number($("#group-preview-custom-weight")?.value) || 1))
-  );
-  const customLabel = $("#group-preview-custom-weight-label");
-  if (customLabel) customLabel.textContent = `${custom}%`;
+  if (weightField) {
+    if (mode === "weight") weightField.removeAttribute("hidden");
+    else weightField.setAttribute("hidden", "");
+  }
+  if (mode === "custom") {
+    const custom = Math.min(
+      100,
+      Math.max(1, Math.round(Number($("#group-preview-custom-weight")?.value) || 1))
+    );
+    const customLabel = $("#group-preview-custom-weight-label");
+    if (customLabel) customLabel.textContent = `${custom}%`;
+  }
+  if (mode === "weight") {
+    syncPreviewWeightValueControls(
+      "group-preview",
+      $("#group-preview-weight-value-num")?.value
+    );
+  }
 }
 
 /**
@@ -2376,9 +2441,11 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
           ? `Full wheel (custom 100%)`
           : `${metrics.pct}% of wheel (custom)`;
     } else if (metrics.otherCount === 0) {
-      metaEl.textContent = `Full wheel (weight ${metrics.weight})`;
+      metaEl.textContent = `Full wheel (weight ${formatWeight(metrics.weight)})`;
     } else {
-      metaEl.textContent = `~${metrics.pct}% of wheel · weight ${metrics.weight} / ${metrics.total}`;
+      const label =
+        metrics.mode === "weight" ? "custom weight" : "current weight";
+      metaEl.textContent = `~${metrics.pct}% of wheel · ${label} ${formatWeight(metrics.weight)} / ${formatWeight(metrics.total)}`;
     }
   }
 
