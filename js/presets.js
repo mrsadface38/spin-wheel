@@ -63,6 +63,7 @@ export function d20State() {
 
   return {
     ...base,
+    presetId: "d20",
     groups: [g],
     sections,
     look: {
@@ -75,6 +76,46 @@ export function d20State() {
       winnerLabel: "Rolled",
     },
   };
+}
+
+/**
+ * True when sections are exactly the faces 1–20 (any order).
+ * Used to recover preset for older d20 wheels without presetId.
+ * @param {object} state
+ */
+export function looksLikeD20(state) {
+  const secs = state?.sections;
+  if (!Array.isArray(secs) || secs.length !== 20) return false;
+  const labels = new Set(
+    secs.map((s) => String(s?.label ?? "").trim())
+  );
+  for (let i = 1; i <= 20; i++) {
+    if (!labels.has(String(i))) return false;
+  }
+  return true;
+}
+
+/**
+ * Which preset Reset (and similar) should use for this wheel.
+ * @param {object|null|undefined} state
+ * @returns {string}
+ */
+export function resolvePresetId(state) {
+  const raw = state?.presetId;
+  if (typeof raw === "string" && getWheelPreset(raw)) return raw;
+  if (looksLikeD20(state)) return "d20";
+  return "default";
+}
+
+/**
+ * Fresh state for a preset, always stamped with presetId.
+ * @param {string} [presetId="default"]
+ */
+export function buildPresetState(presetId = "default") {
+  const preset = getWheelPreset(presetId) || getWheelPreset("default");
+  const st = preset ? preset.build() : defaultState();
+  st.presetId = preset?.id || "default";
+  return st;
 }
 
 /**
@@ -94,7 +135,11 @@ export const WHEEL_PRESETS = [
     name: "Default",
     description: "Sample prize wheel (current starter)",
     defaultName: "Prize wheel",
-    build: () => defaultState(),
+    build: () => {
+      const st = defaultState();
+      st.presetId = "default";
+      return st;
+    },
   },
   {
     id: "d20",

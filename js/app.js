@@ -34,7 +34,12 @@ import { AudioManager } from "./audio.js";
 import { Wheel } from "./wheel.js";
 import { computeFillImageLayout } from "./slice-image-layout.js";
 import { parseImportFile } from "./import-converters.js";
-import { WHEEL_PRESETS, getWheelPreset } from "./presets.js";
+import {
+  WHEEL_PRESETS,
+  getWheelPreset,
+  resolvePresetId,
+  buildPresetState,
+} from "./presets.js";
 import { APP_UPDATE } from "./version.js";
 
 const audio = new AudioManager();
@@ -302,13 +307,13 @@ async function createNewWheelFromPreset(presetId = "default") {
     preset.defaultName || `Wheel ${library.wheels.length + 1}`;
   const name = prompt("Name for the new wheel:", suggested);
   if (name === null) return; // cancelled
-  let fromState = null;
+  let fromState;
   try {
-    fromState = preset.build();
+    fromState = buildPresetState(preset.id);
   } catch (err) {
     console.error("Preset build failed:", err);
     alert("Could not build that preset. Using default instead.");
-    fromState = null;
+    fromState = buildPresetState("default");
   }
   const result = addWheel(library, name || suggested, fromState);
   await applyLoadedWheel(result.lib, result.state);
@@ -5571,14 +5576,22 @@ $("#import-file").addEventListener("change", async (e) => {
 });
 
 $("#btn-reset").addEventListener("click", async () => {
+  const presetId = resolvePresetId(state);
+  const preset = getWheelPreset(presetId) || getWheelPreset("default");
+  const presetName = preset?.name || "Default";
   if (
     !confirm(
-      "Reset this wheel to defaults? Your other saved wheels are not affected. You can Undo while the app stays open."
+      `Reset this wheel to the ${presetName} preset?\n\nYour other saved wheels are not affected. You can Undo while the app stays open.`
     )
   )
     return;
   checkpoint();
-  state = defaultState();
+  try {
+    state = buildPresetState(presetId);
+  } catch (err) {
+    console.error("Reset preset build failed:", err);
+    state = buildPresetState("default");
+  }
   persist();
   bindAll();
   await preloadAudio();

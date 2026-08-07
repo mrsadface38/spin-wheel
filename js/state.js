@@ -271,6 +271,8 @@ export function defaultState() {
   }));
 
   return {
+    /** Which + New preset this wheel was created from ("default" | "d20" | …) */
+    presetId: "default",
     // Array order = priority: index 0 is highest
     groups: [g1, g2],
     sections,
@@ -444,6 +446,11 @@ function migrate(data) {
   }
 
   return {
+    /** Starter preset this wheel came from — used by Reset */
+    presetId:
+      typeof data.presetId === "string" && data.presetId.trim()
+        ? data.presetId.trim()
+        : base.presetId || "default",
     groups,
     sections,
     look,
