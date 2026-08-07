@@ -1,8 +1,20 @@
-# Share with a friend (private + auto-updates)
+# Share with a friend (website + auto-updates)
+
+## Live site (recommended)
+
+**https://mrsadface38.github.io/spin-wheel/**
+
+Send that link to your friend. Every time you `git push` to this repo, GitHub Pages redeploys (~30–60s). He just refreshes the page.
+
+His saves stay in **his** browser (`localStorage`). Your saves stay in yours. They don’t overwrite each other.
+
+---
+
+## Optional: Windows launcher (offline / git clone)
 
 Source stays **private** on GitHub. Your friend gets updates **automatically every time they open the app** (the launcher runs `git pull` first).
 
-> True “just open a website link” hosting from a *private* repo needs Cloudflare Pages / Netlify (one-time setup). This git-launcher approach needs no paid plan and no extra accounts.
+> Prefer the website link above unless you need offline use.
 
 ## One-time setup (you)
 
