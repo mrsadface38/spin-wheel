@@ -851,13 +851,69 @@ function renderGroups() {
           <div class="card-actions">
             <button type="button" class="icon-btn" data-act="toggle" title="Toggle group">${g.active ? "✓" : "○"}</button>
             <button type="button" class="icon-btn" data-act="rename" title="Edit">✎</button>
-            <button type="button" class="icon-btn" data-act="dup" title="Duplicate">⧉</button>
+            <button type="button" class="icon-btn" data-act="dup" title="Duplicate group">Dup</button>
             <button type="button" class="icon-btn danger" data-act="del" title="Delete">✕</button>
           </div>
         </div>`;
     })
     .join("");
   updateGroupPriorityLabels();
+}
+
+/** Deep-clone a plain section for duplicate (avoids JSON failures / odd fields). */
+function cloneSectionForDuplicate(section) {
+  const gids = getSectionGroupIds(section);
+  const raw = {
+    id: uid("sec"),
+    label: `${section.label || "Untitled"} copy`,
+    weight: normalizeWeight(section.weight),
+    enabled: section.enabled !== false,
+    groupIds: gids.slice(),
+    customColor: section.customColor === true,
+    customTextColor: section.customTextColor === true,
+    customImage: section.customImage === true,
+    customSfx: section.customSfx === true,
+    color: section.color,
+    textColor: section.textColor,
+    imageData: section.imageData || null,
+    imageMode: section.imageMode === "tile" ? "tile" : "fill",
+    imageFillScale: section.imageFillScale,
+    imageFillOffsetX: section.imageFillOffsetX,
+    imageFillOffsetY: section.imageFillOffsetY,
+    imageTileScale: section.imageTileScale,
+    imageTileOffsetX: section.imageTileOffsetX,
+    imageTileOffsetY: section.imageTileOffsetY,
+    landSfxData: section.landSfxData || null,
+    landSfxName: section.landSfxName || null,
+    landSfxVolume: section.landSfxVolume,
+  };
+  return raw;
+}
+
+/** Clone a group profile with a new id/name. */
+function cloneGroupForDuplicate(group) {
+  const newId = uid("grp");
+  return normalizeGroup({
+    id: newId,
+    name: `${group.name || "Group"} copy`,
+    active: group.active !== false,
+    overrideColor: group.overrideColor === true,
+    overrideTextColor: group.overrideTextColor === true,
+    overrideImage: group.overrideImage === true,
+    overrideSfx: group.overrideSfx === true,
+    color: group.color,
+    textColor: group.textColor,
+    imageData: group.imageData || null,
+    imageMode: group.imageMode,
+    imageFillScale: group.imageFillScale,
+    imageFillOffsetX: group.imageFillOffsetX,
+    imageFillOffsetY: group.imageFillOffsetY,
+    imageTileScale: group.imageTileScale,
+    imageTileOffsetX: group.imageTileOffsetX,
+    imageTileOffsetY: group.imageTileOffsetY,
+    landSfxData: group.landSfxData || null,
+    landSfxName: group.landSfxName || null,
+  });
 }
 
 /** Live priority numbers while dragging / after paint */
@@ -1112,46 +1168,54 @@ function escapeHtml(str) {
 sectionsList.addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-act]");
   if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
   const card = btn.closest(".section-card");
   const id = card?.dataset.id;
   const section = state.sections.find((s) => s.id === id);
   if (!section) return;
   const act = btn.dataset.act;
-  if (act === "toggle") {
-    checkpoint();
-    section.enabled = !section.enabled;
-    persist();
-    renderSections();
-    await refreshWheel();
-  } else if (act === "edit") {
-    openSectionModal(section);
-  } else if (act === "dup") {
-    checkpoint();
-    const idx = state.sections.findIndex((s) => s.id === id);
-    if (idx < 0) return;
-    const copy = JSON.parse(JSON.stringify(section));
-    copy.id = uid("sec");
-    copy.label = `${section.label || "Untitled"} copy`;
-    delete copy.groupId;
-    copy.groupIds = getSectionGroupIds(section).slice();
-    state.sections.splice(idx + 1, 0, copy);
-    if (copy.customSfx && copy.landSfxData) {
-      await audio.loadDataUrl(`land_${copy.id}`, copy.landSfxData);
+  try {
+    if (act === "toggle") {
+      checkpoint();
+      section.enabled = !section.enabled;
+      persist();
+      renderSections();
+      await refreshWheel();
+    } else if (act === "edit") {
+      openSectionModal(section);
+    } else if (act === "dup") {
+      checkpoint();
+      const idx = state.sections.findIndex((s) => s.id === id);
+      if (idx < 0) return;
+      const copy = cloneSectionForDuplicate(section);
+      state.sections.splice(idx + 1, 0, copy);
+      if (copy.landSfxData) {
+        try {
+          await audio.loadDataUrl(`land_${copy.id}`, copy.landSfxData);
+        } catch (err) {
+          console.warn("Dup section SFX load:", err);
+        }
+      }
+      persist();
+      renderSections();
+      updateSectionsCount();
+      await refreshWheel();
+    } else if (act === "del") {
+      if (!confirm(`Delete "${section.label}"?`)) return;
+      checkpoint();
+      state.sections = state.sections.filter((s) => s.id !== id);
+      if (lastWinnerId === id) {
+        lastWinnerId = null;
+        hideResults();
+      }
+      persist();
+      renderSections();
+      await refreshWheel();
     }
-    persist();
-    renderSections();
-    await refreshWheel();
-  } else if (act === "del") {
-    if (!confirm(`Delete "${section.label}"?`)) return;
-    checkpoint();
-    state.sections = state.sections.filter((s) => s.id !== id);
-    if (lastWinnerId === id) {
-      lastWinnerId = null;
-      hideResults();
-    }
-    persist();
-    renderSections();
-    await refreshWheel();
+  } catch (err) {
+    console.error("Section action failed:", act, err);
+    alert("Couldn't complete that action: " + (err.message || err));
   }
 });
 
@@ -1220,69 +1284,78 @@ sectionsList.addEventListener("pointerup", (e) => {
 groupsList.addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-act]");
   if (!btn || btn.disabled) return;
+  e.preventDefault();
+  e.stopPropagation();
+  // Cancel any pending group-drag so it doesn't swallow the click
+  groupDrag.pending = false;
+  groupDrag.didDrag = false;
   const card = btn.closest(".group-card");
   const id = card?.dataset.id;
   const group = state.groups.find((g) => g.id === id);
   if (!group) return;
   const act = btn.dataset.act;
 
-  if (act === "toggle") {
-    checkpoint();
-    group.active = !group.active;
-    persist();
-    renderGroups();
-    renderSections();
-    await refreshWheel();
-  } else if (act === "rename") {
-    openGroupModal(group);
-  } else if (act === "dup") {
-    checkpoint();
-    const idx = state.groups.findIndex((g) => g.id === id);
-    if (idx < 0) return;
-    const newId = uid("grp");
-    const copy = normalizeGroup({
-      ...JSON.parse(JSON.stringify(group)),
-      id: newId,
-      name: `${group.name || "Group"} copy`,
-    });
-    state.groups.splice(idx + 1, 0, copy);
-    // Same membership as the original group
-    for (const s of state.sections) {
-      const ids = getSectionGroupIds(s);
-      if (ids.includes(id) && !ids.includes(newId)) {
-        s.groupIds = [...ids, newId];
-        delete s.groupId;
+  try {
+    if (act === "toggle") {
+      checkpoint();
+      group.active = !group.active;
+      persist();
+      renderGroups();
+      renderSections();
+      await refreshWheel();
+    } else if (act === "rename") {
+      openGroupModal(group);
+    } else if (act === "dup") {
+      checkpoint();
+      const idx = state.groups.findIndex((g) => g.id === id);
+      if (idx < 0) return;
+      const copy = cloneGroupForDuplicate(group);
+      const newId = copy.id;
+      state.groups.splice(idx + 1, 0, copy);
+      // Same membership as the original group
+      for (const s of state.sections) {
+        const ids = getSectionGroupIds(s);
+        if (ids.includes(id) && !ids.includes(newId)) {
+          setSectionGroupIds(s, [...ids, newId]);
+        }
       }
-    }
-    if (copy.landSfxData) {
-      await audio.loadDataUrl(`land_grp_${copy.id}`, copy.landSfxData);
-    }
-    persist();
-    renderGroups();
-    renderSections();
-    await refreshWheel();
-  } else if (act === "del") {
-    if (state.groups.length <= 1) {
-      alert("You need at least one group.");
-      return;
-    }
-    if (
-      !confirm(
-        `Delete group "${group.name}"? It will be removed from sections that used it. Other group memberships stay as they are (sections are not moved into another group).`
+      if (copy.landSfxData) {
+        try {
+          await audio.loadDataUrl(`land_grp_${copy.id}`, copy.landSfxData);
+        } catch (err) {
+          console.warn("Dup group SFX load:", err);
+        }
+      }
+      persist();
+      renderGroups();
+      renderSections();
+      await refreshWheel();
+    } else if (act === "del") {
+      if (state.groups.length <= 1) {
+        alert("You need at least one group.");
+        return;
+      }
+      if (
+        !confirm(
+          `Delete group "${group.name}"? It will be removed from sections that used it. Other group memberships stay as they are (sections are not moved into another group).`
+        )
       )
-    )
-      return;
-    checkpoint();
-    // Only strip this group id — do not reassign to another / top group
-    state.sections.forEach((s) => {
-      s.groupIds = getSectionGroupIds(s).filter((gid) => gid !== id);
-      delete s.groupId;
-    });
-    state.groups = state.groups.filter((g) => g.id !== id);
-    persist();
-    renderGroups();
-    renderSections();
-    await refreshWheel();
+        return;
+      checkpoint();
+      // Only strip this group id — do not reassign to another / top group
+      state.sections.forEach((s) => {
+        s.groupIds = getSectionGroupIds(s).filter((gid) => gid !== id);
+        delete s.groupId;
+      });
+      state.groups = state.groups.filter((g) => g.id !== id);
+      persist();
+      renderGroups();
+      renderSections();
+      await refreshWheel();
+    }
+  } catch (err) {
+    console.error("Group action failed:", act, err);
+    alert("Couldn't complete that action: " + (err.message || err));
   }
 });
 
