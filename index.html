@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#44</span>
+        <span class="app-version" id="app-version" title="Update number">#46</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -640,15 +640,15 @@
             <label class="field">
               <span>Preview slice size</span>
               <select id="group-preview-weight-mode">
+                <option value="custom" selected>Custom % of wheel</option>
                 <option value="current">At member weight</option>
-                <option value="custom">Custom % of wheel</option>
               </select>
             </label>
-            <label class="field" id="group-preview-custom-weight-field" hidden>
+            <label class="field" id="group-preview-custom-weight-field">
               <span>Custom size</span>
               <div class="slider-with-value">
-                <input type="range" id="group-preview-custom-weight" min="1" max="100" step="1" value="50" />
-                <span id="group-preview-custom-weight-label" class="slider-value">50%</span>
+                <input type="range" id="group-preview-custom-weight" min="1" max="100" step="1" value="100" />
+                <span id="group-preview-custom-weight-label" class="slider-value">100%</span>
               </div>
             </label>
             <p id="group-preview-weight-meta" class="hint section-preview-meta"></p>

@@ -2673,9 +2673,12 @@ function openSectionModal(section) {
     }
   }
   updateSectionImageModeUI();
-  // Default preview size mode each open
+  // Default preview: custom % of wheel at 100% (full circle)
   if ($("#preview-weight-mode")) {
-    $("#preview-weight-mode").value = "current";
+    $("#preview-weight-mode").value = "custom";
+  }
+  if ($("#preview-custom-weight")) {
+    $("#preview-custom-weight").value = "100";
   }
   updatePreviewWeightUI();
   sectionModal.showModal();
