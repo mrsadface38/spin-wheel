@@ -1013,6 +1013,33 @@ export class Wheel {
   }
 
   /**
+   * Build full avoid id set from explicit ids + any slice that belongs to avoidGroupId.
+   * Ensures reverse-group mode covers every on-wheel member of that group.
+   * @param {Array<{section: {id: string, groupIds?: string[], groupId?: string}}>} slices
+   * @param {string|string[]|Set<string>|null|undefined} avoidSectionIds
+   * @param {string|null|undefined} avoidGroupId
+   * @returns {Set<string>}
+   */
+  _buildAvoidIdSet(slices, avoidSectionIds, avoidGroupId) {
+    const avoidIds = this._asIdSet(avoidSectionIds);
+    if (avoidGroupId) {
+      for (const sl of slices) {
+        const sec = sl.section;
+        if (!sec) continue;
+        const gids = Array.isArray(sec.groupIds)
+          ? sec.groupIds
+          : sec.groupId
+            ? [sec.groupId]
+            : [];
+        if (gids.includes(avoidGroupId)) {
+          avoidIds.add(sec.id);
+        }
+      }
+    }
+    return avoidIds;
+  }
+
+  /**
    * Weighted pick among slices whose section id is in includeSet.
    * @param {Array<{section: {id: string, weight?: number}}>} slices
    * @param {Set<string>} includeSet

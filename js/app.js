@@ -3449,27 +3449,52 @@ function getRigForceSectionId() {
 }
 
 /**
- * Section ids reverse-rig should slide off of (on-wheel only).
+ * Section ids reverse-rig should slide off of.
+ * Group mode: every on-wheel member of that group (not just one random pick).
  * @returns {string[]}
  */
 function getReverseAvoidSectionIds() {
   if (!isReverseRigActive()) return [];
   const s = ensureSecretState();
   const kind = getReverseTargetKind();
+  // Use active-on-wheel sections so avoid set matches what the pointer can land on
   const active = getActiveSections(state);
   if (kind === "group") {
     const gid =
       $("#secret-reverse-group")?.value || s.reverseTargetGroupId || null;
     if (!gid) return [];
-    return active
-      .filter((sec) => getSectionGroupIds(sec).includes(gid))
+    // Every section that belongs to this group and is currently on the wheel
+    const ids = active
+      .filter((sec) => sectionInGroup(sec, gid))
       .map((sec) => sec.id);
+    // Fallback: enabled members of the group even if activity edge-cases miss them
+    if (!ids.length) {
+      return state.sections
+        .filter(
+          (sec) =>
+            sec.enabled !== false &&
+            sectionInGroup(sec, gid) &&
+            isSectionActiveOnWheel(state, sec)
+        )
+        .map((sec) => sec.id);
+    }
+    return ids;
   }
   const id =
     $("#secret-reverse-section")?.value || s.reverseTargetSectionId || null;
   if (!id) return [];
   if (!active.some((sec) => sec.id === id)) return [];
   return [id];
+}
+
+/** Group id for reverse when avoiding a whole group (for wheel-side expansion). */
+function getReverseAvoidGroupId() {
+  if (!isReverseRigActive()) return null;
+  if (getReverseTargetKind() !== "group") return null;
+  const s = ensureSecretState();
+  return (
+    $("#secret-reverse-group")?.value || s.reverseTargetGroupId || null
+  );
 }
 
 function setResultRiggedVisible(visible) {
