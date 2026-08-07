@@ -50,6 +50,67 @@ select optgroup {
   height: 100%;
 }
 
+/* Focus mode: big wheel, hide chrome */
+body.focus-mode .top-bar {
+  display: none;
+}
+body.focus-mode .editor-panel {
+  display: none !important;
+}
+body.focus-mode .layout {
+  grid-template-columns: 1fr !important;
+}
+body.focus-mode .btn-toggle-sidebar {
+  display: none;
+}
+body.focus-mode #btn-exit-focus {
+  display: flex;
+}
+body.focus-mode .stage-panel {
+  height: 100%;
+  min-height: 100vh;
+}
+
+.btn-exit-focus {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 200;
+  display: none;
+  align-items: center;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(20, 24, 41, 0.92);
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+}
+.btn-exit-focus:hover {
+  border-color: var(--accent);
+  color: var(--accent-2);
+}
+.btn-exit-focus[hidden] {
+  display: none !important;
+}
+
+/* Win confetti layer */
+#confetti-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  pointer-events: none;
+  overflow: hidden;
+}
+#confetti-layer canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 /* Top bar */
 .top-bar {
   display: flex;

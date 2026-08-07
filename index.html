@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#81</span>
+        <span class="app-version" id="app-version" title="Update number">#82</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -36,13 +36,16 @@
         <button type="button" id="btn-wheel-delete" class="btn small ghost danger" title="Delete current wheel">Delete</button>
       </div>
       <div class="top-actions">
+        <button type="button" id="btn-focus-mode" class="btn ghost" title="Hide chrome for a big wheel (Esc to exit)">Focus</button>
+        <button type="button" id="btn-share-wheel" class="btn ghost" title="Share or download this wheel only">Share</button>
         <button type="button" id="btn-undo" class="btn ghost" title="Undo last change (Ctrl+Z)" disabled>Undo</button>
-        <button type="button" id="btn-export" class="btn ghost" title="Export project JSON">Export</button>
+        <button type="button" id="btn-export" class="btn ghost" title="Export all wheels (library) as JSON">Export all</button>
         <button type="button" id="btn-import" class="btn ghost" title="Import project JSON">Import</button>
         <input type="file" id="import-file" accept="application/json,.json,.wheel,text/plain,.txt,.csv,.tsv" hidden />
         <button type="button" id="btn-reset" class="btn ghost danger">Reset</button>
       </div>
     </header>
+    <button type="button" id="btn-exit-focus" class="btn-exit-focus" hidden title="Exit focus mode (Esc)">Exit focus</button>
 
     <main class="layout" id="main-layout">
       <!-- Wheel stage -->
@@ -271,6 +274,23 @@
             <label class="toggle-row">
               <input type="checkbox" id="chk-allow-winner-remove" checked />
               <span>Show <strong>Remove</strong> button after a spin</span>
+            </label>
+            <label class="field">
+              <span>After a win (when you Continue)</span>
+              <select id="eliminate-after-win" title="What happens to the winner when the result is dismissed">
+                <option value="off">Keep on wheel</option>
+                <option value="hide">Hide winner (eliminate)</option>
+                <option value="remove">Delete winner (eliminate)</option>
+              </select>
+              <small>Hide or delete applies when you dismiss the result (Continue). Undo restores it.</small>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-confetti-on-win" checked />
+              <span>Confetti on win</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-keyboard-spin" checked />
+              <span>Keyboard spin (Space / Enter)</span>
             </label>
           </div>
 

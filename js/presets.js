@@ -29,6 +29,54 @@ export function d20FaceOrder() {
 }
 
 /**
+ * Classic coin flip: Heads / Tails, equal weight.
+ * @returns {ReturnType<typeof defaultState>}
+ */
+export function coinFlipState() {
+  const base = defaultState();
+  const g = normalizeGroup({ id: uid("grp"), name: "Coin", active: true });
+  const faces = [
+    { label: "Heads", color: "#c9a84c", text: "#1a1408" },
+    { label: "Tails", color: "#4a5568", text: "#f5f0d8" },
+  ];
+  const sections = faces.map((f) => ({
+    id: uid("sec"),
+    label: f.label,
+    color: f.color,
+    weight: 1,
+    enabled: true,
+    groupIds: [g.id],
+    customColor: true,
+    customTextColor: true,
+    customWinnerTextColor: false,
+    customImage: false,
+    customSfx: false,
+    ...normalizeProfileFields({
+      color: f.color,
+      textColor: f.text,
+      winnerTextColor: "#ffffff",
+    }),
+  }));
+  return {
+    ...base,
+    presetId: "coin-flip",
+    groups: [g],
+    sections,
+    yourOrderIds: sections.map((s) => s.id),
+    look: {
+      ...base.look,
+      backgroundColor: "#0c1018",
+      centerColor: "#1a2030",
+      borderColor: "#c9a84c",
+      textColor: "#f5f0d8",
+      winnerLabel: "Flip",
+      confettiOnWin: true,
+    },
+    spin: { ...base.spin, duration: 4 },
+  };
+}
+
+/**
  * Twenty equal faces numbered 1–20.
  * @returns {ReturnType<typeof defaultState>}
  */
@@ -96,6 +144,18 @@ export function looksLikeD20(state) {
   return true;
 }
 
+export function looksLikeCoinFlip(state) {
+  const secs = state?.sections;
+  if (!Array.isArray(secs) || secs.length !== 2) return false;
+  const labels = secs.map((s) =>
+    String(s?.label ?? "")
+      .trim()
+      .toLowerCase()
+  );
+  const set = new Set(labels);
+  return set.has("heads") && set.has("tails");
+}
+
 /**
  * Which preset Reset (and similar) should use for this wheel.
  * @param {object|null|undefined} state
@@ -104,6 +164,7 @@ export function looksLikeD20(state) {
 export function resolvePresetId(state) {
   const raw = state?.presetId;
   if (typeof raw === "string" && getWheelPreset(raw)) return raw;
+  if (looksLikeCoinFlip(state)) return "coin-flip";
   if (looksLikeD20(state)) return "d20";
   return "default";
 }
@@ -141,6 +202,13 @@ export const WHEEL_PRESETS = [
       st.presetId = "default";
       return st;
     },
+  },
+  {
+    id: "coin-flip",
+    name: "Coin flip",
+    description: "Heads or Tails — 50/50",
+    defaultName: "Coin flip",
+    build: () => coinFlipState(),
   },
   {
     id: "d20",

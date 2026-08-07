@@ -301,6 +301,14 @@ export function defaultState() {
       resultStyle: "center",
       winnerLabel: "Winner",
       allowWinnerRemove: true,
+      /**
+       * After a spin is dismissed: "off" | "hide" (disable section) | "remove" (delete).
+       */
+      eliminateAfterWin: "off",
+      /** Celebrate wins with confetti (default on). */
+      confettiOnWin: true,
+      /** Space / Enter to spin when not typing (default on). */
+      keyboardSpin: true,
       // Section list weight range slider (manual number field can still use decimals)
       weightSliderMin: 1,
       weightSliderMax: 20,
@@ -431,6 +439,13 @@ function migrate(data) {
   } else {
     look.pointerLocked = true;
   }
+  {
+    const el = look.eliminateAfterWin;
+    look.eliminateAfterWin =
+      el === "hide" || el === "remove" || el === "off" ? el : "off";
+  }
+  look.confettiOnWin = look.confettiOnWin !== false;
+  look.keyboardSpin = look.keyboardSpin !== false;
   const spin = { ...base.spin, ...(data.spin || {}) };
   if (wasOldSave) {
     if (data.spin?.duration == null || data.spin.duration <= 5) {

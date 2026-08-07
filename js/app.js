@@ -3957,6 +3957,17 @@ function bindLook() {
         : "Winner";
   }
   $("#chk-allow-winner-remove").checked = state.look.allowWinnerRemove !== false;
+  if ($("#eliminate-after-win")) {
+    const e = state.look.eliminateAfterWin;
+    $("#eliminate-after-win").value =
+      e === "hide" || e === "remove" ? e : "off";
+  }
+  if ($("#chk-confetti-on-win")) {
+    $("#chk-confetti-on-win").checked = state.look.confettiOnWin !== false;
+  }
+  if ($("#chk-keyboard-spin")) {
+    $("#chk-keyboard-spin").checked = state.look.keyboardSpin !== false;
+  }
   {
     const opts = getWeightSliderOpts();
     if ($("#weight-slider-min")) $("#weight-slider-min").value = String(opts.min);
@@ -4256,6 +4267,44 @@ function setResultRiggedVisible(visible) {
   }
 }
 
+/** Pending eliminate-after-win when result is dismissed */
+let pendingEliminateId = null;
+/** @type {"hide"|"remove"|null} */
+let pendingEliminateMode = null;
+
+/**
+ * Apply hide/remove scheduled for the last winner (Continue / dismiss).
+ */
+async function applyPendingEliminate() {
+  const id = pendingEliminateId;
+  const mode = pendingEliminateMode;
+  pendingEliminateId = null;
+  pendingEliminateMode = null;
+  if (!id || (mode !== "hide" && mode !== "remove")) return;
+  const section = state.sections.find((s) => s.id === id);
+  if (mode === "hide") {
+    if (!section || section.enabled === false) return;
+    checkpoint();
+    section.enabled = false;
+    if (lastWinnerId === id) lastWinnerId = null;
+    persist();
+    renderSections();
+    await refreshWheel();
+    return;
+  }
+  // remove
+  if (!section) return;
+  checkpoint();
+  state.sections = state.sections.filter((s) => s.id !== id);
+  ensureYourOrderIds();
+  onSectionsStructureChanged();
+  if (lastWinnerId === id) lastWinnerId = null;
+  persist();
+  updateSectionSortUI();
+  renderSections();
+  await refreshWheel();
+}
+
 function hideResults() {
   resultBanner.classList.add("hidden");
   resultCenter.classList.add("hidden");
@@ -4264,6 +4313,10 @@ function hideResults() {
   resultShowsRigged = false;
   // Keep a clickable “rigged” badge if Rig / Reverse is armed (re-open secret menu)
   setResultRiggedVisible(isRigItActive() || isReverseRigActive());
+  // Eliminate-after-win runs when the result is dismissed
+  void applyPendingEliminate().catch((err) =>
+    console.warn("eliminate after win:", err)
+  );
   // Redraw after overlay dismiss so canvas/DOM media recover if land left them stale
   try {
     if (wheel && !wheel.spinning && !wheel._dragging) {
@@ -4287,6 +4340,90 @@ function hideResults() {
 let resultShowsRigged = false;
 
 /**
+ * Lightweight confetti burst over the stage (no dependency).
+ */
+function fireConfetti() {
+  if (state.look?.confettiOnWin === false) return;
+  try {
+    let layer = document.getElementById("confetti-layer");
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.id = "confetti-layer";
+      layer.setAttribute("aria-hidden", "true");
+      document.body.appendChild(layer);
+    }
+    layer.innerHTML = "";
+    const canvas = document.createElement("canvas");
+    layer.appendChild(canvas);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    const colors = [
+      "#f0d78c",
+      "#6c8cff",
+      "#e85d6c",
+      "#3ecf8e",
+      "#e8eaf2",
+      "#c9a84c",
+    ];
+    const n = 90;
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+      parts.push({
+        x: w * 0.5 + (Math.random() - 0.5) * w * 0.35,
+        y: h * 0.35 + (Math.random() - 0.5) * 40,
+        vx: (Math.random() - 0.5) * 12,
+        vy: -Math.random() * 10 - 4,
+        g: 0.22 + Math.random() * 0.12,
+        size: 4 + Math.random() * 6,
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 0.3,
+        color: colors[i % colors.length],
+        life: 1,
+      });
+    }
+    const start = performance.now();
+    const dur = 2200;
+    const frame = (now) => {
+      const t = (now - start) / dur;
+      ctx.clearRect(0, 0, w, h);
+      for (const p of parts) {
+        p.vy += p.g;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rot += p.vr;
+        p.life = Math.max(0, 1 - t);
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.55);
+        ctx.restore();
+      }
+      if (t < 1) requestAnimationFrame(frame);
+      else {
+        try {
+          layer.remove();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    requestAnimationFrame(frame);
+  } catch (err) {
+    console.warn("confetti:", err);
+  }
+}
+
+/**
  * @param {{ id: string, label: string }} section
  * @param {{ rigged?: boolean }} [opts] rigged = fling or secret Rig it
  */
@@ -4303,6 +4440,16 @@ function showResult(section, opts = {}) {
     clearResultCenterBg();
 
     lastWinnerId = section.id;
+    // Schedule eliminate-after-win for when result is dismissed
+    const elim = state.look?.eliminateAfterWin;
+    if (elim === "hide" || elim === "remove") {
+      pendingEliminateId = section.id;
+      pendingEliminateMode = elim;
+    } else {
+      pendingEliminateId = null;
+      pendingEliminateMode = null;
+    }
+    fireConfetti();
     const label = section.label || "Winner";
     // Resolve inherited group image if the section itself has no image
     const raw =
@@ -5425,10 +5572,19 @@ async function hideWinnerPart() {
   if (!lastWinnerId) return;
   const section = state.sections.find((s) => s.id === lastWinnerId);
   if (!section) return;
+  // Manual hide — don't also run eliminate-after-win
+  pendingEliminateId = null;
+  pendingEliminateMode = null;
   checkpoint();
   section.enabled = false;
   lastWinnerId = null;
-  hideResults();
+  // Clear overlay without re-running eliminate
+  resultBanner.classList.add("hidden");
+  resultCenter.classList.add("hidden");
+  resultActionsBar.classList.add("hidden");
+  clearResultCenterBg();
+  resultShowsRigged = false;
+  setResultRiggedVisible(isRigItActive() || isReverseRigActive());
   persist();
   renderSections();
   await refreshWheel();
@@ -5439,6 +5595,8 @@ async function removeWinnerPart() {
   const section = state.sections.find((s) => s.id === lastWinnerId);
   if (!section) return;
   if (!confirm(`Remove "${section.label}" from the wheel permanently?`)) return;
+  pendingEliminateId = null;
+  pendingEliminateMode = null;
   checkpoint();
   state.sections = state.sections.filter((s) => s.id !== lastWinnerId);
   ensureYourOrderIds();
@@ -5488,6 +5646,17 @@ async function onLookChange() {
   }
   state.look.allowWinnerRemove = $("#chk-allow-winner-remove").checked;
   {
+    const v = $("#eliminate-after-win")?.value;
+    state.look.eliminateAfterWin =
+      v === "hide" || v === "remove" ? v : "off";
+  }
+  if ($("#chk-confetti-on-win")) {
+    state.look.confettiOnWin = $("#chk-confetti-on-win").checked;
+  }
+  if ($("#chk-keyboard-spin")) {
+    state.look.keyboardSpin = $("#chk-keyboard-spin").checked;
+  }
+  {
     let min = Number($("#weight-slider-min")?.value);
     let max = Number($("#weight-slider-max")?.value);
     let step = Number($("#weight-slider-step")?.value);
@@ -5511,7 +5680,7 @@ async function onLookChange() {
   renderSections();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-remove", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-remove", "eliminate-after-win", "chk-confetti-on-win", "chk-keyboard-spin", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -6116,12 +6285,159 @@ function setSidebarCollapsed(collapsed) {
   });
 }
 
+function setFocusMode(on) {
+  const active = !!on;
+  document.body.classList.toggle("focus-mode", active);
+  const exit = $("#btn-exit-focus");
+  if (exit) {
+    exit.hidden = !active;
+    exit.setAttribute("aria-hidden", active ? "false" : "true");
+  }
+  const focusBtn = $("#btn-focus-mode");
+  if (focusBtn) {
+    focusBtn.setAttribute("aria-pressed", active ? "true" : "false");
+    focusBtn.textContent = active ? "Exit focus" : "Focus";
+  }
+  // Collapse panels when entering focus; restore layout size
+  if (active) setSidebarCollapsed(true);
+  requestAnimationFrame(() => {
+    try {
+      wheel.resize();
+      requestAnimationFrame(() => {
+        wheel.resize();
+        wheel.layoutPointer?.();
+      });
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+function toggleFocusMode() {
+  setFocusMode(!document.body.classList.contains("focus-mode"));
+}
+
 $("#btn-toggle-sidebar")?.addEventListener("click", (e) => {
   e.stopPropagation();
   const layout = $("#main-layout");
   const collapsed = !layout?.classList.contains("sidebar-collapsed");
   setSidebarCollapsed(collapsed);
 });
+
+$("#btn-focus-mode")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleFocusMode();
+});
+$("#btn-exit-focus")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setFocusMode(false);
+});
+
+// --- Share / export this wheel only ---
+function downloadJson(filename, obj) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], {
+    type: "application/json",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function getCurrentWheelSharePayload() {
+  const slot = getActiveSlot(library);
+  return {
+    format: "sad-wheel-v1",
+    name: slot?.name || "Wheel",
+    exportedAt: new Date().toISOString(),
+    data: state,
+  };
+}
+
+async function shareCurrentWheel() {
+  library = writeActiveState(library, state);
+  const payload = getCurrentWheelSharePayload();
+  const safeName = String(payload.name || "wheel")
+    .replace(/[^\w\-]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40) || "wheel";
+
+  // Prefer short share link in hash; fall back to file download if huge
+  try {
+    const json = JSON.stringify(payload);
+    const b64 = btoa(unescape(encodeURIComponent(json)));
+    if (b64.length <= 12000) {
+      const base =
+        `${location.origin}${location.pathname}${location.search}`.replace(
+          /#$/,
+          ""
+        );
+      const url = `${base}#wheel=${b64}`;
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        alert(
+          "Share link copied to the clipboard.\n\nAnyone opening it can import this wheel. Large images may make the link too long — use the file download if that happens."
+        );
+        return;
+      }
+      // Clipboard blocked — still offer the link
+      prompt("Copy this share link:", url);
+      return;
+    }
+  } catch (err) {
+    console.warn("Share link failed, downloading file:", err);
+  }
+  downloadJson(`sad-wheel-${safeName}.json`, payload);
+  alert(
+    "Wheel is large (or clipboard unavailable) — downloaded a JSON file instead. Use Import to load it."
+  );
+}
+
+$("#btn-share-wheel")?.addEventListener("click", () => {
+  shareCurrentWheel().catch((err) => {
+    console.error(err);
+    alert("Share failed: " + (err.message || err));
+  });
+});
+
+/** Import wheel payload from #wheel=… share link (once on boot). */
+async function tryImportShareHash() {
+  const hash = location.hash || "";
+  if (!hash.startsWith("#wheel=")) return;
+  try {
+    const b64 = hash.slice("#wheel=".length);
+    const json = decodeURIComponent(escape(atob(b64)));
+    const payload = JSON.parse(json);
+    const data = payload?.data || payload;
+    if (!data?.sections || !data?.groups) {
+      throw new Error("Link is not a valid wheel");
+    }
+    const name =
+      (payload.name && String(payload.name)) ||
+      "Shared wheel";
+    if (
+      !confirm(
+        `Import shared wheel “${name}” as a new wheel?\n\nOK = add it\nCancel = ignore link`
+      )
+    ) {
+      history.replaceState(null, "", location.pathname + location.search);
+      return;
+    }
+    library = writeActiveState(library, state);
+    const result = addWheel(library, name, data);
+    await applyLoadedWheel(result.lib, result.state);
+    history.replaceState(null, "", location.pathname + location.search);
+  } catch (err) {
+    console.error("Share import failed:", err);
+    alert("Could not open share link: " + (err.message || err));
+    try {
+      history.replaceState(null, "", location.pathname + location.search);
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 // --- Spin (double-click / drag-fling the wheel) ---
 
@@ -6348,18 +6664,59 @@ $("#btn-undo").addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (e) => {
-  // Ctrl+Z / Cmd+Z — skip when typing in fields (except we still allow undo globally for convenience;
-  // only skip if user is mid-composition in a text field and wants local undo... use Ctrl+Z always for app undo
-  // when not in a native text undo context that would conflict - actually for Electron, Ctrl+Z in input
-  // should be native. So only trigger when not in editable fields.)
-  const isMod = e.ctrlKey || e.metaKey;
-  if (!isMod || e.key.toLowerCase() !== "z" || e.shiftKey || e.altKey) return;
   const tag = (e.target && e.target.tagName) || "";
   const editable =
     tag === "INPUT" ||
     tag === "TEXTAREA" ||
     tag === "SELECT" ||
     (e.target && e.target.isContentEditable);
+
+  // Esc — exit focus mode
+  if (e.key === "Escape" && document.body.classList.contains("focus-mode")) {
+    e.preventDefault();
+    setFocusMode(false);
+    return;
+  }
+
+  // Space / Enter — spin (Look option, default on)
+  if (
+    !editable &&
+    state.look?.keyboardSpin !== false &&
+    (e.key === " " || e.key === "Enter") &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey
+  ) {
+    // Don't steal Space from focused buttons (except we want spin when nothing focused)
+    const ae = document.activeElement;
+    if (
+      ae &&
+      (ae.tagName === "BUTTON" ||
+        ae.tagName === "A" ||
+        ae.getAttribute?.("role") === "button")
+    ) {
+      // Allow Enter on buttons; Space on focused button activates it
+      if (e.key === " " && ae.tagName === "BUTTON") return;
+    }
+    if (spinBusy || wheel.spinning || wheel._dragging) return;
+    // If result overlay is open, Space dismisses then next press can spin
+    const resultOpen =
+      resultCenter && !resultCenter.classList.contains("hidden");
+    const bannerOpen =
+      resultBanner && !resultBanner.classList.contains("hidden");
+    if (resultOpen || bannerOpen) {
+      e.preventDefault();
+      hideResults();
+      return;
+    }
+    e.preventDefault();
+    doSpin();
+    return;
+  }
+
+  // Ctrl+Z / Cmd+Z — undo when not typing in a field
+  const isMod = e.ctrlKey || e.metaKey;
+  if (!isMod || e.key.toLowerCase() !== "z" || e.shiftKey || e.altKey) return;
   if (editable) return;
   e.preventDefault();
   performUndo();
@@ -6484,6 +6841,11 @@ async function init() {
     bindAll();
   } catch (err) {
     console.warn("bindAll:", err);
+  }
+  try {
+    await tryImportShareHash();
+  } catch (err) {
+    console.warn("tryImportShareHash:", err);
   }
   try {
     updateSectionsCount();
