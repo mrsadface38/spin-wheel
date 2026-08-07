@@ -183,6 +183,7 @@ const wheel = new Wheel(wheelCanvas, bgCanvas, {
   bgMediaEl: $("#bg-media"),
   sliceRotatorEl: $("#slice-media-rotator"),
   centerMediaEl: $("#center-media"),
+  pointerEl: $("#pointer"),
   onTick: (speed) => {
     if (!state.sound.enabled) return;
     // Secret: silence ticks only during the last-moment divert
@@ -3753,6 +3754,9 @@ function bindLook() {
   updateWinnerTextOverrideButton();
   $("#chk-show-labels").checked = state.look.showLabels !== false;
   $("#chk-show-images").checked = state.look.showImages !== false;
+  if ($("#chk-pointer-locked")) {
+    $("#chk-pointer-locked").checked = state.look.pointerLocked !== false;
+  }
   $("#result-style").value = state.look.resultStyle === "banner" ? "banner" : "center";
   if ($("#winner-label")) {
     $("#winner-label").value =
@@ -5279,6 +5283,9 @@ async function onLookChange() {
   // forceWinnerTextColor is toggled by the Override button, not these fields
   state.look.showLabels = $("#chk-show-labels").checked;
   state.look.showImages = $("#chk-show-images").checked;
+  if ($("#chk-pointer-locked")) {
+    state.look.pointerLocked = $("#chk-pointer-locked").checked;
+  }
   state.look.resultStyle = $("#result-style").value === "banner" ? "banner" : "center";
   {
     const wl = ($("#winner-label")?.value || "").trim().slice(0, 40);
@@ -5309,7 +5316,7 @@ async function onLookChange() {
   renderSections();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "result-style", "winner-label", "chk-allow-winner-remove", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-remove", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -5318,6 +5325,140 @@ async function onLookChange() {
     });
   }
 );
+
+// --- Movable winner pointer (Look → unlock to drag) ---
+const POINTER_SNAP_DEGS = [0, 90, 180, 270];
+const POINTER_SNAP_WINDOW = 14; // degrees
+
+/** @param {number} deg */
+function normalizePointerDeg(deg) {
+  const d = Number(deg);
+  if (!Number.isFinite(d)) return 0;
+  return ((d % 360) + 360) % 360;
+}
+
+/** Magnetic snap to top / right / bottom / left while dragging. */
+function snapPointerDeg(deg) {
+  let d = normalizePointerDeg(deg);
+  let best = d;
+  let bestDist = Infinity;
+  for (const s of POINTER_SNAP_DEGS) {
+    let dist = Math.abs(d - s);
+    if (dist > 180) dist = 360 - dist;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = s;
+    }
+  }
+  if (bestDist <= POINTER_SNAP_WINDOW) return best;
+  return d;
+}
+
+/**
+ * Client coords → pointer degrees (0 = top, CW).
+ * @param {number} clientX
+ * @param {number} clientY
+ */
+function pointerDegFromClient(clientX, clientY) {
+  const stage = $("#stage");
+  if (!stage) return state.look.pointerAngleDeg || 0;
+  const rect = stage.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  // Canvas-style angle: 0 east, CW
+  const ang = Math.atan2(clientY - cy, clientX - cx);
+  // 0° = top: canvas −π/2 → deg 0
+  return normalizePointerDeg((ang * 180) / Math.PI + 90);
+}
+
+function applyPointerAngleDeg(deg, { persistNow = false, snap = true } = {}) {
+  let d = normalizePointerDeg(deg);
+  if (snap) d = snapPointerDeg(d);
+  state.look.pointerAngleDeg = d;
+  if (wheel?.look) wheel.look.pointerAngleDeg = d;
+  try {
+    wheel?.layoutPointer?.();
+  } catch {
+    /* ignore */
+  }
+  // Redraw labels/fills so "under pointer" stays consistent if anything peeks
+  try {
+    if (wheel && !wheel.spinning) wheel.draw({ spinFrame: false });
+  } catch {
+    /* ignore */
+  }
+  if (persistNow) {
+    persist();
+  }
+}
+
+const pointerDrag = {
+  active: false,
+  pointerId: null,
+};
+
+function bindPointerDrag() {
+  const el = $("#pointer");
+  if (!el || el.dataset.pointerDragBound === "1") return;
+  el.dataset.pointerDragBound = "1";
+
+  el.addEventListener("pointerdown", (e) => {
+    if (e.button != null && e.button !== 0) return;
+    if (state.look?.pointerLocked !== false) return;
+    if (wheel.spinning || wheel._dragging || spinBusy) return;
+    e.preventDefault();
+    e.stopPropagation();
+    pointerDrag.active = true;
+    pointerDrag.pointerId = e.pointerId;
+    el.classList.add("is-dragging");
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    checkpointContinuous();
+    applyPointerAngleDeg(pointerDegFromClient(e.clientX, e.clientY), {
+      snap: true,
+    });
+  });
+
+  el.addEventListener("pointermove", (e) => {
+    if (!pointerDrag.active) return;
+    if (
+      pointerDrag.pointerId != null &&
+      e.pointerId !== pointerDrag.pointerId
+    ) {
+      return;
+    }
+    e.preventDefault();
+    applyPointerAngleDeg(pointerDegFromClient(e.clientX, e.clientY), {
+      snap: true,
+    });
+  });
+
+  const endPtr = (e) => {
+    if (!pointerDrag.active) return;
+    if (
+      e &&
+      pointerDrag.pointerId != null &&
+      e.pointerId !== pointerDrag.pointerId
+    ) {
+      return;
+    }
+    pointerDrag.active = false;
+    pointerDrag.pointerId = null;
+    el.classList.remove("is-dragging");
+    // Final snap + save
+    applyPointerAngleDeg(state.look.pointerAngleDeg ?? 0, {
+      snap: true,
+      persistNow: true,
+    });
+    endContinuous();
+  };
+
+  el.addEventListener("pointerup", endPtr);
+  el.addEventListener("pointercancel", endPtr);
+}
 
 $("#bg-image-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
@@ -6145,6 +6286,12 @@ async function init() {
   forceUiInteractive();
   updateSectionsCount();
   fillWheelSelect();
+  try {
+    bindPointerDrag();
+    wheel.layoutPointer?.();
+  } catch (err) {
+    console.warn("bindPointerDrag:", err);
+  }
   // Continuous BGM waits for a user gesture (browser autoplay rules);
   // first SPIN / Sound interaction will start it via syncBgm / startBgmForSpin.
   try {
@@ -6159,7 +6306,7 @@ async function init() {
     spinTarget.addEventListener("dblclick", (e) => {
       if (
         e.target.closest?.(
-          "#result-rigged, .result-actions-bar, .result-center-inner, .result-banner, .btn-toggle-sidebar, button, a, input, select, textarea"
+          "#pointer, #result-rigged, .result-actions-bar, .result-center-inner, .result-banner, .btn-toggle-sidebar, button, a, input, select, textarea"
         )
       ) {
         return;
@@ -6170,7 +6317,9 @@ async function init() {
     try {
       wheel.enablePointerDrag(spinTarget, {
         canStart: () =>
-          !wheel._dragging && getActiveSections(state).length > 0,
+          !wheel._dragging &&
+          !pointerDrag.active &&
+          getActiveSections(state).length > 0,
         onDragStart: ({ interrupted } = {}) => {
           audio.ensure();
           hideResults();

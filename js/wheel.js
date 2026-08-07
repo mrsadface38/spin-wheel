@@ -57,6 +57,8 @@ export class Wheel {
     this.bgMediaEl = options.bgMediaEl || null;
     this.sliceRotatorEl = options.sliceRotatorEl || null;
     this.centerMediaEl = options.centerMediaEl || null;
+    /** DOM triangle that marks the winner ray */
+    this.pointerEl = options.pointerEl || null;
 
     this.rotation = 0; // radians
     this.spinning = false;
@@ -151,6 +153,7 @@ export class Wheel {
       }
       this._layoutCenterMedia();
       this._syncSliceRotation();
+      this.layoutPointer();
       // Redraw bg once at new size; next spin frames use spinFrame path
       this.drawBackground();
       this.draw({ spinFrame: true });
@@ -166,6 +169,72 @@ export class Wheel {
     this._syncBgMedia();
     this._syncCenterMedia();
     this.draw();
+  }
+
+  /**
+   * Degrees: 0 = top, 90 = right, 180 = bottom, 270 = left.
+   * @returns {number}
+   */
+  pointerAngleDeg() {
+    const d = Number(this.look?.pointerAngleDeg);
+    if (!Number.isFinite(d)) return 0;
+    return ((d % 360) + 360) % 360;
+  }
+
+  /**
+   * Canvas/screen angle of the pointer ray (0 = east, clockwise, y-down).
+   * Top (default) = −π/2.
+   * @returns {number}
+   */
+  pointerScreenAngle() {
+    return (this.pointerAngleDeg() * Math.PI) / 180 - Math.PI / 2;
+  }
+
+  /** Whether Look locks the pointer in place (default true). */
+  isPointerLocked() {
+    return this.look?.pointerLocked !== false;
+  }
+
+  /**
+   * Place the DOM pointer on the rim, tip toward the hub.
+   * Call after resize / look change / pointer drag.
+   */
+  layoutPointer() {
+    const el = this.pointerEl;
+    if (!el) return;
+    const w = this._cssW || 0;
+    const h = this._cssH || 0;
+    if (w < 2 || h < 2) return;
+
+    const cx = w / 2;
+    const cy = h / 2;
+    const wheelR = Math.min(w, h) * 0.42;
+    const ang = this.pointerScreenAngle();
+    // Sit just outside the rim so the tip kisses the border
+    const dist = wheelR + 14;
+    const x = cx + Math.cos(ang) * dist;
+    const y = cy + Math.sin(ang) * dist;
+    // Triangle defaults pointing down; rotate so tip faces the hub
+    const rot = ang + Math.PI / 2;
+
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+    el.style.transform = `translate(-50%, -50%) rotate(${rot}rad)`;
+
+    const locked = this.isPointerLocked();
+    const canDrag = !locked && !this.spinning && !this._dragging;
+    el.classList.toggle("is-locked", locked);
+    el.classList.toggle("is-unlocked", !locked);
+    el.classList.toggle("is-draggable", canDrag);
+    el.style.pointerEvents = canDrag ? "auto" : "none";
+    el.title = locked
+      ? "Pointer locked (Look → unlock to move)"
+      : canDrag
+        ? "Drag to move winner pointer (snaps to 0° / 90° / 180° / 270°)"
+        : "Pointer";
+    el.setAttribute("aria-hidden", locked ? "true" : "false");
   }
 
   /**
@@ -212,7 +281,8 @@ export class Wheel {
   }
 
   angleAtPointer() {
-    let a = -Math.PI / 2 - this.rotation;
+    // Wheel-local angle under the movable pointer
+    let a = this.pointerScreenAngle() - this.rotation;
     a = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     return a;
   }
@@ -566,6 +636,9 @@ export class Wheel {
     }
     // Always rotate the DOM media layer (cheap GPU transform)
     this._syncSliceRotation();
+    if (!spinFrame) {
+      this.layoutPointer();
+    }
 
     const single = spinFrame ? this._spinSingle : slices.length === 1;
 
@@ -951,7 +1024,8 @@ export class Wheel {
 
   /**
    * Base land rotation for a section (not adjusted for current angle).
-   * pointer angle a = -π/2 - rotation  ⇒  rotation = -π/2 - landLocal
+   * pointer angle a = φ - rotation  ⇒  rotation = φ - landLocal
+   * (φ = pointerScreenAngle; default top is −π/2)
    */
   _landRotationBase(sectionId) {
     const slices = this.getSlices();
@@ -962,7 +1036,7 @@ export class Wheel {
       sl.start +
       pad +
       Math.random() * Math.max(0.001, sl.span - pad * 2);
-    return -Math.PI / 2 - landLocal;
+    return this.pointerScreenAngle() - landLocal;
   }
 
   /**
@@ -1178,11 +1252,13 @@ export class Wheel {
         this._applySizeFromParent();
       }
       this.draw({ spinFrame: false });
+      this.layoutPointer();
     } catch (err) {
       console.warn("draw after spin failed:", err);
       try {
         this._applySizeFromParent();
         this.draw({ spinFrame: false });
+        this.layoutPointer();
       } catch {
         /* last resort — still resolve */
       }
@@ -1290,7 +1366,8 @@ export class Wheel {
       Math.random() * Math.max(0.001, winnerSlice.span - pad * 2);
 
     const current = this.rotation;
-    let target = -Math.PI / 2 - landLocal;
+    const phi = this.pointerScreenAngle();
+    let target = phi - landLocal;
     const extraSpins = Math.max(6, Math.round(durationSec * 1.1) + Math.floor(Math.random() * 3));
     while (target <= current) target += Math.PI * 2;
     target += extraSpins * Math.PI * 2;
@@ -1300,12 +1377,13 @@ export class Wheel {
       ? Math.max(8, Math.round(durationSec * 1.4) + Math.floor(Math.random() * 4))
       : extraSpins;
     if (isSingle) {
-      target = -Math.PI / 2 - landLocal;
+      target = phi - landLocal;
       while (target <= current) target += Math.PI * 2;
       target += spins * Math.PI * 2;
     }
 
     this.spinning = true;
+    this.layoutPointer();
     this._lastSeg = this._tickIndex();
     this._lastTickAudioAt = 0;
     if (this.sliceRotatorEl) {
@@ -1635,7 +1713,7 @@ export class Wheel {
     if (
       e.target.closest &&
       e.target.closest(
-        "button, a, input, select, textarea, #result-rigged, .result-actions-bar, .result-center-inner, .result-banner, .btn-toggle-sidebar"
+        "button, a, input, select, textarea, #pointer, #result-rigged, .result-actions-bar, .result-center-inner, .result-banner, .btn-toggle-sidebar"
       )
     ) {
       return;
@@ -1807,6 +1885,7 @@ export class Wheel {
     this._spinSingle = slices.length === 1;
 
     this.spinning = true;
+    this.layoutPointer();
     this._lastSeg = this._tickIndex();
     this._lastTickAudioAt = 0;
     if (this.sliceRotatorEl) {

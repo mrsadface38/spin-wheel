@@ -300,6 +300,13 @@ export function defaultState() {
       weightSliderMin: 1,
       weightSliderMax: 20,
       weightSliderStep: 1,
+      /**
+       * Winner-pointer position around the wheel, degrees.
+       * 0 = top, 90 = right, 180 = bottom, 270 = left (free angle; snaps to cardinals while dragging).
+       */
+      pointerAngleDeg: 0,
+      /** When true, pointer cannot be dragged (default). */
+      pointerLocked: true,
     },
     sound: {
       enabled: true,
@@ -407,6 +414,18 @@ function migrate(data) {
     look.winnerTextColor = look.textColor || base.look.winnerTextColor;
   }
   look.forceWinnerTextColor = look.forceWinnerTextColor === true;
+  // Pointer angle 0–360 (0 = top). Missing → top.
+  {
+    let pad = Number(look.pointerAngleDeg);
+    if (!Number.isFinite(pad)) pad = 0;
+    look.pointerAngleDeg = ((pad % 360) + 360) % 360;
+  }
+  // Lock defaults ON (older saves never had the field → locked top pointer)
+  if (data.look && Object.prototype.hasOwnProperty.call(data.look, "pointerLocked")) {
+    look.pointerLocked = data.look.pointerLocked !== false;
+  } else {
+    look.pointerLocked = true;
+  }
   const spin = { ...base.spin, ...(data.spin || {}) };
   if (wasOldSave) {
     if (data.spin?.duration == null || data.spin.duration <= 5) {
