@@ -298,9 +298,9 @@ export function defaultState() {
       /** 1 = slowest divert, 10 = fastest (maps to glide duration) */
       divertSpeed: 5,
       /** Mute BGM during the rig divert move */
-      muteMusicOnDivert: false,
+      muteMusicOnDivert: true,
       /** Mute spin tick / loop SFX only during the last-moment divert */
-      muteSpinTicksOnRig: false,
+      muteSpinTicksOnRig: true,
     },
   };
 }
@@ -373,8 +373,15 @@ function migrate(data) {
         Number.isFinite(Number(data.secret.divertSpeed))
           ? Math.min(10, Math.max(1, Math.round(Number(data.secret.divertSpeed))))
           : 5,
-      muteMusicOnDivert: !!(data.secret && data.secret.muteMusicOnDivert),
-      muteSpinTicksOnRig: !!(data.secret && data.secret.muteSpinTicksOnRig),
+      // Default ON when key missing (older saves never set these)
+      muteMusicOnDivert:
+        data.secret && "muteMusicOnDivert" in data.secret
+          ? !!data.secret.muteMusicOnDivert
+          : true,
+      muteSpinTicksOnRig:
+        data.secret && "muteSpinTicksOnRig" in data.secret
+          ? !!data.secret.muteSpinTicksOnRig
+          : true,
     },
   };
 }
