@@ -674,6 +674,8 @@ body.focus-mode .stage-panel {
   top: 0;
   overflow: hidden;
   pointer-events: none;
+  /* Isolate paint so GIF frame updates don't dirty the whole wheel */
+  contain: paint;
 }
 
 .slice-bg-wedge.mode-fill > img.slice-bg-fill {
@@ -689,14 +691,35 @@ body.focus-mode .stage-panel {
   transform-origin: center center;
   user-select: none;
   -webkit-user-drag: none;
+  /* One compositor layer per fill GIF (cheaper than re-clipping each frame) */
+  backface-visibility: hidden;
 }
 
-/* Tiled / looped smaller copies of the same image */
+/*
+ * Tiled pattern — CSS background-repeat (ONE decoder per wedge).
+ * Old grid of <img> tags spawned dozens of GIF animators and tanked FPS.
+ */
+.slice-bg-tile-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  background-repeat: repeat;
+  image-rendering: auto;
+  backface-visibility: hidden;
+}
+
+.slice-media-rotator.is-spinning .slice-bg-tile-layer,
+.slice-media-rotator.is-spinning .slice-bg-wedge.mode-fill > img.slice-bg-fill {
+  /* Promote only while the wheel is spinning */
+  will-change: transform;
+}
+
+/* Legacy class kept so old DOM doesn't break mid-session */
 .slice-bg-tile-grid {
   position: absolute;
   display: grid;
   pointer-events: none;
-  will-change: transform;
 }
 
 .slice-bg-tile-grid img {
@@ -705,10 +728,6 @@ body.focus-mode .stage-panel {
   object-fit: cover;
   object-position: center;
   display: block;
-  transform: rotate(var(--image-rotation, 0deg));
-  transform-origin: center center;
-  user-select: none;
-  -webkit-user-drag: none;
 }
 
 #wheel-overlay {

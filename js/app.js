@@ -32,7 +32,7 @@ import {
   duplicateWheel,
 } from "./wheels.js";
 import { AudioManager } from "./audio.js";
-import { Wheel } from "./wheel.js";
+import { Wheel, isLikelyAnimatedImage } from "./wheel.js";
 import {
   computeFillImageLayout,
   normalizeImageLayoutMode,
@@ -1227,9 +1227,11 @@ function renderSections() {
       ]
         .filter(Boolean)
         .join(" · ");
-      const bg = disp.imageData
-        ? `background-image:url(${JSON.stringify(disp.imageData)});background-color:${disp.color}`
-        : `background:${disp.color}`;
+      // Animated GIFs as list swatches re-decode constantly — use solid color instead
+      const bg =
+        disp.imageData && !isLikelyAnimatedImage(disp.imageData)
+          ? `background-image:url(${JSON.stringify(disp.imageData)});background-color:${disp.color}`
+          : `background:${disp.color}`;
       const dragHandle = reorderable
         ? `<div class="section-drag-handle" title="Drag to reorder (Your order)" aria-label="Drag to reorder" role="button">
             <span class="drag-grip" aria-hidden="true"></span>
@@ -1302,10 +1304,11 @@ function renderGroups() {
       ]
         .filter(Boolean)
         .join(" · ");
-      // Quote data URLs — unquoted "data:image/png;base64,…" breaks at the semicolon
-      const swatchBg = g.imageData
-        ? `background-image:url(${JSON.stringify(g.imageData)});background-color:${g.color || "#3ecf8e"}`
-        : `background:${g.active ? g.color || "#3ecf8e" : "#555"}`;
+      // Quote data URLs; skip animated GIFs (laggy list swatches)
+      const swatchBg =
+        g.imageData && !isLikelyAnimatedImage(g.imageData)
+          ? `background-image:url(${JSON.stringify(g.imageData)});background-color:${g.color || "#3ecf8e"}`
+          : `background:${g.active ? g.color || "#3ecf8e" : "#555"}`;
       return `
         <div class="group-card ${g.active ? "" : "inactive-card"} ${groupHasAnyOverride(g) ? "group-override-on" : ""}" data-id="${g.id}">
           <div class="group-drag-handle" title="Drag to reorder" aria-label="Drag to reorder" role="button">
@@ -3485,35 +3488,25 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
     wedge.style.setProperty("--image-rotation", `${rot}deg`);
 
     if (mode === "tile") {
-      const grid = document.createElement("div");
-      grid.className = "slice-bg-tile-grid";
+      // Single CSS background (matches main wheel — one GIF decoder, not a grid of imgs)
+      const layer = document.createElement("div");
+      layer.className = "slice-bg-tile-layer";
       const base = Math.max(18, radiusCss * 0.2);
       const scale = draft.imageTileScale;
       const tilePx = Math.max(10, base * scale);
-      let cols = Math.max(1, Math.ceil(d / tilePx)) + 2;
-      let rows = Math.max(1, Math.ceil(d / tilePx)) + 2;
-      const maxCells = 100;
-      if (cols * rows > maxCells) {
-        const shrink = Math.sqrt(maxCells / (cols * rows));
-        cols = Math.max(3, Math.ceil(cols * shrink));
-        rows = Math.max(3, Math.ceil(rows * shrink));
-      }
       const ox = (draft.imageTileOffsetX / 100) * tilePx;
       const oy = (draft.imageTileOffsetY / 100) * tilePx;
-      grid.style.gridTemplateColumns = `repeat(${cols}, ${tilePx}px)`;
-      grid.style.gridTemplateRows = `repeat(${rows}, ${tilePx}px)`;
-      grid.style.width = `${cols * tilePx}px`;
-      grid.style.height = `${rows * tilePx}px`;
-      grid.style.left = `${-tilePx + ox}px`;
-      grid.style.top = `${-tilePx + oy}px`;
-      for (let i = 0; i < cols * rows; i++) {
-        const img = document.createElement("img");
-        img.src = draft.imageData;
-        img.alt = "";
-        img.draggable = false;
-        grid.appendChild(img);
-      }
-      wedge.appendChild(grid);
+      layer.style.width = `${d}px`;
+      layer.style.height = `${d}px`;
+      layer.style.left = "0";
+      layer.style.top = "0";
+      layer.style.backgroundImage = `url(${JSON.stringify(draft.imageData)})`;
+      layer.style.backgroundSize = `${tilePx}px ${tilePx}px`;
+      layer.style.backgroundRepeat = "repeat";
+      layer.style.backgroundPosition = `${ox}px ${oy}px`;
+      layer.style.transformOrigin = "50% 50%";
+      layer.style.transform = `rotate(${rot}deg)`;
+      wedge.appendChild(layer);
     } else {
       const img = document.createElement("img");
       img.className = "slice-bg-fill";

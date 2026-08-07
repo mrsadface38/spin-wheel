@@ -30,6 +30,47 @@ function loadImage(src) {
 }
 
 /**
+ * True when src is likely an animated image (GIF / APNG / animated WebP).
+ * Used to avoid N animated decoders and to freeze frames while spinning.
+ */
+export function isLikelyAnimatedImage(src) {
+  if (!src || typeof src !== "string") return false;
+  const head = src.slice(0, 48).toLowerCase();
+  if (head.startsWith("data:image/gif")) return true;
+  if (head.startsWith("data:image/apng")) return true;
+  // WebP may be static; treat as animated only if filename/path hints
+  if (/\.gif(\?|#|$)/i.test(src)) return true;
+  if (/\.apng(\?|#|$)/i.test(src)) return true;
+  return false;
+}
+
+/** Snapshot an HTMLImageElement to a (possibly downscaled) PNG data URL. */
+function snapshotImageToPng(img, maxEdge = 512) {
+  try {
+    const w = img.naturalWidth || img.width || 0;
+    const h = img.naturalHeight || img.height || 0;
+    if (w < 1 || h < 1) return null;
+    let dw = w;
+    let dh = h;
+    const edge = Math.max(w, h);
+    if (edge > maxEdge) {
+      const sc = maxEdge / edge;
+      dw = Math.max(1, Math.round(w * sc));
+      dh = Math.max(1, Math.round(h * sc));
+    }
+    const c = document.createElement("canvas");
+    c.width = dw;
+    c.height = dh;
+    const ctx = c.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, dw, dh);
+    return c.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+}
+
+/**
  * CSS clip-path polygon for a pie wedge. Box is 2r×2r with center at (r,r).
  * Angles match canvas: 0 = east, increasing clockwise (y-down).
  */
@@ -76,6 +117,8 @@ export class Wheel {
     /** @type {Map<string, HTMLImageElement>} natural size cache for layout */
     this._images = new Map();
     this._sectionMediaKey = "";
+    /** When true, animated GIFs are replaced with static PNG snapshots */
+    this._mediaFrozen = false;
 
     this.onTick = options.onTick || (() => {});
     this.onLand = options.onLand || (() => {});
@@ -353,18 +396,32 @@ export class Wheel {
   _syncCenterMedia() {
     const el = this.centerMediaEl;
     if (!el) return;
-    el.innerHTML = "";
     const src = this.look.centerImage;
-    if (src) {
-      const img = document.createElement("img");
-      img.src = src;
-      img.alt = "";
-      img.draggable = false;
-      el.appendChild(img);
-      el.classList.add("has-media");
-    } else {
+    const existing = el.querySelector("img");
+    if (!src) {
+      el.innerHTML = "";
       el.classList.remove("has-media");
+      return;
     }
+    // Reuse <img> so GIF animation isn't restarted every look sync
+    if (existing && existing.dataset.liveSrc === src && existing.dataset.frozen !== "1") {
+      el.classList.add("has-media");
+      this._layoutCenterMedia();
+      return;
+    }
+    if (existing && existing.dataset.liveSrc === src && this._mediaFrozen) {
+      el.classList.add("has-media");
+      this._layoutCenterMedia();
+      return;
+    }
+    el.innerHTML = "";
+    const img = document.createElement("img");
+    img.src = src;
+    img.dataset.liveSrc = src;
+    img.alt = "";
+    img.draggable = false;
+    el.appendChild(img);
+    el.classList.add("has-media");
     this._layoutCenterMedia();
   }
 
@@ -405,15 +462,23 @@ export class Wheel {
       wedge.dataset.imageMode = mode;
 
       if (mode === "tile") {
-        const grid = document.createElement("div");
-        grid.className = "slice-bg-tile-grid";
-        wedge.appendChild(grid);
+        // One CSS-background layer (not N <img>s) so GIFs only decode once per wedge
+        const layer = document.createElement("div");
+        layer.className = "slice-bg-tile-layer";
+        layer.dataset.src = sl.section.imageData;
+        wedge.appendChild(layer);
       } else {
         const img = document.createElement("img");
         img.className = "slice-bg-fill";
         img.src = sl.section.imageData;
+        img.dataset.liveSrc = sl.section.imageData;
         img.alt = sl.section.label || "";
         img.draggable = false;
+        img.decoding = "async";
+        // Animated GIFs: don't let the browser prioritize them over spin frames
+        if (isLikelyAnimatedImage(sl.section.imageData)) {
+          img.loading = "lazy";
+        }
         wedge.appendChild(img);
       }
 
@@ -422,6 +487,10 @@ export class Wheel {
 
     this._layoutSliceMedia(slices, radius);
     this._syncSliceRotation();
+    // Re-apply freeze if a rebuild happened mid-spin
+    if (this._mediaFrozen) {
+      void this._freezeAnimatedMedia();
+    }
   }
 
   _sectionMediaSig(s) {
@@ -441,11 +510,12 @@ export class Wheel {
   }
 
   /**
-   * Build / update a grid of small images that tile across the wedge square.
-   * Uses real <img> tags so GIFs keep animating in each cell.
+   * Tile pattern across the wedge using ONE CSS background layer.
+   * Avoids dozens of animated <img> tags (GIFs used to spawn up to ~220 decoders).
    * @param {number} offsetXPct -100..100 (% of one tile)
    * @param {number} offsetYPct -100..100 (% of one tile)
    * @param {number|null} [sliceMid] when set, rotate pattern with wedge mid-angle
+   * @param {number} [imageRotationDeg] per-image rotation
    */
   _fillTileGrid(
     wedge,
@@ -454,71 +524,147 @@ export class Wheel {
     tileScale,
     offsetXPct = 0,
     offsetYPct = 0,
-    sliceMid = null
+    sliceMid = null,
+    imageRotationDeg = 0
   ) {
-    const grid = wedge.querySelector(".slice-bg-tile-grid");
-    if (!grid || !src) return;
+    const layer = wedge.querySelector(".slice-bg-tile-layer");
+    if (!layer || !src) return;
 
     const base = Math.max(22, radius * 0.2);
     const scale = Math.min(3, Math.max(0.1, Number(tileScale) || 1));
     const tilePx = Math.max(10, base * scale);
     const d = radius * 2;
-    // Extra ring of tiles so X/Y offset never leaves empty edges
-    let cols = Math.max(1, Math.ceil(d / tilePx)) + 2;
-    let rows = Math.max(1, Math.ceil(d / tilePx)) + 2;
-    const maxCells = 220;
-    if (cols * rows > maxCells) {
-      const shrink = Math.sqrt(maxCells / (cols * rows));
-      cols = Math.max(3, Math.ceil(cols * shrink));
-      rows = Math.max(3, Math.ceil(rows * shrink));
-    }
+    const ox =
+      (Math.min(100, Math.max(-100, Number(offsetXPct) || 0)) / 100) * tilePx;
+    const oy =
+      (Math.min(100, Math.max(-100, Number(offsetYPct) || 0)) / 100) * tilePx;
 
-    const ox = ((Math.min(100, Math.max(-100, Number(offsetXPct) || 0)) / 100) * tilePx);
-    const oy = ((Math.min(100, Math.max(-100, Number(offsetYPct) || 0)) / 100) * tilePx);
+    // Prefer frozen snapshot while spinning; else live src
+    const paintSrc =
+      (this._mediaFrozen && layer.dataset.frozenSrc) ||
+      layer.dataset.liveSrc ||
+      src;
+    layer.dataset.src = src;
+    if (!layer.dataset.liveSrc) layer.dataset.liveSrc = src;
 
-    const sig = `${src}|${cols}x${rows}|${tilePx.toFixed(2)}`;
-    if (grid.dataset.sig !== sig) {
-      grid.dataset.sig = sig;
-      grid.style.gridTemplateColumns = `repeat(${cols}, ${tilePx}px)`;
-      grid.style.gridTemplateRows = `repeat(${rows}, ${tilePx}px)`;
-      grid.style.width = `${cols * tilePx}px`;
-      grid.style.height = `${rows * tilePx}px`;
-      grid.innerHTML = "";
-      const total = cols * rows;
-      for (let i = 0; i < total; i++) {
-        const img = document.createElement("img");
-        img.src = src;
-        img.alt = "";
-        img.draggable = false;
-        grid.appendChild(img);
-      }
+    const sig = `${paintSrc}|${tilePx.toFixed(2)}|${ox.toFixed(1)}|${oy.toFixed(1)}`;
+    if (layer.dataset.sig !== sig) {
+      layer.dataset.sig = sig;
+      layer.style.backgroundImage = `url(${JSON.stringify(paintSrc)})`;
+      layer.style.backgroundSize = `${tilePx}px ${tilePx}px`;
+      layer.style.backgroundRepeat = "repeat";
+      layer.style.backgroundPosition = `${ox}px ${oy}px`;
     } else {
-      grid.style.gridTemplateColumns = `repeat(${cols}, ${tilePx}px)`;
-      grid.style.gridTemplateRows = `repeat(${rows}, ${tilePx}px)`;
-      grid.style.width = `${cols * tilePx}px`;
-      grid.style.height = `${rows * tilePx}px`;
+      layer.style.backgroundSize = `${tilePx}px ${tilePx}px`;
+      layer.style.backgroundPosition = `${ox}px ${oy}px`;
     }
 
-    // Anchor so one full tile sits past the top-left; offset shifts the pattern
-    const left = -tilePx + ox;
-    const top = -tilePx + oy;
-    grid.style.left = `${left}px`;
-    grid.style.top = `${top}px`;
+    // Cover full wedge box; origin at hub (center of 2r box)
+    layer.style.width = `${d}px`;
+    layer.style.height = `${d}px`;
+    layer.style.left = "0";
+    layer.style.top = "0";
+    layer.style.transformOrigin = "50% 50%";
 
-    // Follow-slice: spin the whole pattern around the hub with the wedge
+    let orientDeg = 0;
     if (sliceMid != null && Number.isFinite(Number(sliceMid))) {
-      const delta = Number(sliceMid) - -Math.PI / 2;
-      const orientDeg = (delta * 180) / Math.PI;
-      const originX = radius - left;
-      const originY = radius - top;
-      grid.style.transformOrigin = `${originX}px ${originY}px`;
-      grid.style.transform = `rotate(${orientDeg}deg)`;
-      wedge.style.setProperty("--slice-orient", `${orientDeg}deg`);
-    } else {
-      grid.style.transformOrigin = "";
-      grid.style.transform = "";
-      wedge.style.setProperty("--slice-orient", "0deg");
+      orientDeg = ((Number(sliceMid) - -Math.PI / 2) * 180) / Math.PI;
     }
+    const imgRot = Number(imageRotationDeg) || 0;
+    layer.style.transform = `rotate(${orientDeg + imgRot}deg)`;
+    wedge.style.setProperty("--slice-orient", `${orientDeg}deg`);
+  }
+
+  /**
+   * Freeze animated GIFs to static PNG snapshots (call when spinning starts).
+   * Keeps the wheel smooth — animating GIFs + rotating layers is very expensive.
+   */
+  async _freezeAnimatedMedia() {
+    this._mediaFrozen = true;
+    const tasks = [];
+
+    const freezeImg = (img) => {
+      if (!img || img.dataset.frozen === "1") return;
+      const live = img.dataset.liveSrc || img.getAttribute("src") || img.src;
+      if (!isLikelyAnimatedImage(live)) return;
+      if (!img.dataset.liveSrc) img.dataset.liveSrc = live;
+      tasks.push(
+        new Promise((resolve) => {
+          const snap = () => {
+            const png = snapshotImageToPng(img, 640);
+            if (png) {
+              img.src = png;
+              img.dataset.frozen = "1";
+            }
+            resolve();
+          };
+          if (img.complete && img.naturalWidth > 0) snap();
+          else {
+            const onDone = () => {
+              img.removeEventListener("load", onDone);
+              img.removeEventListener("error", onDone);
+              snap();
+            };
+            img.addEventListener("load", onDone);
+            img.addEventListener("error", onDone);
+          }
+        })
+      );
+    };
+
+    this.sliceRotatorEl
+      ?.querySelectorAll("img.slice-bg-fill")
+      .forEach((img) => freezeImg(img));
+    this.centerMediaEl?.querySelectorAll("img").forEach((img) => freezeImg(img));
+    this.bgMediaEl?.querySelectorAll("img").forEach((img) => freezeImg(img));
+
+    // Tile CSS backgrounds: snapshot via Image then set frozenSrc
+    this.sliceRotatorEl
+      ?.querySelectorAll(".slice-bg-tile-layer")
+      .forEach((layer) => {
+        const live = layer.dataset.liveSrc || layer.dataset.src || "";
+        if (!isLikelyAnimatedImage(live) || layer.dataset.frozenSrc) return;
+        tasks.push(
+          loadImage(live).then((img) => {
+            if (!img) return;
+            const png = snapshotImageToPng(img, 384);
+            if (!png) return;
+            layer.dataset.frozenSrc = png;
+            layer.dataset.sig = ""; // force repaint
+            layer.style.backgroundImage = `url(${JSON.stringify(png)})`;
+          })
+        );
+      });
+
+    await Promise.all(tasks);
+  }
+
+  /** Restore live animated sources after spin. */
+  _unfreezeAnimatedMedia() {
+    this._mediaFrozen = false;
+    const thawImg = (img) => {
+      if (!img || img.dataset.frozen !== "1") return;
+      const live = img.dataset.liveSrc;
+      if (live) img.src = live;
+      delete img.dataset.frozen;
+    };
+    this.sliceRotatorEl
+      ?.querySelectorAll("img.slice-bg-fill")
+      .forEach((img) => thawImg(img));
+    this.centerMediaEl?.querySelectorAll("img").forEach((img) => thawImg(img));
+    this.bgMediaEl?.querySelectorAll("img").forEach((img) => thawImg(img));
+
+    this.sliceRotatorEl
+      ?.querySelectorAll(".slice-bg-tile-layer")
+      .forEach((layer) => {
+        if (!layer.dataset.frozenSrc) return;
+        delete layer.dataset.frozenSrc;
+        layer.dataset.sig = "";
+        const live = layer.dataset.liveSrc || layer.dataset.src;
+        if (live) {
+          layer.style.backgroundImage = `url(${JSON.stringify(live)})`;
+        }
+      });
   }
 
   _layoutSliceMedia(slices, radius) {
@@ -559,7 +705,8 @@ export class Wheel {
           sl.section.imageTileScale ?? 1,
           sl.section.imageTileOffsetX ?? 0,
           sl.section.imageTileOffsetY ?? 0,
-          layoutMode === "slice" ? sl.mid : null
+          layoutMode === "slice" ? sl.mid : null,
+          Number(sl.section.imageRotation) || 0
         );
       } else if (mode === "fill") {
         this._layoutFillImage(wedge, sl, radius);
@@ -1139,6 +1286,12 @@ export class Wheel {
     if (this.sliceRotatorEl) {
       this.sliceRotatorEl.classList.remove("is-spinning");
     }
+    // Resume GIF animation now that the wheel is idle
+    try {
+      this._unfreezeAnimatedMedia();
+    } catch {
+      /* ignore */
+    }
     this._normalizeRotation();
     try {
       if (!this.wheelCanvas.width || !this.wheelCanvas.height) {
@@ -1283,6 +1436,11 @@ export class Wheel {
     if (this.sliceRotatorEl) {
       this.sliceRotatorEl.classList.add("is-spinning");
     }
+    // Freeze GIFs quickly so spin frames stay smooth (don't wait forever)
+    void Promise.race([
+      this._freezeAnimatedMedia(),
+      new Promise((r) => setTimeout(r, 100)),
+    ]);
     const startRot = current;
     const delta = target - startRot;
     const duration = Math.max(0.5, durationSec) * 1000;
@@ -1642,6 +1800,11 @@ export class Wheel {
     if (this.sliceRotatorEl) {
       this.sliceRotatorEl.classList.add("is-spinning");
     }
+    // Freeze GIFs while dragging/spinning so rotate stays smooth
+    void Promise.race([
+      this._freezeAnimatedMedia(),
+      new Promise((r) => setTimeout(r, 80)),
+    ]);
 
     if (this._dragEl) this._dragEl.style.cursor = "grabbing";
     try {
@@ -1785,6 +1948,10 @@ export class Wheel {
     if (this.sliceRotatorEl) {
       this.sliceRotatorEl.classList.add("is-spinning");
     }
+    void Promise.race([
+      this._freezeAnimatedMedia(),
+      new Promise((r) => setTimeout(r, 100)),
+    ]);
 
     // Stronger friction when faster feels more natural
     const friction = 1.65; // 1/s exponential decay rate
