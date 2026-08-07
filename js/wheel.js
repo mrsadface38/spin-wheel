@@ -1064,7 +1064,7 @@ export class Wheel {
   }
 
   /**
-   * Pick a non-avoided section to slide onto — prefer a visibly longer glide.
+   * Pick a non-avoided section to slide onto — nearest neighbor (shortest glide).
    * @param {Array<{section: {id: string}}>} slices
    * @param {Set<string>} avoidIds
    * @param {number} fromRot
@@ -1074,7 +1074,7 @@ export class Wheel {
     const candidates = slices.filter((sl) => !avoidIds.has(sl.section.id));
     if (!candidates.length) return null;
     let bestId = candidates[0].section.id;
-    let bestDist = -1;
+    let bestDist = Infinity;
     for (const sl of candidates) {
       const target = this.targetRotationForSection(
         sl.section.id,
@@ -1082,9 +1082,9 @@ export class Wheel {
         "shortest"
       );
       const dist = Math.abs(target - fromRot);
-      // Slight weight randomness so it isn't always the same neighbor
-      const score = dist + Math.random() * 0.15;
-      if (score > bestDist) {
+      // Prefer the closest land; tiny jitter only breaks exact ties
+      const score = dist + Math.random() * 1e-4;
+      if (score < bestDist) {
         bestDist = score;
         bestId = sl.section.id;
       }
