@@ -172,18 +172,18 @@ export class Wheel {
   }
 
   /**
-   * Degrees: 0 = top, 90 = right, 180 = bottom, 270 = left.
+   * Degrees: 0 = top, 90 = right (default), 180 = bottom, 270 = left.
    * @returns {number}
    */
   pointerAngleDeg() {
     const d = Number(this.look?.pointerAngleDeg);
-    if (!Number.isFinite(d)) return 0;
+    if (!Number.isFinite(d)) return 90;
     return ((d % 360) + 360) % 360;
   }
 
   /**
    * Canvas/screen angle of the pointer ray (0 = east, clockwise, y-down).
-   * Top (default) = −π/2.
+   * Right (default 90°) = 0; top (0°) = −π/2.
    * @returns {number}
    */
   pointerScreenAngle() {
@@ -1025,7 +1025,7 @@ export class Wheel {
   /**
    * Base land rotation for a section (not adjusted for current angle).
    * pointer angle a = φ - rotation  ⇒  rotation = φ - landLocal
-   * (φ = pointerScreenAngle; default top is −π/2)
+   * (φ = pointerScreenAngle; default right is 0)
    */
   _landRotationBase(sectionId) {
     const slices = this.getSlices();

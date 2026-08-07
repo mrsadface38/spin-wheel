@@ -5556,7 +5556,10 @@ function snapPointerDeg(deg) {
  */
 function pointerDegFromClient(clientX, clientY) {
   const stage = $("#stage");
-  if (!stage) return state.look.pointerAngleDeg || 0;
+  if (!stage) {
+    const d = Number(state.look?.pointerAngleDeg);
+    return Number.isFinite(d) ? normalizePointerDeg(d) : 90;
+  }
   const rect = stage.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
@@ -5644,10 +5647,15 @@ function bindPointerDrag() {
     pointerDrag.pointerId = null;
     el.classList.remove("is-dragging");
     // Final snap + save
-    applyPointerAngleDeg(state.look.pointerAngleDeg ?? 0, {
-      snap: true,
-      persistNow: true,
-    });
+    applyPointerAngleDeg(
+      Number.isFinite(Number(state.look?.pointerAngleDeg))
+        ? state.look.pointerAngleDeg
+        : 90,
+      {
+        snap: true,
+        persistNow: true,
+      }
+    );
     endContinuous();
   };
 
