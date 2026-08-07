@@ -866,77 +866,66 @@ export class Wheel {
       // Keep clear of the hub
       const hubR =
         radius * Math.max(0.2, (this.look.centerSize ?? 0.16) + 0.06);
+      const maxRadial = Math.max(8 * dpr, outerR - hubR);
 
-      // Usable chord width at radius r (full height budget across the mid-line)
+      // Usable chord height at radius r (across the mid-line)
       const chordH = (r) => {
         const half = Math.max(
           0,
           r * Math.sin(Math.min(Math.PI / 2, span / 2))
         );
-        // Leave a gap so neighbors never touch; tighter near center
         const pad = Math.max(1.5 * dpr, half * 0.22);
         return Math.max(0, (half - pad) * 2);
       };
 
       const maxFontPx = radius * 0.14;
 
-      // Iteratively pick scale so the INNER end of the text still fits the
-      // (much narrower) wedge there — that's what was clipping near the middle.
+      // UNIFORM scale only — never squash/skew (unreadable on thin slices).
+      // Pick the largest s where the full string fits inside the wedge,
+      // including at the narrow inner end of the text.
       let s = Math.min(
         maxFontPx / baseFont,
         chordH(outerR) / th,
-        Math.max(8 * dpr, outerR - hubR) / tw
+        maxRadial / tw
       );
       if (!Number.isFinite(s) || s <= 0) s = 0.04;
 
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 14; i++) {
         const h = th * s;
         const w = tw * s;
-        // Innermost radius of the string
-        let rInner = outerR - w;
+        const rInner = outerR - w;
         if (rInner < hubR) {
-          s = Math.min(s, Math.max(8 * dpr, outerR - hubR) / tw);
+          const next = maxRadial / tw;
+          if (next >= s - 1e-9) break;
+          s = next;
           continue;
         }
-        // Height must fit the chord at the INNER end (tightest point)
-        const availInner = chordH(rInner);
-        if (availInner > 0 && h > availInner) {
-          s = Math.min(s, availInner / th);
-          continue;
-        }
-        // Also don't exceed outer chord
-        const availOuter = chordH(outerR);
-        if (availOuter > 0 && h > availOuter) {
-          s = Math.min(s, availOuter / th);
+        const need = Math.min(chordH(outerR), chordH(rInner));
+        if (need > 0 && h > need) {
+          const next = need / th;
+          if (next >= s - 1e-9) break;
+          s = next;
           continue;
         }
         break;
       }
       if (!Number.isFinite(s) || s <= 0) s = 0.04;
 
-      // Optional: if text would still dig past hubR, shorten only (keep height)
-      let sx = s;
-      let sy = s;
-      let textW = tw * sx;
-      if (outerR - textW < hubR) {
-        sx = Math.max(0.04, (outerR - hubR) / tw);
-        textW = tw * sx;
-      }
-      // Final height check at the actual inner end
-      const rInnerFinal = Math.max(hubR, outerR - textW);
-      const hFinal = th * sy;
-      const avail = chordH(rInnerFinal);
-      if (avail > 0 && hFinal > avail) {
-        sy = avail / th;
+      // Floor: if still microscopic, skip drawing rather than a skew smear
+      const minReadable = (7 * dpr) / baseFont;
+      if (s < minReadable * 0.55) {
+        ctx.restore();
+        return;
       }
 
-      // +x = radial out. Place so the LAST character is at outerR
-      // (as close to the circumference as possible). First char is more
-      // inward → reading left-to-right = inside → outside.
+      const textW = tw * s;
+
+      // +x = radial out. LAST character at outerR (near circumference).
+      // First char more inward → left-to-right = inside → outside.
       ctx.rotate(mid);
       ctx.translate(outerR - textW, 0);
       ctx.textAlign = "left";
-      ctx.scale(sx, sy);
+      ctx.scale(s, s);
       ctx.fillText(label, 0, 0);
       ctx.restore();
     } catch (err) {
