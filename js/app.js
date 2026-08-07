@@ -3409,8 +3409,12 @@ function getReverseTargetKind() {
 /** @returns {"reverse-first"|"rig-first"} */
 function getSecretComboOrder() {
   const s = ensureSecretState();
+  // Live dropdown first (user may have just changed it)
   const live = $("#secret-combo-order")?.value;
-  if (live === "rig-first" || live === "reverse-first") return live;
+  if (live === "rig-first" || live === "reverse-first") {
+    s.comboOrder = live;
+    return live;
+  }
   return s.comboOrder === "rig-first" ? "rig-first" : "reverse-first";
 }
 
@@ -4315,17 +4319,18 @@ function onReverseSteerStart() {
 }
 
 function getSpinRigOptions() {
-  // Persist any live secret form state so spin always sees current toggles
-  if ($("#tab-secret") && !$("#tab-secret").hidden) {
-    try {
+  // Always sync live secret form (combo order, rig/reverse targets) before a spin
+  try {
+    if ($("#secret-combo-order") || $("#secret-rig-it") || $("#secret-reverse-rig-it")) {
       saveSecretPanel();
-    } catch {
-      /* ignore */
     }
+  } catch {
+    /* ignore */
   }
   const forceId = getRigForceSectionId();
   const avoidIds = getReverseAvoidSectionIds();
   const avoidGroupId = getReverseAvoidGroupId();
+  const comboOrder = getSecretComboOrder();
   return {
     forceSectionId: forceId,
     avoidSectionIds: avoidIds.length ? avoidIds : null,
@@ -4333,7 +4338,7 @@ function getSpinRigOptions() {
     avoidGroupId: avoidGroupId || null,
     steerMs: getDivertSteerMs(),
     reverseSteerMs: getReverseSteerMs(),
-    comboOrder: getSecretComboOrder(),
+    comboOrder,
     onSteerStart: forceId ? () => onRigSteerStart() : undefined,
     onReverseSteerStart:
       avoidIds.length || avoidGroupId
@@ -4408,6 +4413,11 @@ $("#secret-rig-group")?.addEventListener("change", () => {
 });
 
 $("#secret-combo-order")?.addEventListener("change", () => {
+  const sec = ensureSecretState();
+  sec.comboOrder =
+    $("#secret-combo-order")?.value === "rig-first"
+      ? "rig-first"
+      : "reverse-first";
   saveSecretPanel();
 });
 
