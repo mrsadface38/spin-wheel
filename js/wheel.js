@@ -117,8 +117,27 @@ export class Wheel {
     /** @type {Map<string, HTMLImageElement>} natural size cache for layout */
     this._images = new Map();
     this._sectionMediaKey = "";
-    /** When true, animated GIFs are replaced with static PNG snapshots */
+    /** When true, animated GIF paint loop is paused (spin / drag) */
     this._mediaFrozen = false;
+    /**
+     * Live animated surfaces: low-res canvas proxies fed from a hidden <img>.
+     * Displaying a full-res GIF under CSS clip-path is extremely expensive.
+     * @type {Array<{
+     *   kind: 'fill'|'center'|'bg'|'tile',
+     *   srcImg: HTMLImageElement,
+     *   canvas: HTMLCanvasElement,
+     *   maxEdge: number,
+     *   liveSrc: string,
+     *   tilePx?: number,
+     * }>}
+     */
+    this._animSurfaces = [];
+    this._animRaf = 0;
+    this._animLastPaint = 0;
+    /** Cap internal GIF resolution (CSS scales it up) */
+    this._animMaxEdge = 256;
+    /** GIF paint rate while idle (Hz) — lower = less lag */
+    this._animFps = 12;
 
     this.onTick = options.onTick || (() => {});
     this.onLand = options.onLand || (() => {});
@@ -220,6 +239,7 @@ export class Wheel {
     this.invalidateGeometry();
     this._syncBgMedia();
     this._syncCenterMedia();
+    this._pruneAnimSurfaces();
     this.draw();
   }
 
@@ -370,21 +390,33 @@ export class Wheel {
     const el = this.bgMediaEl;
     if (!el) return;
     const src = this.look.backgroundImage;
-    const existing = el.querySelector("img");
     if (!src) {
       el.innerHTML = "";
       el.style.backgroundImage = "";
       el.classList.remove("has-media");
       return;
     }
-    // Reuse <img> when possible so GIF animation isn't restarted every redraw
-    if (existing && existing.dataset.src === src) {
+    const existingCanvas = el.querySelector("canvas.bg-anim-canvas");
+    const existingImg = el.querySelector("img.bg-static");
+    if (isLikelyAnimatedImage(src)) {
+      if (existingCanvas && existingCanvas.dataset.liveSrc === src) {
+        el.classList.add("has-media");
+        return;
+      }
+      el.innerHTML = "";
+      el.style.backgroundImage = "";
+      this._mountAnimSurface(el, src, "bg", { maxEdge: 480 });
+      el.classList.add("has-media");
+      return;
+    }
+    if (existingImg && existingImg.dataset.src === src) {
       el.classList.add("has-media");
       return;
     }
     el.innerHTML = "";
     el.style.backgroundImage = "";
     const img = document.createElement("img");
+    img.className = "bg-static";
     img.src = src;
     img.dataset.src = src;
     img.alt = "";
@@ -397,25 +429,37 @@ export class Wheel {
     const el = this.centerMediaEl;
     if (!el) return;
     const src = this.look.centerImage;
-    const existing = el.querySelector("img");
     if (!src) {
       el.innerHTML = "";
       el.classList.remove("has-media");
+      this._pruneAnimSurfaces();
       return;
     }
-    // Reuse <img> so GIF animation isn't restarted every look sync
-    if (existing && existing.dataset.liveSrc === src && existing.dataset.frozen !== "1") {
+    const existingCanvas = el.querySelector("canvas.slice-bg-anim-canvas");
+    if (isLikelyAnimatedImage(src)) {
+      if (existingCanvas && existingCanvas.dataset.liveSrc === src) {
+        el.classList.add("has-media");
+        this._layoutCenterMedia();
+        return;
+      }
+      el.innerHTML = "";
+      this._mountAnimSurface(el, src, "center", {
+        maxEdge: this._animMaxEdge,
+        canvasClass: "slice-bg-anim-canvas center-anim-canvas",
+      });
       el.classList.add("has-media");
       this._layoutCenterMedia();
       return;
     }
-    if (existing && existing.dataset.liveSrc === src && this._mediaFrozen) {
+    const existing = el.querySelector("img.center-static");
+    if (existing && existing.dataset.liveSrc === src) {
       el.classList.add("has-media");
       this._layoutCenterMedia();
       return;
     }
     el.innerHTML = "";
     const img = document.createElement("img");
+    img.className = "center-static";
     img.src = src;
     img.dataset.liveSrc = src;
     img.alt = "";
@@ -423,6 +467,158 @@ export class Wheel {
     el.appendChild(img);
     el.classList.add("has-media");
     this._layoutCenterMedia();
+  }
+
+  /**
+   * Mount a low-res canvas proxy + hidden source <img> for an animated GIF.
+   * @returns {HTMLCanvasElement}
+   */
+  _mountAnimSurface(parent, src, kind, opts = {}) {
+    const maxEdge = opts.maxEdge || this._animMaxEdge;
+    const srcImg = document.createElement("img");
+    srcImg.className = "slice-bg-anim-src";
+    srcImg.src = src;
+    srcImg.dataset.liveSrc = src;
+    srcImg.alt = "";
+    srcImg.draggable = false;
+    srcImg.decoding = "async";
+    // Keep in DOM so the browser advances GIF frames; keep it tiny/off-paint
+    srcImg.setAttribute("aria-hidden", "true");
+
+    const canvas = document.createElement("canvas");
+    canvas.className =
+      opts.canvasClass ||
+      (kind === "fill"
+        ? "slice-bg-fill slice-bg-anim-canvas"
+        : "slice-bg-anim-canvas");
+    canvas.dataset.liveSrc = src;
+    canvas.dataset.animKind = kind;
+
+    parent.appendChild(srcImg);
+    parent.appendChild(canvas);
+
+    const surface = {
+      kind,
+      srcImg,
+      canvas,
+      maxEdge,
+      liveSrc: src,
+      tilePx: opts.tilePx || 0,
+    };
+    this._animSurfaces.push(surface);
+    // Paint first frame ASAP
+    const first = () => {
+      this._paintOneAnimSurface(surface);
+    };
+    if (srcImg.complete && srcImg.naturalWidth) first();
+    else srcImg.addEventListener("load", first, { once: true });
+
+    this._ensureAnimLoop();
+    return canvas;
+  }
+
+  _pruneAnimSurfaces() {
+    // Drop surfaces whose canvas was removed from the DOM
+    this._animSurfaces = this._animSurfaces.filter((s) =>
+      s.canvas.isConnected
+    );
+    if (!this._animSurfaces.length && this._animRaf) {
+      cancelAnimationFrame(this._animRaf);
+      this._animRaf = 0;
+    }
+  }
+
+  _ensureAnimLoop() {
+    if (this._animRaf) return;
+    const tick = (t) => {
+      this._animRaf = requestAnimationFrame(tick);
+      if (!this._animSurfaces.length) {
+        cancelAnimationFrame(this._animRaf);
+        this._animRaf = 0;
+        return;
+      }
+      // Pause paint while spinning/dragging — last frame stays on the canvas
+      if (this._mediaFrozen || this.spinning || this._dragging) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      const minDt = 1000 / Math.max(4, this._animFps || 12);
+      if (t - this._animLastPaint < minDt) return;
+      this._animLastPaint = t;
+      this._paintAnimSurfaces();
+    };
+    this._animRaf = requestAnimationFrame(tick);
+  }
+
+  _paintAnimSurfaces() {
+    for (const s of this._animSurfaces) {
+      if (!s.canvas.isConnected) continue;
+      this._paintOneAnimSurface(s);
+    }
+  }
+
+  _paintOneAnimSurface(s) {
+    const img = s.srcImg;
+    if (!img || !img.complete) return;
+    const nw = img.naturalWidth || 0;
+    const nh = img.naturalHeight || 0;
+    if (nw < 1 || nh < 1) return;
+
+    if (s.kind === "tile") {
+      this._paintTileAnimSurface(s, img, nw, nh);
+      return;
+    }
+
+    const maxEdge = s.maxEdge || this._animMaxEdge;
+    const sc = Math.min(1, maxEdge / Math.max(nw, nh));
+    const dw = Math.max(1, Math.round(nw * sc));
+    const dh = Math.max(1, Math.round(nh * sc));
+    if (s.canvas.width !== dw || s.canvas.height !== dh) {
+      s.canvas.width = dw;
+      s.canvas.height = dh;
+    }
+    const ctx = s.canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, dw, dh);
+    ctx.drawImage(img, 0, 0, dw, dh);
+  }
+
+  /** Tile mode: paint repeated low-res frames into one canvas. */
+  _paintTileAnimSurface(s, img, nw, nh) {
+    const cssW = s.canvas.clientWidth || s.canvas.width || 200;
+    const cssH = s.canvas.clientHeight || s.canvas.height || 200;
+    // Internal resolution capped for paint cost
+    const maxBox = 360;
+    const boxSc = Math.min(1, maxBox / Math.max(cssW, cssH));
+    const dw = Math.max(1, Math.round(cssW * boxSc));
+    const dh = Math.max(1, Math.round(cssH * boxSc));
+    if (s.canvas.width !== dw || s.canvas.height !== dh) {
+      s.canvas.width = dw;
+      s.canvas.height = dh;
+    }
+    const tileCss = Math.max(8, s.tilePx || 40);
+    const tilePx = Math.max(4, Math.round(tileCss * boxSc));
+    // Source stamp size
+    const stampEdge = Math.min(s.maxEdge || 128, 128);
+    const sc = Math.min(1, stampEdge / Math.max(nw, nh));
+    const sw = Math.max(1, Math.round(nw * sc));
+    const sh = Math.max(1, Math.round(nh * sc));
+    if (!s._stamp) {
+      s._stamp = document.createElement("canvas");
+    }
+    if (s._stamp.width !== sw || s._stamp.height !== sh) {
+      s._stamp.width = sw;
+      s._stamp.height = sh;
+    }
+    const sctx = s._stamp.getContext("2d");
+    const ctx = s.canvas.getContext("2d");
+    if (!sctx || !ctx) return;
+    sctx.clearRect(0, 0, sw, sh);
+    sctx.drawImage(img, 0, 0, sw, sh);
+    ctx.clearRect(0, 0, dw, dh);
+    for (let y = 0; y < dh + tilePx; y += tilePx) {
+      for (let x = 0; x < dw + tilePx; x += tilePx) {
+        ctx.drawImage(s._stamp, x, y, tilePx, tilePx);
+      }
+    }
   }
 
   _layoutCenterMedia() {
@@ -447,8 +643,15 @@ export class Wheel {
       `|layout:${normalizeImageLayoutMode(this.look.imageLayoutMode)}`;
     this._sectionMediaKey = key;
     rotator.innerHTML = "";
+    // Surfaces were destroyed with innerHTML
+    this._animSurfaces = this._animSurfaces.filter(
+      (s) => s.kind === "center" || s.kind === "bg"
+    );
 
-    if (this.look.showImages === false) return;
+    if (this.look.showImages === false) {
+      this._pruneAnimSurfaces();
+      return;
+    }
 
     const slices = this.getSlices();
     const radius = this._radiusCss() || 200;
@@ -456,29 +659,43 @@ export class Wheel {
     for (const sl of slices) {
       if (!sl.section.imageData) continue;
       const mode = sl.section.imageMode === "tile" ? "tile" : "fill";
+      const src = sl.section.imageData;
       const wedge = document.createElement("div");
       wedge.className = `slice-bg-wedge mode-${mode}`;
       wedge.dataset.sectionId = sl.section.id;
       wedge.dataset.imageMode = mode;
+      const animated = isLikelyAnimatedImage(src);
 
       if (mode === "tile") {
-        // One CSS-background layer (not N <img>s) so GIFs only decode once per wedge
-        const layer = document.createElement("div");
-        layer.className = "slice-bg-tile-layer";
-        layer.dataset.src = sl.section.imageData;
-        wedge.appendChild(layer);
+        if (animated) {
+          // Canvas tile painter (low-res stamps) — not CSS background of full GIF
+          const canvas = this._mountAnimSurface(wedge, src, "tile", {
+            maxEdge: 128,
+            tilePx: Math.max(22, radius * 0.2),
+            canvasClass: "slice-bg-tile-canvas",
+          });
+          canvas.dataset.src = src;
+        } else {
+          const layer = document.createElement("div");
+          layer.className = "slice-bg-tile-layer";
+          layer.dataset.src = src;
+          layer.dataset.liveSrc = src;
+          wedge.appendChild(layer);
+        }
+      } else if (animated) {
+        // Low-res canvas proxy instead of full-res <img> under clip-path
+        this._mountAnimSurface(wedge, src, "fill", {
+          maxEdge: this._animMaxEdge,
+          canvasClass: "slice-bg-fill slice-bg-anim-canvas",
+        });
       } else {
         const img = document.createElement("img");
         img.className = "slice-bg-fill";
-        img.src = sl.section.imageData;
-        img.dataset.liveSrc = sl.section.imageData;
+        img.src = src;
+        img.dataset.liveSrc = src;
         img.alt = sl.section.label || "";
         img.draggable = false;
         img.decoding = "async";
-        // Animated GIFs: don't let the browser prioritize them over spin frames
-        if (isLikelyAnimatedImage(sl.section.imageData)) {
-          img.loading = "lazy";
-        }
         wedge.appendChild(img);
       }
 
@@ -487,10 +704,7 @@ export class Wheel {
 
     this._layoutSliceMedia(slices, radius);
     this._syncSliceRotation();
-    // Re-apply freeze if a rebuild happened mid-spin
-    if (this._mediaFrozen) {
-      void this._freezeAnimatedMedia();
-    }
+    this._pruneAnimSurfaces();
   }
 
   _sectionMediaSig(s) {
@@ -527,9 +741,6 @@ export class Wheel {
     sliceMid = null,
     imageRotationDeg = 0
   ) {
-    const layer = wedge.querySelector(".slice-bg-tile-layer");
-    if (!layer || !src) return;
-
     const base = Math.max(22, radius * 0.2);
     const scale = Math.min(3, Math.max(0.1, Number(tileScale) || 1));
     const tilePx = Math.max(10, base * scale);
@@ -539,11 +750,37 @@ export class Wheel {
     const oy =
       (Math.min(100, Math.max(-100, Number(offsetYPct) || 0)) / 100) * tilePx;
 
-    // Prefer frozen snapshot while spinning; else live src
-    const paintSrc =
-      (this._mediaFrozen && layer.dataset.frozenSrc) ||
-      layer.dataset.liveSrc ||
-      src;
+    let orientDeg = 0;
+    if (sliceMid != null && Number.isFinite(Number(sliceMid))) {
+      orientDeg = ((Number(sliceMid) - -Math.PI / 2) * 180) / Math.PI;
+    }
+    const imgRot = Number(imageRotationDeg) || 0;
+    const rot = orientDeg + imgRot;
+    wedge.style.setProperty("--slice-orient", `${orientDeg}deg`);
+
+    // Animated tile → canvas proxy
+    const tileCanvas = wedge.querySelector("canvas.slice-bg-tile-canvas");
+    if (tileCanvas) {
+      tileCanvas.style.width = `${d}px`;
+      tileCanvas.style.height = `${d}px`;
+      tileCanvas.style.left = "0";
+      tileCanvas.style.top = "0";
+      tileCanvas.style.transformOrigin = "50% 50%";
+      tileCanvas.style.transform = `rotate(${rot}deg)`;
+      // Keep stamp size in sync for the paint loop
+      const surf = this._animSurfaces.find((s) => s.canvas === tileCanvas);
+      if (surf) {
+        surf.tilePx = tilePx;
+        if (!this._mediaFrozen) this._paintOneAnimSurface(surf);
+      }
+      return;
+    }
+
+    // Static tile → CSS background (one decoder, not a grid of imgs)
+    const layer = wedge.querySelector(".slice-bg-tile-layer");
+    if (!layer || !src) return;
+
+    const paintSrc = layer.dataset.liveSrc || src;
     layer.dataset.src = src;
     if (!layer.dataset.liveSrc) layer.dataset.liveSrc = src;
 
@@ -559,112 +796,31 @@ export class Wheel {
       layer.style.backgroundPosition = `${ox}px ${oy}px`;
     }
 
-    // Cover full wedge box; origin at hub (center of 2r box)
     layer.style.width = `${d}px`;
     layer.style.height = `${d}px`;
     layer.style.left = "0";
     layer.style.top = "0";
     layer.style.transformOrigin = "50% 50%";
-
-    let orientDeg = 0;
-    if (sliceMid != null && Number.isFinite(Number(sliceMid))) {
-      orientDeg = ((Number(sliceMid) - -Math.PI / 2) * 180) / Math.PI;
-    }
-    const imgRot = Number(imageRotationDeg) || 0;
-    layer.style.transform = `rotate(${orientDeg + imgRot}deg)`;
-    wedge.style.setProperty("--slice-orient", `${orientDeg}deg`);
+    layer.style.transform = `rotate(${rot}deg)`;
   }
 
   /**
-   * Freeze animated GIFs to static PNG snapshots (call when spinning starts).
-   * Keeps the wheel smooth — animating GIFs + rotating layers is very expensive.
+   * Pause GIF proxy paint while spinning/dragging (last frame stays visible).
    */
   async _freezeAnimatedMedia() {
     this._mediaFrozen = true;
-    const tasks = [];
-
-    const freezeImg = (img) => {
-      if (!img || img.dataset.frozen === "1") return;
-      const live = img.dataset.liveSrc || img.getAttribute("src") || img.src;
-      if (!isLikelyAnimatedImage(live)) return;
-      if (!img.dataset.liveSrc) img.dataset.liveSrc = live;
-      tasks.push(
-        new Promise((resolve) => {
-          const snap = () => {
-            const png = snapshotImageToPng(img, 640);
-            if (png) {
-              img.src = png;
-              img.dataset.frozen = "1";
-            }
-            resolve();
-          };
-          if (img.complete && img.naturalWidth > 0) snap();
-          else {
-            const onDone = () => {
-              img.removeEventListener("load", onDone);
-              img.removeEventListener("error", onDone);
-              snap();
-            };
-            img.addEventListener("load", onDone);
-            img.addEventListener("error", onDone);
-          }
-        })
-      );
-    };
-
-    this.sliceRotatorEl
-      ?.querySelectorAll("img.slice-bg-fill")
-      .forEach((img) => freezeImg(img));
-    this.centerMediaEl?.querySelectorAll("img").forEach((img) => freezeImg(img));
-    this.bgMediaEl?.querySelectorAll("img").forEach((img) => freezeImg(img));
-
-    // Tile CSS backgrounds: snapshot via Image then set frozenSrc
-    this.sliceRotatorEl
-      ?.querySelectorAll(".slice-bg-tile-layer")
-      .forEach((layer) => {
-        const live = layer.dataset.liveSrc || layer.dataset.src || "";
-        if (!isLikelyAnimatedImage(live) || layer.dataset.frozenSrc) return;
-        tasks.push(
-          loadImage(live).then((img) => {
-            if (!img) return;
-            const png = snapshotImageToPng(img, 384);
-            if (!png) return;
-            layer.dataset.frozenSrc = png;
-            layer.dataset.sig = ""; // force repaint
-            layer.style.backgroundImage = `url(${JSON.stringify(png)})`;
-          })
-        );
-      });
-
-    await Promise.all(tasks);
+    // One last paint so the frozen frame is fresh
+    try {
+      this._paintAnimSurfaces();
+    } catch {
+      /* ignore */
+    }
   }
 
-  /** Restore live animated sources after spin. */
+  /** Resume GIF proxy paint after spin/drag. */
   _unfreezeAnimatedMedia() {
     this._mediaFrozen = false;
-    const thawImg = (img) => {
-      if (!img || img.dataset.frozen !== "1") return;
-      const live = img.dataset.liveSrc;
-      if (live) img.src = live;
-      delete img.dataset.frozen;
-    };
-    this.sliceRotatorEl
-      ?.querySelectorAll("img.slice-bg-fill")
-      .forEach((img) => thawImg(img));
-    this.centerMediaEl?.querySelectorAll("img").forEach((img) => thawImg(img));
-    this.bgMediaEl?.querySelectorAll("img").forEach((img) => thawImg(img));
-
-    this.sliceRotatorEl
-      ?.querySelectorAll(".slice-bg-tile-layer")
-      .forEach((layer) => {
-        if (!layer.dataset.frozenSrc) return;
-        delete layer.dataset.frozenSrc;
-        layer.dataset.sig = "";
-        const live = layer.dataset.liveSrc || layer.dataset.src;
-        if (live) {
-          layer.style.backgroundImage = `url(${JSON.stringify(live)})`;
-        }
-      });
+    this._ensureAnimLoop();
   }
 
   _layoutSliceMedia(slices, radius) {
@@ -715,7 +871,7 @@ export class Wheel {
   }
 
   /**
-   * Place full-slice image.
+   * Place full-slice image (static <img> or animated canvas proxy).
    * fixed  → top-oriented frame (matches section editor)
    * slice  → rotated to wedge mid so editor framing maps to the real slice
    */
@@ -734,14 +890,16 @@ export class Wheel {
     const rot = Number(sl.section.imageRotation) || 0;
     wedge.style.setProperty("--image-rotation", `${rot}deg`);
 
-    const img = wedge.querySelector("img.slice-bg-fill");
-    if (!img) return;
+    const el =
+      wedge.querySelector("canvas.slice-bg-fill") ||
+      wedge.querySelector("img.slice-bg-fill");
+    if (!el) return;
 
     const box = radius * 2;
-    img.style.width = `${box}px`;
-    img.style.height = `${box}px`;
-    img.style.left = `${layout.left}px`;
-    img.style.top = `${layout.top}px`;
+    el.style.width = `${box}px`;
+    el.style.height = `${box}px`;
+    el.style.left = `${layout.left}px`;
+    el.style.top = `${layout.top}px`;
   }
 
   _syncSliceRotation() {
