@@ -7522,7 +7522,7 @@ function payloadHasImages(payload) {
   return false;
 }
 
-/** Strip bulky media so a compact #wheel= link can fit third-party shorteners. */
+/** Strip bulky media so a compact #wheel= fallback stays pasteable if hosting fails. */
 function stripSharePayloadMedia(payload) {
   const p = JSON.parse(JSON.stringify(payload));
   const d = p.data || p;
@@ -7751,9 +7751,8 @@ async function shareCurrentWheel() {
   // Only if nothing else worked
   downloadJson(`sad-wheel-${safeName}.json`, payload);
   alert(
-    "Could not create a short share link (hosting may be blocked).\n\n" +
-      "Downloaded a JSON file instead — send that file and use Import.\n\n" +
-      "Note: Bitly / rb.gy cannot shorten multi-MB links with images inside."
+    "Could not create a share link (hosting may be blocked).\n\n" +
+      "Downloaded a JSON file instead — send that file and use Import."
   );
 }
 
