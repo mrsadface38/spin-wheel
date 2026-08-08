@@ -7447,8 +7447,8 @@ function getCurrentWheelSharePayload() {
   };
 }
 
-/** ~400KB of base64 ≈ safe-ish for most browsers; larger links often fail on paste. */
-const SHARE_LINK_MAX_B64 = 400000;
+/** Soft warning only — we still always give a copy-paste link. */
+const SHARE_LINK_WARN_B64 = 400000;
 
 async function shareCurrentWheel() {
   library = writeActiveState(library, state);
@@ -7467,17 +7467,10 @@ async function shareCurrentWheel() {
         ""
       );
     const url = `${base}#wheel=${b64}`;
+    const large = b64.length > SHARE_LINK_WARN_B64;
+    const sizeKb = Math.round(b64.length / 1024);
 
-    // Huge links (images) break when pasted into chats / some browsers
-    if (b64.length > SHARE_LINK_MAX_B64) {
-      downloadJson(`sad-wheel-${safeName}.json`, payload);
-      alert(
-        `This wheel is too large for a reliable share link (${Math.round(b64.length / 1024)} KB encoded — often from section/group images).\n\n` +
-          `Downloaded a JSON file instead. Send that file and use Import to load it.`
-      );
-      return;
-    }
-
+    // Always try clipboard first
     let copied = false;
     try {
       if (navigator.clipboard?.writeText) {
@@ -7489,12 +7482,14 @@ async function shareCurrentWheel() {
       copied = false;
     }
 
-    prompt(
-      copied
-        ? "Share link copied to the clipboard.\n\nCopy again from here if you need it (Ctrl+C, then Enter):"
-        : "Could not auto-copy. Select the link and press Ctrl+C, then Enter:",
-      url
-    );
+    // Always show a field they can select + Ctrl+C
+    const headline = large
+      ? `Share link ready (${sizeKb} KB — large from images; some chats cut long links).\n\n`
+      : "";
+    const body = copied
+      ? "Copied to clipboard.\n\nCopy again from here if you need it (select all → Ctrl+C, then Enter):"
+      : "Select the link below and press Ctrl+C to copy, then Enter:";
+    prompt(headline + body, url);
     return;
   } catch (err) {
     console.warn("Share link failed, downloading file:", err);
