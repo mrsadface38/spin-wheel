@@ -287,6 +287,8 @@ function persist() {
   }
   updateUndoButton();
   fillWheelSelect();
+  updateStorageMeter();
+  updateShareButtonHint();
   return ok;
 }
 
@@ -316,6 +318,92 @@ function fillWheelSelect() {
     .join("");
   const del = $("#btn-wheel-delete");
   if (del) del.disabled = library.wheels.length <= 1;
+}
+
+// --- Storage size meter (estimate localStorage pressure) ---
+/** Practical localStorage budget most browsers allow per origin. */
+const STORAGE_SOFT_LIMIT_BYTES = 5 * 1024 * 1024;
+
+function formatStorageBytes(n) {
+  const v = Math.max(0, Number(n) || 0);
+  if (v < 1024) return `${Math.round(v)} B`;
+  if (v < 1024 * 1024) {
+    const kb = v / 1024;
+    return kb < 10 ? `${kb.toFixed(1)} KB` : `${Math.round(kb)} KB`;
+  }
+  return `${(v / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** UTF-8 byte length of JSON (approx. localStorage cost). */
+function estimateJsonBytes(obj) {
+  try {
+    return new Blob([JSON.stringify(obj ?? null)]).size;
+  } catch {
+    try {
+      return new TextEncoder().encode(JSON.stringify(obj ?? null)).length;
+    } catch {
+      return String(JSON.stringify(obj ?? null) || "").length;
+    }
+  }
+}
+
+/**
+ * Update “This wheel: X · Storage: Y / ~5 MB” meter.
+ * Uses library + history size (what we actually write to localStorage).
+ */
+function updateStorageMeter() {
+  const el = $("#storage-meter");
+  if (!el) return;
+  try {
+    const wheelBytes = estimateJsonBytes(state);
+    let libSnapshot = library;
+    try {
+      libSnapshot = writeActiveState(library, state);
+    } catch {
+      /* use existing library */
+    }
+    const libBytes = estimateJsonBytes({
+      activeId: libSnapshot?.activeId,
+      wheels: (libSnapshot?.wheels || []).map((w) => ({
+        id: w.id,
+        name: w.name,
+        updatedAt: w.updatedAt,
+        data: w.data,
+      })),
+    });
+    let histBytes = 0;
+    try {
+      histBytes = estimateJsonBytes(loadSpinHistory());
+    } catch {
+      /* ignore */
+    }
+    const used = libBytes + histBytes;
+    const pct = Math.min(
+      100,
+      Math.round((used / STORAGE_SOFT_LIMIT_BYTES) * 100)
+    );
+    el.textContent = `This wheel: ${formatStorageBytes(wheelBytes)} · Storage: ${formatStorageBytes(used)} / ~5 MB`;
+    el.title =
+      `Estimated browser storage for saved wheels + history.\n` +
+      `This wheel ≈ ${formatStorageBytes(wheelBytes)} · Library ≈ ${formatStorageBytes(libBytes)} · History ≈ ${formatStorageBytes(histBytes)}.\n` +
+      `Browsers often allow ~5 MB total. Large images fill this fast — Export JSON or remove images if save fails.`;
+    el.classList.toggle("storage-warn", pct >= 70 && pct < 90);
+    el.classList.toggle("storage-danger", pct >= 90);
+  } catch (err) {
+    console.warn("storage meter:", err);
+    el.textContent = "";
+  }
+}
+
+/** Share button title / badge when wheel has media (hosted links expire). */
+function updateShareButtonHint() {
+  const btn = $("#btn-share-wheel");
+  if (!btn) return;
+  const hasMedia = payloadHasImages({ data: state });
+  btn.classList.toggle("share-has-media", hasMedia);
+  btn.title = hasMedia
+    ? "Copy a share link (includes images; hosted link may expire ~24h — use Export JSON to keep forever)"
+    : "Copy a share link for this wheel (prompt also shows the link)";
 }
 
 /** Stop spin/audio and load a different wheel slot into the UI. */
@@ -4818,8 +4906,47 @@ let resultShowsRigged = false;
 // --- Spin history (device-wide log) ---
 const HISTORY_KEY = "spin-wheel-history-v1";
 const HISTORY_MAX = 200;
+/** UI filter: only show entries for the active wheel (persisted on device). */
+const HISTORY_FILTER_THIS_WHEEL_KEY = "spin-wheel-history-this-wheel-v1";
 /** @type {ReturnType<typeof setTimeout>|0} */
 let autoDismissTimer = 0;
+
+function isHistoryThisWheelOnly() {
+  try {
+    return localStorage.getItem(HISTORY_FILTER_THIS_WHEEL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setHistoryThisWheelOnly(on) {
+  try {
+    localStorage.setItem(HISTORY_FILTER_THIS_WHEEL_KEY, on ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Active wheel id used for history filtering. */
+function getActiveHistoryWheelId() {
+  return (
+    library?.activeId ||
+    getActiveSlot(library)?.id ||
+    ""
+  );
+}
+
+/**
+ * @param {ReturnType<typeof loadSpinHistory>} [entries]
+ * @returns {ReturnType<typeof loadSpinHistory>}
+ */
+function getVisibleHistoryEntries(entries) {
+  const list = Array.isArray(entries) ? entries : loadSpinHistory();
+  if (!isHistoryThisWheelOnly()) return list;
+  const wid = getActiveHistoryWheelId();
+  if (!wid) return list;
+  return list.filter((e) => e && e.wheelId === wid);
+}
 
 /**
  * @returns {Array<{
@@ -4893,11 +5020,22 @@ function updateHistoryTrackUi() {
   const chk = $("#chk-track-history");
   const on = isHistoryTrackingEnabled();
   if (chk) chk.checked = on;
+  const filterChk = $("#chk-history-this-wheel");
+  if (filterChk) filterChk.checked = isHistoryThisWheelOnly();
   const hint = $("#history-track-hint");
   if (hint) {
-    hint.textContent = on
-      ? "New winners will be listed below."
-      : "Tracking is off for this wheel — new spins are not saved to history.";
+    const parts = [];
+    if (!on) {
+      parts.push(
+        "Tracking is off for this wheel — new spins are not saved to history."
+      );
+    } else {
+      parts.push("New winners will be listed below.");
+    }
+    if (isHistoryThisWheelOnly()) {
+      parts.push("Showing this wheel only.");
+    }
+    hint.textContent = parts.join(" ");
   }
 }
 
@@ -4949,15 +5087,30 @@ function renderHistory() {
   const countEl = $("#history-count");
   if (!listEl) return;
   updateHistoryTrackUi();
-  const entries = loadSpinHistory();
+  const all = loadSpinHistory();
+  const entries = getVisibleHistoryEntries(all);
+  const thisOnly = isHistoryThisWheelOnly();
   if (countEl) {
-    countEl.textContent =
-      entries.length === 1 ? "1 entry" : `${entries.length} entries`;
+    if (thisOnly && all.length !== entries.length) {
+      countEl.textContent =
+        entries.length === 1
+          ? `1 of ${all.length}`
+          : `${entries.length} of ${all.length}`;
+      countEl.title = `${entries.length} for this wheel · ${all.length} total`;
+    } else {
+      countEl.textContent =
+        entries.length === 1 ? "1 entry" : `${entries.length} entries`;
+      countEl.title = "Entries";
+    }
   }
   if (!entries.length) {
-    listEl.innerHTML = isHistoryTrackingEnabled()
-      ? `<div class="history-empty">No spins yet. Winners will show up here.</div>`
-      : `<div class="history-empty">No spins yet. Tracking is off for this wheel — turn on “Track history” to record winners.</div>`;
+    if (!isHistoryTrackingEnabled()) {
+      listEl.innerHTML = `<div class="history-empty">No spins yet. Tracking is off for this wheel — turn on “Track history” to record winners.</div>`;
+    } else if (thisOnly && all.length) {
+      listEl.innerHTML = `<div class="history-empty">No spins for this wheel yet. Turn off “This wheel only” to see all ${all.length} entr${all.length === 1 ? "y" : "ies"}.</div>`;
+    } else {
+      listEl.innerHTML = `<div class="history-empty">No spins yet. Winners will show up here.</div>`;
+    }
     return;
   }
   listEl.innerHTML = entries
@@ -4982,22 +5135,52 @@ $("#chk-track-history")?.addEventListener("change", () => {
   updateHistoryTrackUi();
 });
 
-$("#btn-history-clear")?.addEventListener("click", () => {
-  const n = loadSpinHistory().length;
-  if (!n) {
-    alert("History is already empty.");
-    return;
-  }
-  if (!confirm(`Clear all ${n} history entr${n === 1 ? "y" : "ies"}?`)) return;
-  saveSpinHistory([]);
+$("#chk-history-this-wheel")?.addEventListener("change", () => {
+  setHistoryThisWheelOnly(!!$("#chk-history-this-wheel")?.checked);
   renderHistory();
 });
 
+$("#btn-history-clear")?.addEventListener("click", () => {
+  const all = loadSpinHistory();
+  const thisOnly = isHistoryThisWheelOnly();
+  const visible = getVisibleHistoryEntries(all);
+  if (!visible.length) {
+    alert(
+      thisOnly
+        ? "No history for this wheel."
+        : "History is already empty."
+    );
+    return;
+  }
+  if (thisOnly) {
+    const n = visible.length;
+    if (
+      !confirm(
+        `Clear ${n} history entr${n === 1 ? "y" : "ies"} for this wheel only?\n\nOther wheels’ history is kept.`
+      )
+    ) {
+      return;
+    }
+    const wid = getActiveHistoryWheelId();
+    saveSpinHistory(all.filter((e) => e && e.wheelId !== wid));
+  } else {
+    const n = all.length;
+    if (!confirm(`Clear all ${n} history entr${n === 1 ? "y" : "ies"}?`)) {
+      return;
+    }
+    saveSpinHistory([]);
+  }
+  renderHistory();
+  updateStorageMeter();
+});
+
 $("#btn-history-export")?.addEventListener("click", () => {
-  const entries = loadSpinHistory();
+  const entries = getVisibleHistoryEntries();
   downloadJson(`spin-history-${new Date().toISOString().slice(0, 10)}.json`, {
     format: "sad-wheel-history-v1",
     exportedAt: new Date().toISOString(),
+    scope: isHistoryThisWheelOnly() ? "this-wheel" : "all",
+    wheelId: isHistoryThisWheelOnly() ? getActiveHistoryWheelId() : null,
     entries,
   });
 });
@@ -7674,7 +7857,9 @@ async function buildShareCopyUrl(payload) {
           : `${base}#j=${encodeURIComponent(up.id)}`;
       hosted = true;
       note =
-        "Share link (includes images). Hosted copy may expire after a while.\n\n";
+        "Share link ready (includes images).\n\n" +
+        "⏱ Hosted link may expire after about 24 hours.\n" +
+        "For a permanent copy: Export JSON → send the file → Import.\n\n";
     } catch (hostErr) {
       console.warn("Share host failed:", hostErr);
     }
@@ -7684,6 +7869,12 @@ async function buildShareCopyUrl(payload) {
   if (!appUrl && b64 && b64.length <= SHARE_INLINE_MAX_B64) {
     appUrl = `${base}#wheel=${b64}`;
     inline = true;
+    if (payloadHasImages(payload)) {
+      note =
+        "Share link ready.\n\n" +
+        "This link embeds data in the URL (no host expiry), but can break if an app truncates it.\n" +
+        "For a permanent safe copy use Export JSON.\n\n";
+    }
   }
 
   // Host failed + large wheel: compact no-media link
@@ -7694,12 +7885,14 @@ async function buildShareCopyUrl(payload) {
       appUrl = `${base}#wheel=${slimB64}`;
       compact = true;
       note =
-        "Compact link (images/sounds removed — hosting was unavailable).\nFor full images use Export JSON.\n\n";
+        "Compact link (images/sounds removed — hosting was unavailable).\n" +
+        "For full images use Export JSON (permanent).\n\n";
     } else if (b64) {
       appUrl = `${base}#wheel=${b64}`;
       inline = true;
       note =
-        "Full mega-link (very long). Prefer Export JSON if paste fails.\n\n";
+        "Full mega-link (very long).\n" +
+        "Prefer Export JSON if paste fails — that file does not expire.\n\n";
     } else {
       throw new Error("Could not build any share URL");
     }
@@ -8351,6 +8544,12 @@ function bindAll() {
   updateUndoButton();
   // Restore Hide panels from this wheel's saved preference
   applyHidePanelsFromState();
+  updateShareButtonHint();
+  updateStorageMeter();
+  // History filter is wheel-aware
+  if ($("#tab-history")?.classList.contains("active")) {
+    renderHistory();
+  }
 }
 
 // --- Boot ---

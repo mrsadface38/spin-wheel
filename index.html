@@ -12,11 +12,17 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#116</span>
+        <span class="app-version" id="app-version" title="Update number">#117</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
         <select id="wheel-select" class="wheel-select" aria-label="Select saved wheel"></select>
+        <span
+          id="storage-meter"
+          class="storage-meter"
+          title="Estimated space used by this wheel and all saved wheels on this device"
+          aria-live="polite"
+        ></span>
         <div class="wheel-new-dropdown" id="wheel-new-dropdown">
           <button
             type="button"
@@ -37,7 +43,7 @@
       </div>
       <div class="top-actions">
         <button type="button" id="btn-focus-mode" class="btn ghost" title="Hide chrome for a big wheel (Esc to exit)">Focus</button>
-        <button type="button" id="btn-share-wheel" class="btn ghost" title="Copy a share link for this wheel (prompt also shows the link)">Share</button>
+        <button type="button" id="btn-share-wheel" class="btn ghost btn-share-wheel" title="Copy a share link for this wheel (prompt also shows the link)">Share</button>
         <button type="button" id="btn-backup-library" class="btn ghost" title="Download a full backup of every saved wheel">Backup</button>
         <button type="button" id="btn-restore-library" class="btn ghost" title="Restore library from a backup file">Restore</button>
         <input type="file" id="restore-file" accept="application/json,.json" hidden />
@@ -503,10 +509,14 @@
               <input type="checkbox" id="chk-track-history" checked />
               <span>Track history for this wheel</span>
             </label>
+            <label class="toggle-row" title="Show only winners from the currently selected wheel">
+              <input type="checkbox" id="chk-history-this-wheel" />
+              <span>This wheel only</span>
+            </label>
             <small id="history-track-hint" class="hint">New winners will be listed below.</small>
             <div class="panel-toolbar history-toolbar">
               <button type="button" id="btn-history-export" class="btn small ghost" title="Download history as JSON">Export history</button>
-              <button type="button" id="btn-history-clear" class="btn small ghost danger" title="Clear all history">Clear</button>
+              <button type="button" id="btn-history-clear" class="btn small ghost danger" title="Clear history (respects “This wheel only”)">Clear</button>
               <span class="sections-count-pill" id="history-count" title="Entries">0</span>
             </div>
             <div id="history-list" class="history-list"></div>
