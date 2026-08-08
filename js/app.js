@@ -7387,15 +7387,17 @@ function downloadJson(filename, obj) {
 
 /**
  * UTF-8 string → standard base64 (chunked; safe for large image payloads).
- * Avoids encodeURIComponent/escape which blow up or throw on big wheels.
+ * Avoids encodeURIComponent/escape and apply() argument limits.
  */
 function utf8ToBase64(str) {
   const bytes = new TextEncoder().encode(String(str ?? ""));
-  const chunk = 0x8000;
+  const chunk = 0x2000; // stay under apply() arg limits in older engines
   let binary = "";
   for (let i = 0; i < bytes.length; i += chunk) {
-    const sub = bytes.subarray(i, i + chunk);
-    binary += String.fromCharCode.apply(null, sub);
+    const end = Math.min(i + chunk, bytes.length);
+    let part = "";
+    for (let j = i; j < end; j++) part += String.fromCharCode(bytes[j]);
+    binary += part;
   }
   return btoa(binary);
 }
@@ -7448,8 +7450,9 @@ function getCurrentWheelSharePayload() {
 }
 
 /**
- * Inline #wheel= base64 over this size is hosted remotely + shortened.
- * (Images make links multi‑MB; chat apps and browsers choke on those.)
+ * Prefer hosting + shortener above this size (keeps paste small).
+ * We still fall back to a long #wheel= link if hosting fails — never jump
+ * straight to a file download when a link is still possible.
  */
 const SHARE_INLINE_MAX_B64 = 12000;
 
@@ -7521,55 +7524,96 @@ async function copyTextToClipboard(text) {
   } catch (err) {
     console.warn("Clipboard write failed:", err);
   }
-  return false;
+  // Fallback for non-secure contexts / blocked clipboard API
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return !!ok;
+  } catch {
+    return false;
+  }
+}
+
+function getShareAppBase() {
+  return `${location.origin}${location.pathname}${location.search}`.replace(
+    /#$/,
+    ""
+  );
 }
 
 /**
- * Build the best copy-paste share URL:
- * - small wheels → #wheel=base64 (optionally shortened)
- * - large wheels → host JSON on jsonblob + #j=id, then shorten
+ * Build the best copy-paste share URL.
+ * Never throws if an inline #wheel= link can still be built.
  */
 async function buildShareCopyUrl(payload) {
-  const base =
-    `${location.origin}${location.pathname}${location.search}`.replace(
-      /#$/,
-      ""
-    );
+  const base = getShareAppBase();
   const json = JSON.stringify(payload);
-  let b64;
+  let b64 = null;
   try {
     b64 = utf8ToBase64(json);
   } catch (err) {
     console.warn("base64 encode failed:", err);
-    b64 = null;
   }
 
-  const inlineOk = b64 && b64.length <= SHARE_INLINE_MAX_B64;
-  let appUrl;
+  let appUrl = null;
   let note = "";
+  let hosted = false;
+  let inline = false;
 
-  if (inlineOk) {
-    appUrl = `${base}#wheel=${b64}`;
-  } else {
-    // Host full payload (works with images) then point a short app hash at it
-    const hosted = await uploadSharePayloadToJsonBlob(payload);
-    appUrl = `${base}#j=${encodeURIComponent(hosted.id)}`;
-    note =
-      "Hosted link (for large wheels with images). Expires about 24 hours after creation.\n\n";
+  // 1) Prefer short hosted link for large wheels
+  if (!b64 || b64.length > SHARE_INLINE_MAX_B64) {
+    try {
+      const up = await uploadSharePayloadToJsonBlob(payload);
+      appUrl = `${base}#j=${encodeURIComponent(up.id)}`;
+      hosted = true;
+      note =
+        "Short hosted link (good for images). Expires about 24 hours after creation.\n\n";
+    } catch (hostErr) {
+      console.warn("Share host failed:", hostErr);
+    }
   }
 
-  // Always try to shorten the app URL for easy paste
+  // 2) Inline #wheel= (small, or fallback if host failed)
+  if (!appUrl) {
+    if (!b64) throw new Error("Could not encode share data");
+    appUrl = `${base}#wheel=${b64}`;
+    inline = true;
+    if (b64.length > SHARE_INLINE_MAX_B64) {
+      note =
+        "Full link (hosting was unavailable). This is very long — paste carefully; some apps cut it off.\n\n";
+    }
+  }
+
+  // 3) Optional shortener (never required)
   let shareUrl = appUrl;
   let shortened = false;
   try {
-    shareUrl = await shortenUrl(appUrl);
-    shortened = true;
+    // Shorteners reject multi‑MB URLs; only try when appUrl is reasonably short
+    if (appUrl.length < 2000) {
+      shareUrl = await shortenUrl(appUrl);
+      shortened = true;
+    }
   } catch (err) {
-    console.warn("URL shortener failed, using full app link:", err);
+    console.warn("URL shortener failed, using app link:", err);
     shareUrl = appUrl;
   }
 
-  return { shareUrl, appUrl, shortened, note, inline: !!inlineOk };
+  return { shareUrl, appUrl, shortened, note, inline, hosted };
+}
+
+async function offerShareCopyPaste(shareUrl, titleLines) {
+  const copied = await copyTextToClipboard(shareUrl);
+  const body = copied
+    ? `${titleLines}Copied to clipboard.\n\nCopy again from here if needed (select all → Ctrl+C, then Enter):`
+    : `${titleLines}Select the link and press Ctrl+C to copy, then Enter:`;
+  prompt(body, shareUrl);
 }
 
 async function shareCurrentWheel() {
@@ -7580,28 +7624,38 @@ async function shareCurrentWheel() {
     .replace(/^-|-$/g, "")
     .slice(0, 40) || "wheel";
 
+  // Always try to give a copy-paste link first (never auto-download as primary).
   try {
-    const { shareUrl, shortened, note, inline } = await buildShareCopyUrl(
-      payload
-    );
-    const copied = await copyTextToClipboard(shareUrl);
-
-    const kind = shortened
+    const built = await buildShareCopyUrl(payload);
+    const kind = built.shortened
       ? "Short link"
-      : inline
-        ? "Share link"
-        : "Share link (hosting worked, shortener failed)";
-    const body = copied
-      ? `${note}${kind} copied to clipboard.\n\nCopy again from here if needed (select all → Ctrl+C, then Enter):`
-      : `${note}${kind} ready.\n\nSelect the link and press Ctrl+C to copy, then Enter:`;
-    prompt(body, shareUrl);
+      : built.hosted
+        ? "Hosted share link"
+        : "Share link";
+    await offerShareCopyPaste(built.shareUrl, `${built.note}${kind} ready.\n\n`);
     return;
   } catch (err) {
-    console.warn("Share link failed, downloading file:", err);
+    console.warn("Primary share path failed:", err);
   }
+
+  // Last-ditch: raw #wheel= even if huge
+  try {
+    const json = JSON.stringify(payload);
+    const b64 = utf8ToBase64(json);
+    const url = `${getShareAppBase()}#wheel=${b64}`;
+    await offerShareCopyPaste(
+      url,
+      "Share link ready (long).\n\nSome apps cut off huge links — if paste fails, use Export JSON.\n\n"
+    );
+    return;
+  } catch (err2) {
+    console.warn("Inline share also failed:", err2);
+  }
+
+  // Only if we truly cannot build any link
   downloadJson(`sad-wheel-${safeName}.json`, payload);
   alert(
-    "Could not build a share link — downloaded a JSON file instead. Use Import to load it."
+    "Could not build a share link on this browser — downloaded a JSON file instead.\nUse Import to load it on another device."
   );
 }
 
@@ -7632,28 +7686,60 @@ function parseShareWheelPayload(raw) {
   return JSON.parse(json);
 }
 
-/** Import wheel payload from #wheel=… share link (once on boot). */
+/**
+ * Load payload from a hosted short-share (#j=jsonblob-id).
+ * @param {string} id
+ */
+async function fetchSharePayloadFromJsonBlob(id) {
+  const clean = String(id || "").trim();
+  if (!clean) throw new Error("Missing share id");
+  const url = `https://jsonblob.com/api/jsonBlob/${encodeURIComponent(clean)}`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (res.status === 404) {
+    throw new Error(
+      "This short share link has expired or was deleted (hosted links last about 24 hours)."
+    );
+  }
+  if (!res.ok) throw new Error(`Could not download shared wheel (${res.status})`);
+  return res.json();
+}
+
+/** Import wheel from #wheel=… or hosted #j=… share link (once on boot). */
 async function tryImportShareHash() {
   const hash = location.hash || "";
-  if (!hash.startsWith("#wheel=")) return;
+  if (!hash || hash === "#") return;
+
+  // Hosted short shares: #j=<jsonblob-id>
+  const hosted =
+    hash.match(/^#j=([^&]+)/i) || hash.match(/^#jsonblob=([^&]+)/i);
+  // Inline base64: #wheel=...
+  const isWheel = hash.startsWith("#wheel=");
+  if (!hosted && !isWheel) return;
+
   try {
-    const b64 = hash.slice("#wheel=".length);
-    if (b64.length < 20) {
-      throw new Error(
-        "Share link looks truncated. Links with images are very long — use Export JSON + Import instead."
-      );
-    }
     let payload;
-    try {
-      payload = parseShareWheelPayload(b64);
-    } catch (e) {
-      // Second try: maybe location.hash was partially URL-decoded
+    if (hosted) {
+      payload = await fetchSharePayloadFromJsonBlob(
+        decodeURIComponent(hosted[1])
+      );
+    } else {
+      const b64 = hash.slice("#wheel=".length);
+      if (b64.length < 20) {
+        throw new Error(
+          "Share link looks truncated. Try a short link from Share (with images) or Export JSON."
+        );
+      }
       try {
-        payload = parseShareWheelPayload(decodeURIComponent(b64));
-      } catch {
-        throw e;
+        payload = parseShareWheelPayload(b64);
+      } catch (e) {
+        try {
+          payload = parseShareWheelPayload(decodeURIComponent(b64));
+        } catch {
+          throw e;
+        }
       }
     }
+
     const data = payload?.data || payload;
     if (!data?.sections || !Array.isArray(data.sections)) {
       throw new Error("Link is not a valid wheel (missing sections)");
@@ -7682,8 +7768,7 @@ async function tryImportShareHash() {
     alert(
       "Could not open share link:\n\n" +
         msg +
-        "\n\nTip: wheels with images make huge links that chat apps often cut off. " +
-        "Use Share → download JSON, then Import on the other device."
+        "\n\nTip: use Share again for a short link, or Export JSON + Import."
     );
     try {
       history.replaceState(null, "", location.pathname + location.search);
