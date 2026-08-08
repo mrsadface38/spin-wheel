@@ -4433,6 +4433,7 @@ function bindLook() {
   setImgPreview($("#bg-preview"), state.look.backgroundImage);
   setImgPreview($("#center-preview"), state.look.centerImage);
   bindSpinDuration();
+  updateHistoryTrackUi();
 }
 
 /** Global title above the winning section name (center style). */
@@ -4857,12 +4858,18 @@ function saveSpinHistory(entries) {
   }
 }
 
+/** Whether this wheel records spins into the History log (default on). */
+function isHistoryTrackingEnabled() {
+  return state?.look?.trackHistory !== false;
+}
+
 /**
  * @param {{ id: string, label: string }} section
  * @param {{ rigged?: boolean }} [opts]
  */
 function recordSpinHistory(section, opts = {}) {
   if (!section) return;
+  if (!isHistoryTrackingEnabled()) return;
   const slot = getActiveSlot(library);
   const entry = {
     id: uid("hist"),
@@ -4879,6 +4886,18 @@ function recordSpinHistory(section, opts = {}) {
   // Refresh history tab if open
   if ($("#tab-history")?.classList.contains("active")) {
     renderHistory();
+  }
+}
+
+function updateHistoryTrackUi() {
+  const chk = $("#chk-track-history");
+  const on = isHistoryTrackingEnabled();
+  if (chk) chk.checked = on;
+  const hint = $("#history-track-hint");
+  if (hint) {
+    hint.textContent = on
+      ? "New winners will be listed below."
+      : "Tracking is off for this wheel — new spins are not saved to history.";
   }
 }
 
@@ -4929,13 +4948,16 @@ function renderHistory() {
   const listEl = $("#history-list");
   const countEl = $("#history-count");
   if (!listEl) return;
+  updateHistoryTrackUi();
   const entries = loadSpinHistory();
   if (countEl) {
     countEl.textContent =
       entries.length === 1 ? "1 entry" : `${entries.length} entries`;
   }
   if (!entries.length) {
-    listEl.innerHTML = `<div class="history-empty">No spins yet. Winners will show up here.</div>`;
+    listEl.innerHTML = isHistoryTrackingEnabled()
+      ? `<div class="history-empty">No spins yet. Winners will show up here.</div>`
+      : `<div class="history-empty">No spins yet. Tracking is off for this wheel — turn on “Track history” to record winners.</div>`;
     return;
   }
   listEl.innerHTML = entries
@@ -4951,6 +4973,14 @@ function renderHistory() {
     )
     .join("");
 }
+
+$("#chk-track-history")?.addEventListener("change", () => {
+  checkpoint();
+  if (!state.look) state.look = {};
+  state.look.trackHistory = !!$("#chk-track-history")?.checked;
+  persist();
+  updateHistoryTrackUi();
+});
 
 $("#btn-history-clear")?.addEventListener("click", () => {
   const n = loadSpinHistory().length;

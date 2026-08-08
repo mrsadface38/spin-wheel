@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#114</span>
+        <span class="app-version" id="app-version" title="Update number">#115</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -340,7 +340,7 @@
                 <option value="15">15 seconds</option>
                 <option value="30">30 seconds</option>
               </select>
-              <small>Don't show results skips the win screen (history, confetti, and eliminate-after-win still run). Timed options auto-close Continue for you.</small>
+              <small>Don't show results skips the win screen (history if tracking is on, confetti, and eliminate-after-win still run). Timed options auto-close Continue for you.</small>
             </label>
           </div>
 
@@ -499,6 +499,11 @@
           <div class="form-block">
             <h3>Spin history</h3>
             <p class="hint">Recent winners across all wheels (newest first). Stored on this device.</p>
+            <label class="toggle-row" title="When off, new spins on this wheel are not added to the log">
+              <input type="checkbox" id="chk-track-history" checked />
+              <span>Track history for this wheel</span>
+            </label>
+            <small id="history-track-hint" class="field-hint">New winners will be listed below.</small>
             <div class="panel-toolbar history-toolbar">
               <button type="button" id="btn-history-export" class="btn small ghost" title="Download history as JSON">Export history</button>
               <button type="button" id="btn-history-clear" class="btn small ghost danger" title="Clear all history">Clear</button>

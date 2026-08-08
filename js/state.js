@@ -406,6 +406,11 @@ export function defaultState() {
        * Hide editor panels (fullscreen wheel). Saved/shared with the wheel.
        */
       hidePanels: false,
+      /**
+       * When false, spins are not written to the History tab log.
+       * Default on. Per-wheel; saved/shared with the project.
+       */
+      trackHistory: true,
     },
     sound: {
       enabled: true,
@@ -527,6 +532,8 @@ function migrate(data) {
   }
   // Hide panels (sidebar collapsed) — only true when explicitly saved
   look.hidePanels = look.hidePanels === true;
+  // Track spins in History tab (default on; only false when explicitly off)
+  look.trackHistory = look.trackHistory !== false;
   {
     const el = look.eliminateAfterWin;
     look.eliminateAfterWin =
