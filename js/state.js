@@ -402,6 +402,10 @@ export function defaultState() {
       pointerAngleDeg: 90,
       /** When true, pointer cannot be dragged (default). */
       pointerLocked: true,
+      /**
+       * Hide editor panels (fullscreen wheel). Saved/shared with the wheel.
+       */
+      hidePanels: false,
     },
     sound: {
       enabled: true,
@@ -521,6 +525,8 @@ function migrate(data) {
   } else {
     look.pointerLocked = true;
   }
+  // Hide panels (sidebar collapsed) — only true when explicitly saved
+  look.hidePanels = look.hidePanels === true;
   {
     const el = look.eliminateAfterWin;
     look.eliminateAfterWin =

@@ -269,7 +269,17 @@ const wheel = new Wheel(wheelCanvas, bgCanvas, {
 });
 
 // --- Persistence (multi-wheel library) ---
+/** Read live UI toggles into state before save/share (e.g. Hide panels). */
+function syncUiPrefsIntoState() {
+  if (!state?.look) return;
+  const layout = $("#main-layout");
+  if (layout) {
+    state.look.hidePanels = layout.classList.contains("sidebar-collapsed");
+  }
+}
+
 function persist() {
+  syncUiPrefsIntoState();
   library = writeActiveState(library, state);
   const ok = saveLibrary(library);
   if (!ok) {
@@ -7307,22 +7317,34 @@ function startSpinLoopIfNeeded() {
 }
 
 // --- Fullscreen wheel: hide editor tabs/sidebar ---
-function setSidebarCollapsed(collapsed) {
+/**
+ * @param {boolean} collapsed
+ * @param {{ persistUi?: boolean }} [opts] persistUi=true writes look.hidePanels
+ */
+function setSidebarCollapsed(collapsed, { persistUi = false } = {}) {
   const layout = $("#main-layout");
   const btn = $("#btn-toggle-sidebar");
   if (!layout || !btn) return;
-  layout.classList.toggle("sidebar-collapsed", collapsed);
-  btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  btn.title = collapsed
+  const on = !!collapsed;
+  layout.classList.toggle("sidebar-collapsed", on);
+  btn.setAttribute("aria-expanded", on ? "false" : "true");
+  btn.title = on
     ? "Show panels"
     : "Hide panels (fullscreen wheel)";
   const label = btn.querySelector(".toggle-sidebar-label");
-  if (label) label.textContent = collapsed ? "Show panels" : "Hide panels";
+  if (label) label.textContent = on ? "Show panels" : "Hide panels";
+  if (state?.look) state.look.hidePanels = on;
+  if (persistUi) persist();
   // Let layout settle, then redraw wheel to new size
   requestAnimationFrame(() => {
     wheel.resize();
     requestAnimationFrame(() => wheel.resize());
   });
+}
+
+/** Apply saved Hide panels preference (after load / switch / import). */
+function applyHidePanelsFromState() {
+  setSidebarCollapsed(!!state?.look?.hidePanels, { persistUi: false });
 }
 
 function setFocusMode(on) {
@@ -7361,7 +7383,7 @@ $("#btn-toggle-sidebar")?.addEventListener("click", (e) => {
   e.stopPropagation();
   const layout = $("#main-layout");
   const collapsed = !layout?.classList.contains("sidebar-collapsed");
-  setSidebarCollapsed(collapsed);
+  setSidebarCollapsed(collapsed, { persistUi: true });
 });
 
 $("#btn-focus-mode")?.addEventListener("click", (e) => {
@@ -7440,6 +7462,7 @@ function base64ToUtf8(b64) {
 }
 
 function getCurrentWheelSharePayload() {
+  syncUiPrefsIntoState();
   const slot = getActiveSlot(library);
   return {
     format: "sad-wheel-v1",
@@ -7724,6 +7747,7 @@ async function offerShareCopyPaste(shareUrl, titleLines) {
 }
 
 async function shareCurrentWheel() {
+  syncUiPrefsIntoState();
   library = writeActiveState(library, state);
   const payload = getCurrentWheelSharePayload();
   const safeName = String(payload.name || "wheel")
@@ -8018,6 +8042,8 @@ resultCenter.addEventListener("click", (e) => {
 // --- Import / Export / Reset ---
 $("#btn-export").addEventListener("click", () => {
   // Export active wheel project (same as before) — full library is Backup
+  syncUiPrefsIntoState();
+  persist();
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -8028,6 +8054,7 @@ $("#btn-export").addEventListener("click", () => {
 
 /** Full library backup (every wheel + which is active). */
 function backupLibrary() {
+  syncUiPrefsIntoState();
   library = writeActiveState(library, state);
   const payload = {
     format: "sad-wheel-library-v1",
@@ -8348,6 +8375,8 @@ function bindAll() {
     ensureReverseSlideSfxBuffer("rig_reverse_slide").catch(() => {});
   }
   updateUndoButton();
+  // Restore Hide panels from this wheel's saved preference
+  applyHidePanelsFromState();
 }
 
 // --- Boot ---
