@@ -7503,8 +7503,8 @@ function getCurrentWheelSharePayload() {
 }
 
 /**
- * Bitly / rb.gy / tinyurl all reject multi‑MB URLs.
- * We never hand those to the user — host the data, then shorten a tiny app link.
+ * Large / image wheels are hosted (#b= / #j=) instead of embedding multi‑MB
+ * data in the URL. No third-party TinyURL / is.gd — the hosted app link is enough.
  */
 const SHARE_INLINE_MAX_B64 = 8000;
 
@@ -7610,44 +7610,6 @@ async function uploadSharePayload(payload) {
   }
 }
 
-/** Free URL shortener for already-short app links only. */
-async function shortenUrl(longUrl) {
-  if (String(longUrl).length > 1800) {
-    throw new Error("URL too long for public shorteners (Bitly/rb.gy limit)");
-  }
-  const tryJsonHost = async (host) => {
-    const api = `https://${host}/create.php?format=json&url=${encodeURIComponent(
-      longUrl
-    )}`;
-    const res = await fetch(api);
-    if (!res.ok) throw new Error(`${host} HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.shorturl) return String(data.shorturl);
-    throw new Error(data.errormessage || `${host} failed`);
-  };
-  const tryTiny = async () => {
-    const api =
-      "https://tinyurl.com/api-create.php?url=" +
-      encodeURIComponent(longUrl);
-    const res = await fetch(api);
-    if (!res.ok) throw new Error(`tinyurl HTTP ${res.status}`);
-    const text = (await res.text()).trim();
-    if (text.startsWith("http")) return text;
-    throw new Error(text || "tinyurl failed");
-  };
-  try {
-    return await tryJsonHost("is.gd");
-  } catch (e1) {
-    console.warn("is.gd failed:", e1);
-    try {
-      return await tryJsonHost("v.gd");
-    } catch (e2) {
-      console.warn("v.gd failed:", e2);
-      return await tryTiny();
-    }
-  }
-}
-
 async function copyTextToClipboard(text) {
   try {
     if (navigator.clipboard?.writeText) {
@@ -7682,7 +7644,7 @@ function getShareAppBase() {
 
 /**
  * Build a paste-friendly share URL.
- * Bitly/rb.gy cannot take multi-MB #wheel= links — we host data and shorten a tiny URL.
+ * Prefer hosting the payload (#b= / #j=) so the link stays short — no TinyURL/is.gd.
  */
 async function buildShareCopyUrl(payload) {
   const base = getShareAppBase();
@@ -7705,14 +7667,14 @@ async function buildShareCopyUrl(payload) {
   if (mustHost) {
     try {
       const up = await uploadSharePayload(payload);
-      // #b= bytebin, #j= jsonblob
+      // #b= bytebin, #j= jsonblob — short enough to paste; no third-party shortener
       appUrl =
         up.kind === "b"
           ? `${base}#b=${encodeURIComponent(up.id)}`
           : `${base}#j=${encodeURIComponent(up.id)}`;
       hosted = true;
       note =
-        "Short share link (includes images). Hosted copy may expire after a while.\n\n";
+        "Share link (includes images). Hosted copy may expire after a while.\n\n";
     } catch (hostErr) {
       console.warn("Share host failed:", hostErr);
     }
@@ -7724,7 +7686,7 @@ async function buildShareCopyUrl(payload) {
     inline = true;
   }
 
-  // Host failed + large wheel: compact no-media link (short enough for Bitly)
+  // Host failed + large wheel: compact no-media link
   if (!appUrl) {
     const slim = stripSharePayloadMedia(payload);
     const slimB64 = utf8ToBase64(JSON.stringify(slim));
@@ -7732,35 +7694,20 @@ async function buildShareCopyUrl(payload) {
       appUrl = `${base}#wheel=${slimB64}`;
       compact = true;
       note =
-        "Compact link (images/sounds removed so Bitly/rb.gy can accept it).\nFor full images use Export JSON.\n\n";
+        "Compact link (images/sounds removed — hosting was unavailable).\nFor full images use Export JSON.\n\n";
     } else if (b64) {
-      // Absolute last resort — not bitly-compatible
       appUrl = `${base}#wheel=${b64}`;
       inline = true;
       note =
-        "Full mega-link (too long for Bitly/rb.gy). Prefer Export JSON if paste fails.\n\n";
+        "Full mega-link (very long). Prefer Export JSON if paste fails.\n\n";
     } else {
       throw new Error("Could not build any share URL");
     }
   }
 
-  // Shorten only short app URLs (hosted #b= / #j= or tiny inline)
-  let shareUrl = appUrl;
-  let shortened = false;
-  if (appUrl.length < 1800) {
-    try {
-      shareUrl = await shortenUrl(appUrl);
-      shortened = true;
-    } catch (err) {
-      console.warn("URL shortener failed, using app link:", err);
-      shareUrl = appUrl;
-    }
-  }
-
   return {
-    shareUrl,
+    shareUrl: appUrl,
     appUrl,
-    shortened,
     note,
     inline,
     hosted,
@@ -7787,13 +7734,11 @@ async function shareCurrentWheel() {
 
   try {
     const built = await buildShareCopyUrl(payload);
-    const kind = built.shortened
-      ? "Short link"
-      : built.hosted
-        ? "Hosted share link"
-        : built.compact
-          ? "Compact share link"
-          : "Share link";
+    const kind = built.hosted
+      ? "Share link"
+      : built.compact
+        ? "Compact share link"
+        : "Share link";
     await offerShareCopyPaste(
       built.shareUrl,
       `${built.note}${kind} ready.\n\n`
