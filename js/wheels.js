@@ -258,5 +258,5 @@ export function deleteWheel(lib, id) {
 export function duplicateWheel(lib, id) {
   const src = lib.wheels.find((w) => w.id === id);
   if (!src) return null;
-  return addWheel(lib, `${src.name} copy`, src.data);
+  return addWheel(lib, src.name || "My wheel", src.data);
 }

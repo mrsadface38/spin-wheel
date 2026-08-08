@@ -1334,7 +1334,7 @@ function cloneSectionForDuplicate(section) {
   const gids = getSectionGroupIds(section);
   const raw = {
     id: uid("sec"),
-    label: `${section.label || "Untitled"} copy`,
+    label: section.label || "Untitled",
     weight: normalizeWeight(section.weight),
     enabled: section.enabled !== false,
     groupIds: gids.slice(),
