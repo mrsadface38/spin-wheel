@@ -7450,13 +7450,80 @@ function getCurrentWheelSharePayload() {
 }
 
 /**
- * Prefer hosting + shortener above this size (keeps paste small).
- * We still fall back to a long #wheel= link if hosting fails — never jump
- * straight to a file download when a link is still possible.
+ * Bitly / rb.gy / tinyurl all reject multi‑MB URLs.
+ * We never hand those to the user — host the data, then shorten a tiny app link.
  */
-const SHARE_INLINE_MAX_B64 = 12000;
+const SHARE_INLINE_MAX_B64 = 8000;
 
-/** Host share JSON (CORS-friendly). Anonymous blobs expire ~24h. */
+function payloadHasImages(payload) {
+  const d = payload?.data || payload;
+  if (!d || typeof d !== "object") return false;
+  if (d.look?.backgroundImage || d.look?.centerImage || d.look?.winEffectData)
+    return true;
+  for (const s of d.sections || []) {
+    if (s?.imageData || s?.winEffectData || s?.landSfxData) return true;
+  }
+  for (const g of d.groups || []) {
+    if (g?.imageData || g?.winEffectData || g?.landSfxData) return true;
+  }
+  return false;
+}
+
+/** Strip bulky media so a compact #wheel= link can fit third-party shorteners. */
+function stripSharePayloadMedia(payload) {
+  const p = JSON.parse(JSON.stringify(payload));
+  const d = p.data || p;
+  if (d.look) {
+    d.look.backgroundImage = null;
+    d.look.centerImage = null;
+    d.look.winEffectData = null;
+    d.look.winEffectName = null;
+  }
+  for (const s of d.sections || []) {
+    s.imageData = null;
+    s.winEffectData = null;
+    s.winEffectName = null;
+    s.landSfxData = null;
+    s.landSfxName = null;
+    s.customImage = false;
+  }
+  for (const g of d.groups || []) {
+    g.imageData = null;
+    g.winEffectData = null;
+    g.winEffectName = null;
+    g.landSfxData = null;
+    g.landSfxName = null;
+  }
+  if (d.sound) {
+    d.sound.spinSfxData = null;
+    d.sound.landSfxData = null;
+    d.sound.bgmData = null;
+  }
+  return p;
+}
+
+/** bytebin.lucko.me — CORS OK from GitHub Pages, good for larger JSON. */
+async function uploadSharePayloadToBytebin(payload) {
+  const res = await fetch("https://bytebin.lucko.me/post", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`bytebin ${res.status}`);
+  let key = (res.headers.get("Location") || "").trim();
+  if (!key) {
+    const data = await res.json().catch(() => ({}));
+    key = data.key || "";
+  }
+  key = key.replace(/^https?:\/\/[^/]+\//, "").replace(/^\//, "");
+  if (!key) throw new Error("bytebin: no key");
+  return { kind: "b", id: key };
+}
+
+/** jsonblob.com — CORS OK; anonymous blobs ~24h. */
 async function uploadSharePayloadToJsonBlob(payload) {
   const res = await fetch("https://jsonblob.com/api/jsonBlob", {
     method: "POST",
@@ -7466,38 +7533,36 @@ async function uploadSharePayloadToJsonBlob(payload) {
     },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    throw new Error(`Could not host share data (${res.status})`);
-  }
-  const id =
+  if (!res.ok) throw new Error(`jsonblob ${res.status}`);
+  let id =
     res.headers.get("X-jsonblob-id") ||
     res.headers.get("x-jsonblob-id") ||
     "";
-  if (id) {
-    return {
-      id,
-      apiUrl: `https://jsonblob.com/api/jsonBlob/${id}`,
-    };
+  if (!id) {
+    const loc = res.headers.get("Location") || res.headers.get("location") || "";
+    const m = loc.match(/jsonBlob\/([^/?#]+)/i);
+    id = m?.[1] || "";
   }
-  const loc = res.headers.get("Location") || res.headers.get("location") || "";
-  const path = loc.startsWith("http")
-    ? loc
-    : loc
-      ? `https://jsonblob.com${loc.startsWith("/") ? "" : "/"}${loc}`
-      : "";
-  const m = path.match(/jsonBlob\/([^/?#]+)/i);
-  if (m?.[1]) {
-    return {
-      id: m[1],
-      apiUrl: `https://jsonblob.com/api/jsonBlob/${m[1]}`,
-    };
-  }
-  throw new Error("Share host did not return an id");
+  if (!id) throw new Error("jsonblob: no id");
+  return { kind: "j", id };
 }
 
-/** Free URL shortener (is.gd, then v.gd). */
+/** Host full share payload; try bytebin then jsonblob. */
+async function uploadSharePayload(payload) {
+  try {
+    return await uploadSharePayloadToBytebin(payload);
+  } catch (e1) {
+    console.warn("bytebin host failed:", e1);
+    return await uploadSharePayloadToJsonBlob(payload);
+  }
+}
+
+/** Free URL shortener for already-short app links only. */
 async function shortenUrl(longUrl) {
-  const tryHost = async (host) => {
+  if (String(longUrl).length > 1800) {
+    throw new Error("URL too long for public shorteners (Bitly/rb.gy limit)");
+  }
+  const tryJsonHost = async (host) => {
     const api = `https://${host}/create.php?format=json&url=${encodeURIComponent(
       longUrl
     )}`;
@@ -7507,11 +7572,26 @@ async function shortenUrl(longUrl) {
     if (data.shorturl) return String(data.shorturl);
     throw new Error(data.errormessage || `${host} failed`);
   };
+  const tryTiny = async () => {
+    const api =
+      "https://tinyurl.com/api-create.php?url=" +
+      encodeURIComponent(longUrl);
+    const res = await fetch(api);
+    if (!res.ok) throw new Error(`tinyurl HTTP ${res.status}`);
+    const text = (await res.text()).trim();
+    if (text.startsWith("http")) return text;
+    throw new Error(text || "tinyurl failed");
+  };
   try {
-    return await tryHost("is.gd");
+    return await tryJsonHost("is.gd");
   } catch (e1) {
     console.warn("is.gd failed:", e1);
-    return await tryHost("v.gd");
+    try {
+      return await tryJsonHost("v.gd");
+    } catch (e2) {
+      console.warn("v.gd failed:", e2);
+      return await tryTiny();
+    }
   }
 }
 
@@ -7524,7 +7604,6 @@ async function copyTextToClipboard(text) {
   } catch (err) {
     console.warn("Clipboard write failed:", err);
   }
-  // Fallback for non-secure contexts / blocked clipboard API
   try {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -7549,63 +7628,91 @@ function getShareAppBase() {
 }
 
 /**
- * Build the best copy-paste share URL.
- * Never throws if an inline #wheel= link can still be built.
+ * Build a paste-friendly share URL.
+ * Bitly/rb.gy cannot take multi-MB #wheel= links — we host data and shorten a tiny URL.
  */
 async function buildShareCopyUrl(payload) {
   const base = getShareAppBase();
-  const json = JSON.stringify(payload);
   let b64 = null;
   try {
-    b64 = utf8ToBase64(json);
+    b64 = utf8ToBase64(JSON.stringify(payload));
   } catch (err) {
     console.warn("base64 encode failed:", err);
   }
+
+  const mustHost =
+    !b64 || b64.length > SHARE_INLINE_MAX_B64 || payloadHasImages(payload);
 
   let appUrl = null;
   let note = "";
   let hosted = false;
   let inline = false;
+  let compact = false;
 
-  // 1) Prefer short hosted link for large wheels
-  if (!b64 || b64.length > SHARE_INLINE_MAX_B64) {
+  if (mustHost) {
     try {
-      const up = await uploadSharePayloadToJsonBlob(payload);
-      appUrl = `${base}#j=${encodeURIComponent(up.id)}`;
+      const up = await uploadSharePayload(payload);
+      // #b= bytebin, #j= jsonblob
+      appUrl =
+        up.kind === "b"
+          ? `${base}#b=${encodeURIComponent(up.id)}`
+          : `${base}#j=${encodeURIComponent(up.id)}`;
       hosted = true;
       note =
-        "Short hosted link (good for images). Expires about 24 hours after creation.\n\n";
+        "Short share link (includes images). Hosted copy may expire after a while.\n\n";
     } catch (hostErr) {
       console.warn("Share host failed:", hostErr);
     }
   }
 
-  // 2) Inline #wheel= (small, or fallback if host failed)
-  if (!appUrl) {
-    if (!b64) throw new Error("Could not encode share data");
+  // Small wheels: inline is fine
+  if (!appUrl && b64 && b64.length <= SHARE_INLINE_MAX_B64) {
     appUrl = `${base}#wheel=${b64}`;
     inline = true;
-    if (b64.length > SHARE_INLINE_MAX_B64) {
+  }
+
+  // Host failed + large wheel: compact no-media link (short enough for Bitly)
+  if (!appUrl) {
+    const slim = stripSharePayloadMedia(payload);
+    const slimB64 = utf8ToBase64(JSON.stringify(slim));
+    if (slimB64.length <= 100000) {
+      appUrl = `${base}#wheel=${slimB64}`;
+      compact = true;
       note =
-        "Full link (hosting was unavailable). This is very long — paste carefully; some apps cut it off.\n\n";
+        "Compact link (images/sounds removed so Bitly/rb.gy can accept it).\nFor full images use Export JSON.\n\n";
+    } else if (b64) {
+      // Absolute last resort — not bitly-compatible
+      appUrl = `${base}#wheel=${b64}`;
+      inline = true;
+      note =
+        "Full mega-link (too long for Bitly/rb.gy). Prefer Export JSON if paste fails.\n\n";
+    } else {
+      throw new Error("Could not build any share URL");
     }
   }
 
-  // 3) Optional shortener (never required)
+  // Shorten only short app URLs (hosted #b= / #j= or tiny inline)
   let shareUrl = appUrl;
   let shortened = false;
-  try {
-    // Shorteners reject multi‑MB URLs; only try when appUrl is reasonably short
-    if (appUrl.length < 2000) {
+  if (appUrl.length < 1800) {
+    try {
       shareUrl = await shortenUrl(appUrl);
       shortened = true;
+    } catch (err) {
+      console.warn("URL shortener failed, using app link:", err);
+      shareUrl = appUrl;
     }
-  } catch (err) {
-    console.warn("URL shortener failed, using app link:", err);
-    shareUrl = appUrl;
   }
 
-  return { shareUrl, appUrl, shortened, note, inline, hosted };
+  return {
+    shareUrl,
+    appUrl,
+    shortened,
+    note,
+    inline,
+    hosted,
+    compact,
+  };
 }
 
 async function offerShareCopyPaste(shareUrl, titleLines) {
@@ -7624,38 +7731,30 @@ async function shareCurrentWheel() {
     .replace(/^-|-$/g, "")
     .slice(0, 40) || "wheel";
 
-  // Always try to give a copy-paste link first (never auto-download as primary).
   try {
     const built = await buildShareCopyUrl(payload);
     const kind = built.shortened
       ? "Short link"
       : built.hosted
         ? "Hosted share link"
-        : "Share link";
-    await offerShareCopyPaste(built.shareUrl, `${built.note}${kind} ready.\n\n`);
-    return;
-  } catch (err) {
-    console.warn("Primary share path failed:", err);
-  }
-
-  // Last-ditch: raw #wheel= even if huge
-  try {
-    const json = JSON.stringify(payload);
-    const b64 = utf8ToBase64(json);
-    const url = `${getShareAppBase()}#wheel=${b64}`;
+        : built.compact
+          ? "Compact share link"
+          : "Share link";
     await offerShareCopyPaste(
-      url,
-      "Share link ready (long).\n\nSome apps cut off huge links — if paste fails, use Export JSON.\n\n"
+      built.shareUrl,
+      `${built.note}${kind} ready.\n\n`
     );
     return;
-  } catch (err2) {
-    console.warn("Inline share also failed:", err2);
+  } catch (err) {
+    console.warn("Share link failed:", err);
   }
 
-  // Only if we truly cannot build any link
+  // Only if nothing else worked
   downloadJson(`sad-wheel-${safeName}.json`, payload);
   alert(
-    "Could not build a share link on this browser — downloaded a JSON file instead.\nUse Import to load it on another device."
+    "Could not create a short share link (hosting may be blocked).\n\n" +
+      "Downloaded a JSON file instead — send that file and use Import.\n\n" +
+      "Note: Bitly / rb.gy cannot shorten multi-MB links with images inside."
   );
 }
 
@@ -7704,23 +7803,50 @@ async function fetchSharePayloadFromJsonBlob(id) {
   return res.json();
 }
 
-/** Import wheel from #wheel=… or hosted #j=… share link (once on boot). */
+/**
+ * Load payload from bytebin.lucko.me (#b=key).
+ * @param {string} key
+ */
+async function fetchSharePayloadFromBytebin(key) {
+  const clean = String(key || "")
+    .trim()
+    .replace(/^https?:\/\/bytebin\.lucko\.me\//i, "")
+    .replace(/^\//, "");
+  if (!clean) throw new Error("Missing share id");
+  const url = `https://bytebin.lucko.me/${encodeURIComponent(clean)}`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (res.status === 404) {
+    throw new Error(
+      "This short share link has expired or was deleted (hosted links can expire after a while)."
+    );
+  }
+  if (!res.ok) throw new Error(`Could not download shared wheel (${res.status})`);
+  return res.json();
+}
+
+/** Import wheel from #wheel=… or hosted #b= / #j= share link (once on boot). */
 async function tryImportShareHash() {
   const hash = location.hash || "";
   if (!hash || hash === "#") return;
 
-  // Hosted short shares: #j=<jsonblob-id>
-  const hosted =
+  // Hosted short shares: #b=<bytebin-key> or #j=<jsonblob-id>
+  const hostedB =
+    hash.match(/^#b=([^&]+)/i) || hash.match(/^#bytebin=([^&]+)/i);
+  const hostedJ =
     hash.match(/^#j=([^&]+)/i) || hash.match(/^#jsonblob=([^&]+)/i);
   // Inline base64: #wheel=...
   const isWheel = hash.startsWith("#wheel=");
-  if (!hosted && !isWheel) return;
+  if (!hostedB && !hostedJ && !isWheel) return;
 
   try {
     let payload;
-    if (hosted) {
+    if (hostedB) {
+      payload = await fetchSharePayloadFromBytebin(
+        decodeURIComponent(hostedB[1])
+      );
+    } else if (hostedJ) {
       payload = await fetchSharePayloadFromJsonBlob(
-        decodeURIComponent(hosted[1])
+        decodeURIComponent(hostedJ[1])
       );
     } else {
       const b64 = hash.slice("#wheel=".length);
