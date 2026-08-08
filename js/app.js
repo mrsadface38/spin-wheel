@@ -395,12 +395,11 @@ function updateStorageMeter() {
   }
 }
 
-/** Share button title / badge when wheel has media (hosted links expire). */
+/** Share button tooltip when wheel has media (hosted links expire). */
 function updateShareButtonHint() {
   const btn = $("#btn-share-wheel");
   if (!btn) return;
   const hasMedia = payloadHasImages({ data: state });
-  btn.classList.toggle("share-has-media", hasMedia);
   btn.title = hasMedia
     ? "Copy a share link (includes images; hosted link may expire ~24h — use Export JSON to keep forever)"
     : "Copy a share link for this wheel (prompt also shows the link)";

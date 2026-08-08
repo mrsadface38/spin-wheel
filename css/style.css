@@ -519,24 +519,6 @@ body.focus-mode .stage-panel {
   background: rgba(231, 76, 60, 0.1);
 }
 
-/* Share button hint when wheel has images (hosted link may expire) */
-.btn-share-wheel.share-has-media {
-  position: relative;
-}
-
-.btn-share-wheel.share-has-media::after {
-  content: "";
-  position: absolute;
-  top: 0.28rem;
-  right: 0.28rem;
-  width: 0.4rem;
-  height: 0.4rem;
-  border-radius: 50%;
-  background: #f0d78c;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-  pointer-events: none;
-}
-
 .top-actions {
   display: flex;
   gap: 0.5rem;
