@@ -1371,7 +1371,7 @@ function cloneGroupForDuplicate(group) {
   const newId = uid("grp");
   return normalizeGroup({
     id: newId,
-    name: `${group.name || "Group"} copy`,
+    name: group.name || "Group",
     active: group.active !== false,
     overrideColor: group.overrideColor === true,
     overrideTextColor: group.overrideTextColor === true,
@@ -7385,6 +7385,58 @@ function downloadJson(filename, obj) {
   URL.revokeObjectURL(a.href);
 }
 
+/**
+ * UTF-8 string → standard base64 (chunked; safe for large image payloads).
+ * Avoids encodeURIComponent/escape which blow up or throw on big wheels.
+ */
+function utf8ToBase64(str) {
+  const bytes = new TextEncoder().encode(String(str ?? ""));
+  const chunk = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunk) {
+    const sub = bytes.subarray(i, i + chunk);
+    binary += String.fromCharCode.apply(null, sub);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Base64 → UTF-8 string. Tolerates URL-safe alphabet, missing padding, whitespace.
+ */
+function base64ToUtf8(b64) {
+  let s = String(b64 || "")
+    .trim()
+    .replace(/\s+/g, "")
+    // URL-safe variants
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  // Drop anything that isn't base64 (truncation/noise from chats)
+  s = s.replace(/[^A-Za-z0-9+/=]/g, "");
+  if (!s) throw new Error("Share link is empty");
+  const pad = s.length % 4;
+  if (pad === 1) {
+    throw new Error(
+      "Share link looks truncated or corrupted (incomplete base64). Try Export → download JSON instead of a link."
+    );
+  }
+  if (pad) s += "=".repeat(4 - pad);
+  let binary;
+  try {
+    binary = atob(s);
+  } catch {
+    throw new Error(
+      "Share link looks truncated or corrupted. Try Export / Import with a JSON file (links with big images often break when pasted)."
+    );
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  try {
+    return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  } catch {
+    return binary;
+  }
+}
+
 function getCurrentWheelSharePayload() {
   const slot = getActiveSlot(library);
   return {
@@ -7395,6 +7447,9 @@ function getCurrentWheelSharePayload() {
   };
 }
 
+/** ~400KB of base64 ≈ safe-ish for most browsers; larger links often fail on paste. */
+const SHARE_LINK_MAX_B64 = 400000;
+
 async function shareCurrentWheel() {
   library = writeActiveState(library, state);
   const payload = getCurrentWheelSharePayload();
@@ -7403,17 +7458,25 @@ async function shareCurrentWheel() {
     .replace(/^-|-$/g, "")
     .slice(0, 40) || "wheel";
 
-  // Always build a share link (no size cap). Auto-copy, then always prompt
-  // so the user can copy again if needed.
   try {
     const json = JSON.stringify(payload);
-    const b64 = btoa(unescape(encodeURIComponent(json)));
+    const b64 = utf8ToBase64(json);
     const base =
       `${location.origin}${location.pathname}${location.search}`.replace(
         /#$/,
         ""
       );
     const url = `${base}#wheel=${b64}`;
+
+    // Huge links (images) break when pasted into chats / some browsers
+    if (b64.length > SHARE_LINK_MAX_B64) {
+      downloadJson(`sad-wheel-${safeName}.json`, payload);
+      alert(
+        `This wheel is too large for a reliable share link (${Math.round(b64.length / 1024)} KB encoded — often from section/group images).\n\n` +
+          `Downloaded a JSON file instead. Send that file and use Import to load it.`
+      );
+      return;
+    }
 
     let copied = false;
     try {
@@ -7426,7 +7489,6 @@ async function shareCurrentWheel() {
       copied = false;
     }
 
-    // Always show the link so they can copy again (Ctrl+C in the field)
     prompt(
       copied
         ? "Share link copied to the clipboard.\n\nCopy again from here if you need it (Ctrl+C, then Enter):"
@@ -7437,7 +7499,6 @@ async function shareCurrentWheel() {
   } catch (err) {
     console.warn("Share link failed, downloading file:", err);
   }
-  // Only if encoding the link itself fails
   downloadJson(`sad-wheel-${safeName}.json`, payload);
   alert(
     "Could not build a share link — downloaded a JSON file instead. Use Import to load it."
@@ -7451,17 +7512,54 @@ $("#btn-share-wheel")?.addEventListener("click", () => {
   });
 });
 
+/**
+ * Parse a #wheel=… payload or a bare base64/JSON string into a wheel object.
+ * @param {string} raw
+ */
+function parseShareWheelPayload(raw) {
+  let s = String(raw || "").trim();
+  if (!s) throw new Error("Nothing to import");
+  // Full URL pasted
+  const hashIdx = s.indexOf("#wheel=");
+  if (hashIdx >= 0) s = s.slice(hashIdx + "#wheel=".length);
+  else if (s.startsWith("wheel=")) s = s.slice("wheel=".length);
+  // Already JSON
+  if (s.startsWith("{")) {
+    const payload = JSON.parse(s);
+    return payload;
+  }
+  const json = base64ToUtf8(s);
+  return JSON.parse(json);
+}
+
 /** Import wheel payload from #wheel=… share link (once on boot). */
 async function tryImportShareHash() {
   const hash = location.hash || "";
   if (!hash.startsWith("#wheel=")) return;
   try {
     const b64 = hash.slice("#wheel=".length);
-    const json = decodeURIComponent(escape(atob(b64)));
-    const payload = JSON.parse(json);
+    if (b64.length < 20) {
+      throw new Error(
+        "Share link looks truncated. Links with images are very long — use Export JSON + Import instead."
+      );
+    }
+    let payload;
+    try {
+      payload = parseShareWheelPayload(b64);
+    } catch (e) {
+      // Second try: maybe location.hash was partially URL-decoded
+      try {
+        payload = parseShareWheelPayload(decodeURIComponent(b64));
+      } catch {
+        throw e;
+      }
+    }
     const data = payload?.data || payload;
-    if (!data?.sections || !data?.groups) {
-      throw new Error("Link is not a valid wheel");
+    if (!data?.sections || !Array.isArray(data.sections)) {
+      throw new Error("Link is not a valid wheel (missing sections)");
+    }
+    if (!data?.groups || !Array.isArray(data.groups)) {
+      throw new Error("Link is not a valid wheel (missing groups)");
     }
     const name =
       (payload.name && String(payload.name)) ||
@@ -7480,7 +7578,13 @@ async function tryImportShareHash() {
     history.replaceState(null, "", location.pathname + location.search);
   } catch (err) {
     console.error("Share import failed:", err);
-    alert("Could not open share link: " + (err.message || err));
+    const msg = String(err?.message || err || "Unknown error");
+    alert(
+      "Could not open share link:\n\n" +
+        msg +
+        "\n\nTip: wheels with images make huge links that chat apps often cut off. " +
+        "Use Share → download JSON, then Import on the other device."
+    );
     try {
       history.replaceState(null, "", location.pathname + location.search);
     } catch {
@@ -7709,17 +7813,55 @@ $("#import-file").addEventListener("change", async (e) => {
   if (!file) return;
   try {
     const text = await file.text();
-    const { data, source } = parseImportFile(text, file.name);
-    if (!data.sections || !data.groups) throw new Error("Invalid project file");
+    let data = null;
+    let source = "file";
+    let importName = null;
+    // Share link pasted into a .txt file, or raw #wheel= base64 / share JSON
+    const trimmed = text.trim();
+    if (
+      trimmed.includes("#wheel=") ||
+      trimmed.startsWith("wheel=") ||
+      /^[A-Za-z0-9+/_=-]{80,}$/.test(trimmed.replace(/\s+/g, ""))
+    ) {
+      try {
+        const payload = parseShareWheelPayload(trimmed);
+        data = payload?.data || payload;
+        importName = payload?.name || null;
+        source = "share-link";
+      } catch {
+        /* fall through to normal parsers */
+      }
+    }
+    if (!data) {
+      // sad-wheel-v1 export JSON { format, name, data }
+      try {
+        const raw = JSON.parse(text);
+        if (raw?.format === "sad-wheel-v1" && raw?.data) {
+          data = raw.data;
+          importName = raw.name || null;
+          source = "share-json";
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!data) {
+      const parsed = parseImportFile(text, file.name);
+      data = parsed.data;
+      source = parsed.source;
+    }
+    if (!data?.sections || !data?.groups) throw new Error("Invalid project file");
     const asNew = confirm(
       "Import as a NEW wheel?\n\nOK = keep current wheel and import into a new one\nCancel = replace the current wheel"
     );
     if (asNew) {
       library = writeActiveState(library, state);
-      const baseName = (file.name || "Imported").replace(
-        /\.(json|wheel|txt|csv|tsv)$/i,
-        ""
-      );
+      const baseName =
+        importName ||
+        (file.name || "Imported").replace(
+          /\.(json|wheel|txt|csv|tsv)$/i,
+          ""
+        );
       const result = addWheel(library, baseName, data);
       await applyLoadedWheel(result.lib, result.state);
     } else {
