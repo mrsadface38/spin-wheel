@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#106</span>
+        <span class="app-version" id="app-version" title="Update number">#107</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -65,7 +65,7 @@
           <span class="toggle-sidebar-label">Hide panels</span>
         </button>
         <div id="stage" class="stage">
-          <!-- DOM media so GIFs animate (canvas freezes to first frame) -->
+          <!-- DOM media layer for section images -->
           <div id="bg-media" class="bg-media" aria-hidden="true"></div>
           <canvas id="bg-canvas"></canvas>
           <canvas id="wheel-canvas"></canvas>
@@ -185,8 +185,8 @@
               <div id="bg-preview" class="img-preview empty">No image</div>
               <div class="image-pick-actions">
                 <label class="btn small">
-                  Choose image / GIF
-                  <input type="file" id="bg-image-input" accept="image/*,.gif,.webp,.apng,image/gif,image/webp" hidden />
+                  Choose image
+                  <input type="file" id="bg-image-input" accept="image/png,image/jpeg,image/webp,image/*,.png,.jpg,.jpeg,.webp" hidden />
                 </label>
                 <button type="button" id="bg-image-clear" class="btn small ghost">Clear</button>
               </div>
@@ -203,8 +203,8 @@
               <div id="center-preview" class="img-preview empty">No image</div>
               <div class="image-pick-actions">
                 <label class="btn small">
-                  Choose image / GIF
-                  <input type="file" id="center-image-input" accept="image/*,.gif,.webp,.apng,image/gif,image/webp" hidden />
+                  Choose image
+                  <input type="file" id="center-image-input" accept="image/png,image/jpeg,image/webp,image/*,.png,.jpg,.jpeg,.webp" hidden />
                 </label>
                 <button type="button" id="center-image-clear" class="btn small ghost">Clear</button>
               </div>
@@ -311,14 +311,14 @@
                 <option value="confetti" selected>Confetti</option>
                 <option value="custom">Custom media…</option>
               </select>
-              <small>Used when a section/group does not set its own effect. Custom media: <strong>WebM (best transparency)</strong>, GIF, WebP, APNG/PNG, or MP4.</small>
+              <small>Used when a section/group does not set its own effect. Custom media: <strong>WebM (best transparency)</strong>, WebP, PNG, or MP4.</small>
             </label>
             <div class="audio-pick" id="look-win-effect-custom-row" hidden>
               <span id="look-win-effect-name" class="audio-name">No custom file</span>
               <div class="image-pick-actions">
                 <label class="btn small">
                   Choose file
-                  <input type="file" id="look-win-effect-input" accept="video/webm,.webm,image/gif,.gif,image/webp,.webp,image/png,.png,image/apng,.apng,video/mp4,.mp4,image/*,video/*" hidden />
+                  <input type="file" id="look-win-effect-input" accept="video/webm,.webm,image/webp,.webp,image/png,.png,video/mp4,.mp4,image/*,video/*" hidden />
                 </label>
                 <button type="button" id="look-win-effect-clear" class="btn small ghost">Clear file</button>
                 <button type="button" id="look-win-effect-preview" class="btn small ghost">Preview</button>
@@ -768,8 +768,8 @@
               <div id="section-img-preview" class="img-preview empty">No image</div>
               <div class="image-pick-actions">
                 <label class="btn small">
-                  Choose image / GIF
-                  <input type="file" id="section-image-input" accept="image/*,.gif,.webp,.apng,image/gif,image/webp" hidden />
+                  Choose image
+                  <input type="file" id="section-image-input" accept="image/png,image/jpeg,image/webp,image/*,.png,.jpg,.jpeg,.webp" hidden />
                 </label>
                 <button type="button" id="section-image-clear" class="btn small ghost">Clear</button>
               </div>
@@ -887,12 +887,12 @@
               <div class="image-pick-actions">
                 <label class="btn small">
                   Choose file
-                  <input type="file" id="section-win-effect-input" accept="video/webm,.webm,image/gif,.gif,image/webp,.webp,image/png,.png,image/apng,.apng,video/mp4,.mp4,image/*,video/*" hidden />
+                  <input type="file" id="section-win-effect-input" accept="video/webm,.webm,image/webp,.webp,image/png,.png,video/mp4,.mp4,image/*,video/*" hidden />
                 </label>
                 <button type="button" id="section-win-effect-clear" class="btn small ghost">Clear file</button>
               </div>
             </div>
-            <small>Custom media: WebM (alpha/transparency), GIF, WebP, APNG/PNG, or MP4. Plays full-screen for a few seconds.</small>
+            <small>Custom media: WebM (alpha/transparency), WebP, PNG, or MP4. Plays full-screen for a few seconds.</small>
           </div>
         </div>
       </div>
@@ -997,8 +997,8 @@
                 <div id="group-img-preview" class="img-preview empty">No image</div>
                 <div class="image-pick-actions">
                   <label class="btn small">
-                    Choose image / GIF
-                    <input type="file" id="group-image-input" accept="image/*,.gif,.webp,.apng,image/gif,image/webp" hidden />
+                    Choose image
+                    <input type="file" id="group-image-input" accept="image/png,image/jpeg,image/webp,image/*,.png,.jpg,.jpeg,.webp" hidden />
                   </label>
                   <button type="button" id="group-image-clear" class="btn small ghost">Clear</button>
                 </div>
@@ -1108,7 +1108,7 @@
                 <div class="image-pick-actions">
                   <label class="btn small">
                     Choose file
-                    <input type="file" id="group-win-effect-input" accept="video/webm,.webm,image/gif,.gif,image/webp,.webp,image/png,.png,image/apng,.apng,video/mp4,.mp4,image/*,video/*" hidden />
+                    <input type="file" id="group-win-effect-input" accept="video/webm,.webm,image/webp,.webp,image/png,.png,video/mp4,.mp4,image/*,video/*" hidden />
                   </label>
                   <button type="button" id="group-win-effect-clear" class="btn small ghost">Clear file</button>
                 </div>

@@ -32,7 +32,7 @@ import {
   duplicateWheel,
 } from "./wheels.js";
 import { AudioManager } from "./audio.js";
-import { Wheel, isLikelyAnimatedImage } from "./wheel.js";
+import { Wheel } from "./wheel.js";
 import {
   computeFillImageLayout,
   normalizeImageLayoutMode,
@@ -1227,11 +1227,10 @@ function renderSections() {
       ]
         .filter(Boolean)
         .join(" · ");
-      // Animated GIFs as list swatches re-decode constantly — use solid color instead
-      const bg =
-        disp.imageData && !isLikelyAnimatedImage(disp.imageData)
-          ? `background-image:url(${JSON.stringify(disp.imageData)});background-color:${disp.color}`
-          : `background:${disp.color}`;
+      // GIFs are blocked on upload; legacy GIF data still shown as static (resolved on wheel)
+      const bg = disp.imageData
+        ? `background-image:url(${JSON.stringify(disp.imageData)});background-color:${disp.color}`
+        : `background:${disp.color}`;
       const dragHandle = reorderable
         ? `<div class="section-drag-handle" title="Drag to reorder (Your order)" aria-label="Drag to reorder" role="button">
             <span class="drag-grip" aria-hidden="true"></span>
@@ -1304,11 +1303,9 @@ function renderGroups() {
       ]
         .filter(Boolean)
         .join(" · ");
-      // Quote data URLs; skip animated GIFs (laggy list swatches)
-      const swatchBg =
-        g.imageData && !isLikelyAnimatedImage(g.imageData)
-          ? `background-image:url(${JSON.stringify(g.imageData)});background-color:${g.color || "#3ecf8e"}`
-          : `background:${g.active ? g.color || "#3ecf8e" : "#555"}`;
+      const swatchBg = g.imageData
+        ? `background-image:url(${JSON.stringify(g.imageData)});background-color:${g.color || "#3ecf8e"}`
+        : `background:${g.active ? g.color || "#3ecf8e" : "#555"}`;
       return `
         <div class="group-card ${g.active ? "" : "inactive-card"} ${groupHasAnyOverride(g) ? "group-override-on" : ""}" data-id="${g.id}">
           <div class="group-drag-handle" title="Drag to reorder" aria-label="Drag to reorder" role="button">
@@ -2705,6 +2702,14 @@ $("#group-image-input")?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
   if (!file) return;
+  if (isGifFile(file)) {
+    alert("GIF images are not supported (they lag the wheel). Use PNG, JPEG, or WebP.");
+    return;
+  }
+  if (!isImageFile(file)) {
+    alert("Please choose an image file (PNG, JPEG, or WebP).");
+    return;
+  }
   pendingGroupImage = await fileToDataUrl(file);
   setImgPreview($("#group-img-preview"), pendingGroupImage);
   scheduleGroupLivePreview();
@@ -3116,7 +3121,7 @@ function fillGroupSelects() {
 
 function setImgPreview(el, dataUrl) {
   if (dataUrl) {
-    // Use <img> so GIF previews animate in the editor
+    // Image preview in the editor
     el.classList.add("has-image");
     el.classList.remove("empty");
     el.textContent = "";
@@ -3488,7 +3493,7 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
     wedge.style.setProperty("--image-rotation", `${rot}deg`);
 
     if (mode === "tile") {
-      // Single CSS background (matches main wheel — one GIF decoder, not a grid of imgs)
+      // Single CSS background tile layer (matches main wheel)
       const layer = document.createElement("div");
       layer.className = "slice-bg-tile-layer";
       const base = Math.max(18, radiusCss * 0.2);
@@ -3913,19 +3918,31 @@ $("#section-color")?.addEventListener("input", () => {
   scheduleSectionLivePreview();
 });
 
+function isGifFile(file) {
+  if (!file) return false;
+  if (file.type === "image/gif") return true;
+  return /\.gif$/i.test(file.name || "");
+}
+
 function isImageFile(file) {
   if (!file) return false;
+  // GIFs removed — they caused major lag on the wheel
+  if (isGifFile(file)) return false;
+  if (file.type === "image/gif") return false;
   if (file.type && file.type.startsWith("image/")) return true;
-  // Some systems leave GIF type empty — allow by extension
-  return /\.(gif|png|jpe?g|webp|apng|bmp|svg)$/i.test(file.name || "");
+  return /\.(png|jpe?g|webp|bmp|svg)$/i.test(file.name || "");
 }
 
 $("#section-image-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
   if (!file) return;
+  if (isGifFile(file)) {
+    alert("GIF images are not supported (they lag the wheel). Use PNG, JPEG, or WebP.");
+    return;
+  }
   if (!isImageFile(file)) {
-    alert("Please choose an image or GIF file.");
+    alert("Please choose an image file (PNG, JPEG, or WebP).");
     return;
   }
   pendingSectionImage = await fileToDataUrl(file);
@@ -4484,7 +4501,7 @@ function setResultCenterBg(imageData) {
     bg.classList.remove("has-image");
     return;
   }
-  // <img> so GIFs keep animating behind the text
+  // <img> for section image behind winner text
   const img = document.createElement("img");
   img.src = imageData;
   img.alt = "";
@@ -5013,11 +5030,11 @@ const WIN_FX_EXITS = [
 ];
 
 /**
- * Formats good for transparent (or animated) after-win overlays.
- * WebM alpha, GIF, WebP, APNG/PNG; MP4 also allowed (opaque).
+ * Formats good for transparent after-win overlays.
+ * WebM alpha, WebP, PNG; MP4 also allowed (opaque). GIFs not supported.
  */
 const WIN_EFFECT_ACCEPT =
-  "video/webm,.webm,image/gif,.gif,image/webp,.webp,image/png,.png,image/apng,.apng,video/mp4,.mp4,image/*,video/*";
+  "video/webm,.webm,image/webp,.webp,image/png,.png,video/mp4,.mp4,image/*,video/*";
 
 /**
  * @param {File} file
@@ -5025,21 +5042,19 @@ const WIN_EFFECT_ACCEPT =
  */
 function isAllowedWinEffectFile(file) {
   if (!file) return false;
+  if (isGifFile(file)) return false;
   const name = (file.name || "").toLowerCase();
   const type = (file.type || "").toLowerCase();
-  if (
-    type.startsWith("image/") ||
-    type.startsWith("video/") ||
-    type === "image/apng"
-  ) {
+  if (type === "image/gif") return false;
+  if (type.startsWith("image/") || type.startsWith("video/")) {
     return true;
   }
-  return /\.(webm|gif|webp|png|apng|mp4|mov|m4v|webm)$/i.test(name);
+  return /\.(webm|webp|png|mp4|mov|m4v)$/i.test(name);
 }
 
 /**
  * Prefer <video> for real video types (incl. transparent WebM).
- * GIF / WebP / APNG / PNG use <img> so animation + alpha work in browsers.
+ * WebP / PNG use <img>.
  * @param {string} dataUrl
  * @param {string} [fileName]
  */
@@ -5052,15 +5067,15 @@ function isWinEffectVideoMime(dataUrl, fileName = "") {
 }
 
 /**
- * Formats that typically carry transparency (or 1-bit GIF alpha).
+ * Formats that typically carry transparency.
  * @param {string} dataUrl
  * @param {string} [fileName]
  */
 function winEffectLikelyTransparent(dataUrl, fileName = "") {
   const n = (fileName || "").toLowerCase();
   if (/^data:video\/webm/i.test(dataUrl) || n.endsWith(".webm")) return true;
-  if (/^data:image\/(gif|webp|png|apng)/i.test(dataUrl)) return true;
-  if (/\.(gif|webp|png|apng)$/i.test(n)) return true;
+  if (/^data:image\/(webp|png)/i.test(dataUrl)) return true;
+  if (/\.(webp|png)$/i.test(n)) return true;
   return false;
 }
 
@@ -5070,9 +5085,14 @@ function winEffectLikelyTransparent(dataUrl, fileName = "") {
  * @returns {Promise<{ data: string, name: string }>}
  */
 async function loadWinEffectFile(file) {
+  if (isGifFile(file)) {
+    throw new Error(
+      "GIF is not supported. Use WebM (best for transparency), WebP, PNG, or MP4."
+    );
+  }
   if (!isAllowedWinEffectFile(file)) {
     throw new Error(
-      "Use WebM (best for transparency), GIF, WebP, APNG/PNG, or MP4."
+      "Use WebM (best for transparency), WebP, PNG, or MP4."
     );
   }
   // Soft size hint — large files bloat localStorage
@@ -5085,7 +5105,7 @@ async function loadWinEffectFile(file) {
 
 /**
  * Full-screen custom media with random enter/hold/exit.
- * Supports transparent WebM, GIF, WebP, APNG/PNG, and MP4.
+ * Supports transparent WebM, WebP, PNG, and MP4.
  * @param {string} dataUrl
  * @param {{ fileName?: string }} [opts]
  */
@@ -5124,7 +5144,7 @@ function playCustomWinMedia(dataUrl, opts = {}) {
       el = v;
       v.play?.().catch(() => {});
     } else {
-      // GIF / WebP / APNG / PNG — <img> preserves animation + alpha
+      // WebP / PNG — <img> for still images with alpha
       const img = document.createElement("img");
       img.src = dataUrl;
       img.alt = "";
@@ -6697,7 +6717,7 @@ $("#look-win-effect-preview")?.addEventListener("click", () => {
     });
   } else {
     alert(
-      "Choose a custom media file first (WebM, GIF, WebP, APNG/PNG, or MP4)."
+      "Choose a custom media file first (WebM, WebP, PNG, or MP4)."
     );
   }
 });
@@ -6848,8 +6868,12 @@ $("#bg-image-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
   if (!file) return;
+  if (isGifFile(file)) {
+    alert("GIF images are not supported (they lag the wheel). Use PNG, JPEG, or WebP.");
+    return;
+  }
   if (!isImageFile(file)) {
-    alert("Please choose an image or GIF file.");
+    alert("Please choose an image file (PNG, JPEG, or WebP).");
     return;
   }
   checkpoint();
@@ -6871,8 +6895,12 @@ $("#center-image-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
   if (!file) return;
+  if (isGifFile(file)) {
+    alert("GIF images are not supported (they lag the wheel). Use PNG, JPEG, or WebP.");
+    return;
+  }
   if (!isImageFile(file)) {
-    alert("Please choose an image or GIF file.");
+    alert("Please choose an image file (PNG, JPEG, or WebP).");
     return;
   }
   checkpoint();
