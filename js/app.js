@@ -278,12 +278,30 @@ function syncUiPrefsIntoState() {
   }
 }
 
+/** Show storage-full alert at most once per page load (not every Save click). */
+let storageFullAlertShown = false;
+
+/**
+ * Alert once when browser storage cannot hold a save.
+ * Subsequent failed saves stay quiet (meter still updates).
+ */
+function warnStorageFullOnce() {
+  if (storageFullAlertShown) return;
+  storageFullAlertShown = true;
+  alert(
+    "You're running out of browser storage (or it's full). " +
+      "This change may not have been saved.\n\n" +
+      "Try removing large images, deleting unused wheels, or use Backup / Export JSON."
+  );
+}
+
 function persist() {
   syncUiPrefsIntoState();
   library = writeActiveState(library, state);
   const ok = saveLibrary(library);
   if (!ok) {
     console.warn("Save failed — browser storage may be full");
+    warnStorageFullOnce();
   }
   updateUndoButton();
   fillWheelSelect();
@@ -3095,12 +3113,8 @@ $("#group-form").addEventListener("submit", async (e) => {
       }
     }
 
-    const ok = persist();
-    if (!ok) {
-      alert(
-        "Could not save to browser storage (it may be full). Try removing large images or using Backup."
-      );
-    }
+    // persist() warns about full storage once per session if save fails
+    persist();
     renderGroups();
     renderSections();
     await refreshWheel();

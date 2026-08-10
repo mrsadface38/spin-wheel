@@ -122,10 +122,13 @@ export function saveLibrary(lib) {
       })),
     };
     localStorage.setItem(LIBRARY_KEY, JSON.stringify(payload));
-    // Keep legacy key in sync with active wheel (recovery / older paths)
-    const active = payload.wheels.find((w) => w.id === activeId);
-    if (active?.data) {
-      localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(active.data));
+    // Drop legacy single-wheel key once library is the source of truth.
+    // Re-writing it every save nearly doubled storage and caused repeated
+    // "storage full" failures even when the library alone still fit.
+    try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      /* ignore */
     }
     return true;
   } catch (err) {
