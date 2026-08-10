@@ -20,6 +20,8 @@ import {
   formatWeight,
   clampImageRotation,
   normalizeLandAction,
+  normalizeReturnAfterMs,
+  normalizeReturnsAt,
 } from "./state.js";
 import {
   loadLibrary,
@@ -446,6 +448,11 @@ async function applyLoadedWheel(nextLib, nextState) {
   bindAll();
   updateSectionsCount();
   updateUndoButton();
+  try {
+    processSectionReturns({ refresh: false, persist: true });
+  } catch (err) {
+    console.warn("section returns on wheel load:", err);
+  }
   await preloadAudio();
   await refreshWheel();
   syncBgm();
@@ -1336,6 +1343,7 @@ function renderSections() {
           : "",
         disp.landSfxData ? "🔊" : "",
         landActionBadge(s),
+        returnTimerBadge(s),
         !s.enabled
           ? "off"
           : inactiveGroup
@@ -1481,6 +1489,8 @@ function cloneSectionForDuplicate(section) {
     winEffectName: section.winEffectName || null,
     landAction: normalizeLandAction(section.landAction),
     landTargetWheelId: section.landTargetWheelId || null,
+    returnAfterMs: normalizeReturnAfterMs(section.returnAfterMs),
+    returnsAt: null, // new copy is enabled path; no pending return
   };
   return raw;
 }
@@ -1495,6 +1505,306 @@ function landActionBadge(section) {
     return slot ? `→ ${slot.name || "wheel"}` : "→ other wheel";
   }
   return "";
+}
+
+/** Preset return-after values (ms) shown in the section editor select. */
+const RETURN_AFTER_PRESETS_MS = [
+  0, 300_000, 900_000, 1_800_000, 3_600_000, 21_600_000, 86_400_000,
+  259_200_000, 604_800_000,
+];
+
+/**
+ * Human duration for return timer (e.g. "1 day", "30 min").
+ * @param {number} ms
+ */
+function formatReturnDuration(ms) {
+  const n = normalizeReturnAfterMs(ms);
+  if (n <= 0) return "off";
+  const min = Math.round(n / 60_000);
+  if (min < 60) return `${min} min`;
+  const hr = n / 3_600_000;
+  if (hr < 24 && Math.abs(hr - Math.round(hr)) < 0.05) {
+    const h = Math.round(hr);
+    return h === 1 ? "1 hour" : `${h} hours`;
+  }
+  if (hr < 24) return `${Math.round(hr * 10) / 10} hours`;
+  const days = n / 86_400_000;
+  if (Math.abs(days - Math.round(days)) < 0.05) {
+    const d = Math.round(days);
+    return d === 1 ? "1 day" : `${d} days`;
+  }
+  return `${Math.round(days * 10) / 10} days`;
+}
+
+/**
+ * Short date/time for return schedule.
+ * @param {number} ts
+ */
+function formatReturnDate(ts) {
+  try {
+    return new Date(ts).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return new Date(ts).toString();
+  }
+}
+
+/**
+ * Relative remaining time until returnsAt (e.g. "in 2h", "soon").
+ * @param {number} ts
+ * @param {number} [now]
+ */
+function formatReturnRemaining(ts, now = Date.now()) {
+  const left = ts - now;
+  if (left <= 0) return "soon";
+  const sec = Math.round(left / 1000);
+  if (sec < 60) return `in ${sec}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `in ${min}m`;
+  const hr = Math.round(min / 60);
+  if (hr < 48) return `in ${hr}h`;
+  const days = Math.round(hr / 24);
+  return `in ${days}d`;
+}
+
+/** Badge when section is waiting to rejoin the wheel. */
+function returnTimerBadge(section) {
+  if (!section || section.enabled !== false) return "";
+  const at = normalizeReturnsAt(section.returnsAt);
+  if (!at) {
+    const ms = normalizeReturnAfterMs(section.returnAfterMs);
+    return ms > 0 ? `⏱ ${formatReturnDuration(ms)}` : "";
+  }
+  if (at <= Date.now()) return "⏱ returning";
+  return `⏱ ${formatReturnRemaining(at)}`;
+}
+
+/**
+ * Disable a section and schedule auto-return from its returnAfterMs setting.
+ * @param {object} section
+ * @param {{ schedule?: boolean }} [opts] schedule=false skips setting returnsAt
+ */
+function hideSectionWithReturn(section, opts = {}) {
+  if (!section) return;
+  section.enabled = false;
+  if (opts.schedule === false) {
+    section.returnsAt = null;
+    return;
+  }
+  const ms = normalizeReturnAfterMs(section.returnAfterMs);
+  section.returnsAt = ms > 0 ? Date.now() + ms : null;
+}
+
+/**
+ * Re-enable a section and clear any scheduled return.
+ * @param {object} section
+ */
+function showSectionClearReturn(section) {
+  if (!section) return;
+  section.enabled = true;
+  section.returnsAt = null;
+}
+
+/**
+ * Re-enable sections whose returnsAt date has passed.
+ * @param {{ refresh?: boolean, persist?: boolean }} [opts]
+ * @returns {number} how many sections came back
+ */
+function processSectionReturns(opts = {}) {
+  const doRefresh = opts.refresh !== false;
+  const doPersist = opts.persist !== false;
+  const now = Date.now();
+  let count = 0;
+  for (const s of state.sections || []) {
+    if (s.enabled !== false) {
+      if (s.returnsAt != null) {
+        s.returnsAt = null;
+      }
+      continue;
+    }
+    const at = normalizeReturnsAt(s.returnsAt);
+    if (at != null && at <= now) {
+      s.enabled = true;
+      s.returnsAt = null;
+      count += 1;
+    }
+  }
+  if (count > 0) {
+    if (doPersist) persist();
+    renderSections();
+    if (doRefresh) {
+      void refreshWheel().catch((err) =>
+        console.warn("refresh after section return:", err)
+      );
+    }
+  }
+  scheduleNextSectionReturnCheck();
+  return count;
+}
+
+/** @type {ReturnType<typeof setTimeout>|0} */
+let sectionReturnTimer = 0;
+
+/** Schedule a wake-up for the soonest returnsAt (plus a slow poll). */
+function scheduleNextSectionReturnCheck() {
+  if (sectionReturnTimer) {
+    clearTimeout(sectionReturnTimer);
+    sectionReturnTimer = 0;
+  }
+  let soonest = Infinity;
+  const now = Date.now();
+  for (const s of state.sections || []) {
+    if (s.enabled !== false) continue;
+    const at = normalizeReturnsAt(s.returnsAt);
+    if (at != null && at > now && at < soonest) soonest = at;
+  }
+  // Wake at next due time, but also re-check at least every 30s for UI badges
+  let delay = 30_000;
+  if (Number.isFinite(soonest) && soonest !== Infinity) {
+    delay = Math.min(delay, Math.max(250, soonest - now + 50));
+  }
+  sectionReturnTimer = setTimeout(() => {
+    sectionReturnTimer = 0;
+    try {
+      const n = processSectionReturns();
+      // Refresh countdown badges when nothing returned this tick
+      if (n === 0) renderSections();
+    } catch (err) {
+      console.warn("section return check:", err);
+      scheduleNextSectionReturnCheck();
+    }
+  }, delay);
+}
+
+/**
+ * Read return-after duration from the section form (ms, 0 = off).
+ */
+function readSectionReturnAfterMsFromForm() {
+  const sel = $("#section-return-after")?.value;
+  if (sel === "custom") {
+    const raw = Number($("#section-return-custom-value")?.value);
+    const unit = $("#section-return-custom-unit")?.value || "hours";
+    const n = Number.isFinite(raw) && raw > 0 ? raw : 1;
+    if (unit === "minutes") return normalizeReturnAfterMs(n * 60_000);
+    if (unit === "days") return normalizeReturnAfterMs(n * 86_400_000);
+    return normalizeReturnAfterMs(n * 3_600_000);
+  }
+  return normalizeReturnAfterMs(sel);
+}
+
+/**
+ * Sync return-after select/custom row from a ms value.
+ * @param {number} ms
+ */
+function setSectionReturnAfterForm(ms) {
+  const n = normalizeReturnAfterMs(ms);
+  const sel = $("#section-return-after");
+  const customRow = $("#section-return-custom-row");
+  if (!sel) return;
+  if (n === 0) {
+    sel.value = "0";
+    if (customRow) customRow.hidden = true;
+    return;
+  }
+  if (RETURN_AFTER_PRESETS_MS.includes(n)) {
+    sel.value = String(n);
+    if (customRow) customRow.hidden = true;
+    return;
+  }
+  sel.value = "custom";
+  if (customRow) customRow.hidden = false;
+  const min = n / 60_000;
+  const hr = n / 3_600_000;
+  const day = n / 86_400_000;
+  if (Number.isInteger(day) || Math.abs(day - Math.round(day)) < 1e-9) {
+    if ($("#section-return-custom-value")) {
+      $("#section-return-custom-value").value = String(Math.max(1, Math.round(day)));
+    }
+    if ($("#section-return-custom-unit")) {
+      $("#section-return-custom-unit").value = "days";
+    }
+  } else if (Number.isInteger(hr) || Math.abs(hr - Math.round(hr)) < 1e-9) {
+    if ($("#section-return-custom-value")) {
+      $("#section-return-custom-value").value = String(Math.max(1, Math.round(hr)));
+    }
+    if ($("#section-return-custom-unit")) {
+      $("#section-return-custom-unit").value = "hours";
+    }
+  } else {
+    if ($("#section-return-custom-value")) {
+      $("#section-return-custom-value").value = String(Math.max(1, Math.round(min)));
+    }
+    if ($("#section-return-custom-unit")) {
+      $("#section-return-custom-unit").value = "minutes";
+    }
+  }
+}
+
+/**
+ * Show/hide custom duration + scheduled datetime fields; update status text.
+ * @param {{ enabled?: boolean, returnsAt?: number|null, returnAfterMs?: number }} [sec]
+ */
+function updateSectionReturnUI(sec = null) {
+  const actionSel = $("#section-return-after");
+  const customRow = $("#section-return-custom-row");
+  if (customRow) {
+    customRow.hidden = actionSel?.value !== "custom";
+  }
+
+  const enabled =
+    sec != null
+      ? sec.enabled !== false
+      : $("#section-enabled")?.checked !== false;
+  const atField = $("#section-returns-at-field");
+  const atInput = $("#section-returns-at");
+  const status = $("#section-return-status");
+  const ms =
+    sec != null
+      ? normalizeReturnAfterMs(sec.returnAfterMs)
+      : readSectionReturnAfterMsFromForm();
+  const at =
+    sec != null
+      ? normalizeReturnsAt(sec.returnsAt)
+      : normalizeReturnsAt(
+          atInput?.value ? new Date(atInput.value).getTime() : null
+        );
+
+  if (atField) atField.hidden = enabled;
+  if (!enabled && atInput && sec) {
+    const scheduled = normalizeReturnsAt(sec.returnsAt);
+    if (scheduled) {
+      try {
+        // datetime-local wants local "YYYY-MM-DDTHH:mm"
+        const d = new Date(scheduled);
+        const pad = (x) => String(x).padStart(2, "0");
+        atInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+          d.getDate()
+        )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      } catch {
+        atInput.value = "";
+      }
+    } else {
+      atInput.value = "";
+    }
+  }
+
+  if (status) {
+    if (!enabled && at && at > Date.now()) {
+      status.hidden = false;
+      status.textContent = `Scheduled return: ${formatReturnDate(at)} (${formatReturnRemaining(at)})`;
+    } else if (!enabled && at && at <= Date.now()) {
+      status.hidden = false;
+      status.textContent = "Return time has passed — will re-enable shortly.";
+    } else if (ms > 0) {
+      status.hidden = false;
+      status.textContent = `When hidden, returns after ${formatReturnDuration(ms)}.`;
+    } else {
+      status.hidden = true;
+      status.textContent = "";
+    }
+  }
 }
 
 /** Fill target-wheel dropdown (other saved wheels). */
@@ -1852,9 +2162,14 @@ sectionsList.addEventListener("click", async (e) => {
   try {
     if (act === "toggle") {
       checkpoint();
-      section.enabled = !section.enabled;
+      if (section.enabled === false) {
+        showSectionClearReturn(section);
+      } else {
+        hideSectionWithReturn(section);
+      }
       persist();
       renderSections();
+      scheduleNextSectionReturnCheck();
       await refreshWheel();
     } else if (act === "edit") {
       openSectionModal(section);
@@ -2449,10 +2764,12 @@ async function setAllSectionsEnabled(enabled) {
   if (!anyChange) return;
   checkpoint();
   for (const s of state.sections) {
-    s.enabled = next;
+    if (next) showSectionClearReturn(s);
+    else hideSectionWithReturn(s);
   }
   persist();
   renderSections();
+  scheduleNextSectionReturnCheck();
   await refreshWheel();
 }
 
@@ -3963,6 +4280,8 @@ function openSectionModal(section) {
     fillSectionLandTargetWheels(section?.landTargetWheelId || null);
     updateSectionLandActionUI();
   }
+  setSectionReturnAfterForm(section?.returnAfterMs ?? 0);
+  updateSectionReturnUI(section || { enabled: true, returnAfterMs: 0, returnsAt: null });
   updateSectionImageModeUI();
   // Default preview: custom % of wheel at 20% (typical multi-slice wedge)
   if ($("#preview-weight-mode")) {
@@ -3987,6 +4306,35 @@ function openSectionModal(section) {
 
 $("#section-land-action")?.addEventListener("change", () => {
   updateSectionLandActionUI();
+});
+
+$("#section-return-after")?.addEventListener("change", () => {
+  updateSectionReturnUI({
+    enabled: $("#section-enabled")?.checked !== false,
+    returnAfterMs: readSectionReturnAfterMsFromForm(),
+    returnsAt: null,
+  });
+});
+$("#section-return-custom-value")?.addEventListener("input", () => {
+  updateSectionReturnUI({
+    enabled: $("#section-enabled")?.checked !== false,
+    returnAfterMs: readSectionReturnAfterMsFromForm(),
+    returnsAt: null,
+  });
+});
+$("#section-return-custom-unit")?.addEventListener("change", () => {
+  updateSectionReturnUI({
+    enabled: $("#section-enabled")?.checked !== false,
+    returnAfterMs: readSectionReturnAfterMsFromForm(),
+    returnsAt: null,
+  });
+});
+$("#section-enabled")?.addEventListener("change", () => {
+  updateSectionReturnUI({
+    enabled: $("#section-enabled")?.checked !== false,
+    returnAfterMs: readSectionReturnAfterMsFromForm(),
+    returnsAt: null,
+  });
 });
 
 $("#preview-weight-mode")?.addEventListener("change", () => {
@@ -4406,6 +4754,8 @@ $("#section-form").addEventListener("submit", async (e) => {
       : existing?.winEffectName ?? null,
     landAction: normalizeLandAction($("#section-land-action")?.value),
     landTargetWheelId: null,
+    returnAfterMs: readSectionReturnAfterMsFromForm(),
+    returnsAt: null,
   };
   if (payload.landAction === "otherWheel") {
     const tid = $("#section-land-target-wheel")?.value || "";
@@ -4416,6 +4766,20 @@ $("#section-form").addEventListener("submit", async (e) => {
     if (!payload.landTargetWheelId) {
       // No valid target — fall back to normal result behavior
       payload.landAction = "none";
+    }
+  }
+  // Schedule / preserve return date when saving a hidden section
+  if (payload.enabled === false) {
+    const atRaw = $("#section-returns-at")?.value;
+    if (atRaw) {
+      const parsed = Date.parse(atRaw);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        payload.returnsAt = parsed;
+      }
+    }
+    // If still no date but timer is on, start the clock from now
+    if (!payload.returnsAt && payload.returnAfterMs > 0) {
+      payload.returnsAt = Date.now() + payload.returnAfterMs;
     }
   }
   if (payload.customWinEffect && payload.winEffect === "custom" && !payload.winEffectData) {
@@ -4472,6 +4836,7 @@ $("#section-form").addEventListener("submit", async (e) => {
   updateSectionSortUI();
   renderSections();
   renderGroups();
+  scheduleNextSectionReturnCheck();
   await refreshWheel();
   sectionModal.close();
 });
@@ -4936,10 +5301,11 @@ async function applyPendingEliminate() {
   if (mode === "hide") {
     if (!section || section.enabled === false) return;
     checkpoint();
-    section.enabled = false;
+    hideSectionWithReturn(section);
     if (lastWinnerId === id) lastWinnerId = null;
     persist();
     renderSections();
+    scheduleNextSectionReturnCheck();
     await refreshWheel();
     return;
   }
@@ -6834,7 +7200,7 @@ async function hideWinnerPart() {
   pendingEliminateId = null;
   pendingEliminateMode = null;
   checkpoint();
-  section.enabled = false;
+  hideSectionWithReturn(section);
   lastWinnerId = null;
   // Clear overlay without re-running eliminate
   resultBanner.classList.add("hidden");
@@ -6845,6 +7211,7 @@ async function hideWinnerPart() {
   setResultRiggedVisible(isRigItActive() || isReverseRigActive());
   persist();
   renderSections();
+  scheduleNextSectionReturnCheck();
   await refreshWheel();
 }
 
@@ -8286,6 +8653,13 @@ async function handleSpinWinner(win, resultOpts = {}, spinOpts = {}) {
 }
 
 async function beginSpinSession() {
+  // Re-enable any sections whose return timer has elapsed
+  try {
+    const n = processSectionReturns({ refresh: false, persist: true });
+    if (n > 0) await refreshWheel();
+  } catch (err) {
+    console.warn("section returns before spin:", err);
+  }
   audio.ensure();
   const active = getActiveSections(state);
   if (!active.length) {
@@ -8917,6 +9291,21 @@ async function init() {
   } catch (err) {
     console.warn("refreshWheel:", err);
   }
+  try {
+    // Restore any sections whose return date already passed while the page was closed
+    processSectionReturns({ refresh: true, persist: true });
+  } catch (err) {
+    console.warn("section returns on boot:", err);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      try {
+        processSectionReturns({ refresh: true });
+      } catch (err) {
+        console.warn("section returns on focus:", err);
+      }
+    }
+  });
   forceUiInteractive();
   updateSectionsCount();
   fillWheelSelect();

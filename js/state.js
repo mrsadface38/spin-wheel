@@ -38,13 +38,46 @@
  *   landSfxName: string|null,
  *   landSfxVolume: number,
  *   landAction: 'none'|'respin'|'otherWheel',
- *   landTargetWheelId: string|null
+ *   landTargetWheelId: string|null,
+ *   returnAfterMs: number,
+ *   returnsAt: number|null
  * }} Section */
 
 /** Per-section action when this slice wins a spin. */
 export function normalizeLandAction(v) {
   if (v === "respin" || v === "otherWheel") return v;
   return "none";
+}
+
+/** Max auto-return delay: 1 year. */
+const MAX_RETURN_AFTER_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * How long after hide before this section re-enables (0 = off).
+ * @param {unknown} v
+ * @returns {number}
+ */
+export function normalizeReturnAfterMs(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(MAX_RETURN_AFTER_MS, Math.max(0, Math.round(n)));
+}
+
+/**
+ * Absolute time (ms since epoch) when a hidden section should return.
+ * @param {unknown} v
+ * @returns {number|null}
+ */
+export function normalizeReturnsAt(v) {
+  if (v == null || v === "") return null;
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+    return Math.round(v);
+  }
+  const n = Number(v);
+  if (Number.isFinite(n) && n > 0) return Math.round(n);
+  const parsed = Date.parse(String(v));
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return null;
 }
 
 const STORAGE_KEY = "spin-wheel-studio-v1";
@@ -1067,6 +1100,11 @@ function normalizeSection(s, groups, groupIdsSet) {
     landTargetWheelId = String(s.landTargetWheelId).trim();
   }
 
+  const returnAfterMs = normalizeReturnAfterMs(s.returnAfterMs);
+  // Only keep a scheduled return while the section is actually off the wheel
+  let returnsAt = normalizeReturnsAt(s.returnsAt);
+  if (s.enabled !== false) returnsAt = null;
+
   return {
     id: s.id || uid("sec"),
     label: String(s.label ?? "Untitled"),
@@ -1089,6 +1127,8 @@ function normalizeSection(s, groups, groupIdsSet) {
     ),
     landAction,
     landTargetWheelId,
+    returnAfterMs,
+    returnsAt,
   };
 }
 

@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#120</span>
+        <span class="app-version" id="app-version" title="Update number">#121</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -775,6 +775,40 @@
               <input type="checkbox" id="section-enabled" checked />
               <span>Enabled (include when group is active)</span>
             </label>
+
+            <label class="field">
+              <span>Auto-return after hide</span>
+              <select id="section-return-after" title="How long after this section is hidden before it comes back">
+                <option value="0">Off</option>
+                <option value="300000">5 minutes</option>
+                <option value="900000">15 minutes</option>
+                <option value="1800000">30 minutes</option>
+                <option value="3600000">1 hour</option>
+                <option value="21600000">6 hours</option>
+                <option value="86400000">1 day</option>
+                <option value="259200000">3 days</option>
+                <option value="604800000">7 days</option>
+                <option value="custom">Custom…</option>
+              </select>
+              <small>When this section is hidden (eye off, Hide after win, or eliminate), it is scheduled to rejoin the wheel after this time.</small>
+            </label>
+            <div class="field" id="section-return-custom-row" hidden>
+              <span>Custom duration</span>
+              <div class="slider-with-value">
+                <input type="number" id="section-return-custom-value" min="1" max="9999" step="1" value="1" />
+                <select id="section-return-custom-unit" title="Custom return unit">
+                  <option value="minutes">minutes</option>
+                  <option value="hours">hours</option>
+                  <option value="days">days</option>
+                </select>
+              </div>
+            </div>
+            <label class="field" id="section-returns-at-field" hidden>
+              <span>Returns on (date &amp; time)</span>
+              <input type="datetime-local" id="section-returns-at" />
+              <small>Scheduled return for this hidden section. Clear or enable the section to cancel.</small>
+            </label>
+            <p id="section-return-status" class="hint" hidden></p>
           </div>
 
           <div class="form-block compact">
