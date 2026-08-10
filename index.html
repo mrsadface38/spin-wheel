@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#119</span>
+        <span class="app-version" id="app-version" title="Update number">#120</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -908,6 +908,24 @@
               </div>
             </div>
             <small>Custom media: WebM (alpha/transparency), WebP, PNG, or MP4. Plays full-screen for a few seconds.</small>
+          </div>
+
+          <div class="form-block compact">
+            <h3>If this section wins</h3>
+            <label class="field">
+              <span>Then…</span>
+              <select id="section-land-action" title="What happens when the wheel lands on this section">
+                <option value="none">Show result (normal)</option>
+                <option value="respin">Respin this wheel</option>
+                <option value="otherWheel">Spin a different wheel</option>
+              </select>
+              <small>Per-section. Respin keeps spinning until a normal section wins (or a limit). “Different wheel” switches and spins that wheel.</small>
+            </label>
+            <label class="field" id="section-land-target-field" hidden>
+              <span>Target wheel</span>
+              <select id="section-land-target-wheel" title="Wheel to switch to and spin"></select>
+              <small>Create another wheel with + New if the list is empty.</small>
+            </label>
           </div>
         </div>
       </div>

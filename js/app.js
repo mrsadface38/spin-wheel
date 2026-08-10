@@ -19,6 +19,7 @@ import {
   normalizeWeight,
   formatWeight,
   clampImageRotation,
+  normalizeLandAction,
 } from "./state.js";
 import {
   loadLibrary,
@@ -1334,6 +1335,7 @@ function renderSections() {
             : "🖼 fill"
           : "",
         disp.landSfxData ? "🔊" : "",
+        landActionBadge(s),
         !s.enabled
           ? "off"
           : inactiveGroup
@@ -1477,8 +1479,58 @@ function cloneSectionForDuplicate(section) {
     winEffect: section.winEffect || null,
     winEffectData: section.winEffectData || null,
     winEffectName: section.winEffectName || null,
+    landAction: normalizeLandAction(section.landAction),
+    landTargetWheelId: section.landTargetWheelId || null,
   };
   return raw;
+}
+
+/** Section list badge for land actions. */
+function landActionBadge(section) {
+  const action = normalizeLandAction(section?.landAction);
+  if (action === "respin") return "↻ respin";
+  if (action === "otherWheel") {
+    const tid = section?.landTargetWheelId;
+    const slot = tid && library?.wheels?.find((w) => w.id === tid);
+    return slot ? `→ ${slot.name || "wheel"}` : "→ other wheel";
+  }
+  return "";
+}
+
+/** Fill target-wheel dropdown (other saved wheels). */
+function fillSectionLandTargetWheels(selectedId) {
+  const sel = $("#section-land-target-wheel");
+  if (!sel) return;
+  const cur = library?.activeId;
+  const others = (library?.wheels || []).filter((w) => w.id !== cur);
+  if (!others.length) {
+    sel.innerHTML = `<option value="">No other wheels yet</option>`;
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = others
+    .map(
+      (w) =>
+        `<option value="${escapeHtml(w.id)}">${escapeHtml(
+          w.name || "Untitled"
+        )}</option>`
+    )
+    .join("");
+  if (selectedId && others.some((w) => w.id === selectedId)) {
+    sel.value = selectedId;
+  } else {
+    sel.value = others[0].id;
+  }
+}
+
+function updateSectionLandActionUI() {
+  const action = normalizeLandAction($("#section-land-action")?.value);
+  const field = $("#section-land-target-field");
+  if (field) field.hidden = action !== "otherWheel";
+  if (action === "otherWheel") {
+    fillSectionLandTargetWheels($("#section-land-target-wheel")?.value);
+  }
 }
 
 /** Clone a group profile with a new id/name. */
@@ -3905,6 +3957,12 @@ function openSectionModal(section) {
       $("#section-sfx-volume-label").textContent = `${Math.round(clamped * 100)}%`;
     }
   }
+  {
+    const action = normalizeLandAction(section?.landAction);
+    if ($("#section-land-action")) $("#section-land-action").value = action;
+    fillSectionLandTargetWheels(section?.landTargetWheelId || null);
+    updateSectionLandActionUI();
+  }
   updateSectionImageModeUI();
   // Default preview: custom % of wheel at 20% (typical multi-slice wedge)
   if ($("#preview-weight-mode")) {
@@ -3926,6 +3984,10 @@ function openSectionModal(section) {
     requestAnimationFrame(updateSectionLivePreview);
   });
 }
+
+$("#section-land-action")?.addEventListener("change", () => {
+  updateSectionLandActionUI();
+});
 
 $("#preview-weight-mode")?.addEventListener("change", () => {
   if (parsePreviewWeightMode($("#preview-weight-mode")?.value) === "weight") {
@@ -4342,7 +4404,20 @@ $("#section-form").addEventListener("submit", async (e) => {
     winEffectName: customWinEffect
       ? pendingSectionWinEffectName
       : existing?.winEffectName ?? null,
+    landAction: normalizeLandAction($("#section-land-action")?.value),
+    landTargetWheelId: null,
   };
+  if (payload.landAction === "otherWheel") {
+    const tid = $("#section-land-target-wheel")?.value || "";
+    payload.landTargetWheelId =
+      tid && library.wheels.some((w) => w.id === tid && w.id !== library.activeId)
+        ? tid
+        : null;
+    if (!payload.landTargetWheelId) {
+      // No valid target — fall back to normal result behavior
+      payload.landAction = "none";
+    }
+  }
   if (payload.customWinEffect && payload.winEffect === "custom" && !payload.winEffectData) {
     payload.winEffect = "confetti";
   }
@@ -8110,6 +8185,106 @@ async function tryImportShareHash() {
 
 // --- Spin (double-click / drag-fling the wheel) ---
 
+/** Cap chained respin / switch-wheel actions so loops can't run forever. */
+const MAX_LAND_ACTION_CHAIN = 20;
+/** Depth of the current auto-respin / other-wheel chain (0 = user-started). */
+let landActionChainDepth = 0;
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Resolve per-section land action after a spin.
+ * @returns {Promise<{ type: 'show' } | { type: 'respin' } | { type: 'otherWheel', wheelId: string }>}
+ */
+async function resolveLandAction(winSection, resultOpts = {}) {
+  const raw =
+    state.sections.find((s) => s.id === winSection?.id) || winSection;
+  if (!raw) return { type: "show" };
+
+  const action = normalizeLandAction(raw.landAction);
+  if (action === "none") return { type: "show" };
+
+  if (landActionChainDepth >= MAX_LAND_ACTION_CHAIN) {
+    console.warn(
+      "Land action chain limit reached — showing result instead of chaining"
+    );
+    return { type: "show" };
+  }
+
+  if (action === "respin") {
+    try {
+      recordSpinHistory(raw, { ...resultOpts, landAction: "respin" });
+    } catch (err) {
+      console.warn("history (respin):", err);
+    }
+    return { type: "respin" };
+  }
+
+  if (action === "otherWheel") {
+    const tid = raw.landTargetWheelId;
+    if (
+      tid &&
+      tid !== library.activeId &&
+      library.wheels.some((w) => w.id === tid)
+    ) {
+      try {
+        recordSpinHistory(raw, {
+          ...resultOpts,
+          landAction: "otherWheel",
+          landTargetWheelId: tid,
+        });
+      } catch (err) {
+        console.warn("history (other wheel):", err);
+      }
+      return { type: "otherWheel", wheelId: tid };
+    }
+    // Missing / deleted target — treat as normal win
+    return { type: "show" };
+  }
+
+  return { type: "show" };
+}
+
+/**
+ * After a winner is known: either show result or chain respin / other wheel.
+ * @param {{ id: string, label?: string }} win
+ * @param {{ rigged?: boolean }} resultOpts
+ * @param {{ fromLandAction?: boolean }} [spinOpts]
+ */
+async function handleSpinWinner(win, resultOpts = {}, spinOpts = {}) {
+  if (!win) return;
+  try {
+    const next = await resolveLandAction(win, resultOpts);
+    if (next.type === "respin") {
+      landActionChainDepth += 1;
+      hideResults();
+      await sleepMs(450);
+      await doSpin({ fromLandAction: true });
+      return;
+    }
+    if (next.type === "otherWheel" && next.wheelId) {
+      landActionChainDepth += 1;
+      hideResults();
+      await switchToWheelId(next.wheelId);
+      await sleepMs(350);
+      await doSpin({ fromLandAction: true });
+      return;
+    }
+    // Normal result — reset chain so the next user spin starts fresh
+    if (!spinOpts.fromLandAction) landActionChainDepth = 0;
+    showResult(win, resultOpts);
+  } catch (err) {
+    console.error("handleSpinWinner:", err);
+    try {
+      showResult(win, resultOpts);
+    } catch (err2) {
+      console.error("showResult fallback:", err2);
+    }
+  }
+}
+
 async function beginSpinSession() {
   audio.ensure();
   const active = getActiveSections(state);
@@ -8152,24 +8327,28 @@ function endSpinSession() {
   }
 }
 
-async function doSpin() {
+/**
+ * @param {{ fromLandAction?: boolean }} [opts]
+ */
+async function doSpin(opts = {}) {
   if (spinBusy || wheel.spinning || wheel._dragging) return;
+  if (!opts.fromLandAction) landActionChainDepth = 0;
   if (!(await beginSpinSession())) return;
+  /** @type {{ id: string, label?: string } | null} */
+  let win = null;
+  /** @type {{ rigged?: boolean }} */
+  let resultOpts = {};
   try {
     const rig = getSpinRigOptions();
-    const win = await wheel.spin(clampSpinDuration(state.spin.duration), rig);
+    win = await wheel.spin(clampSpinDuration(state.spin.duration), rig);
     // null = grab-interrupted mid-spin (user took over with drag)
     if (win) {
-      try {
-        showResult(win, {
-          rigged:
-            !!rig.forceSectionId ||
-            !!(rig.avoidSectionIds && rig.avoidSectionIds.length) ||
-            !!rig.avoidGroupId,
-        });
-      } catch (err) {
-        console.error("showResult after spin:", err);
-      }
+      resultOpts = {
+        rigged:
+          !!rig.forceSectionId ||
+          !!(rig.avoidSectionIds && rig.avoidSectionIds.length) ||
+          !!rig.avoidGroupId,
+      };
     }
   } catch (err) {
     console.error("doSpin failed:", err);
@@ -8181,27 +8360,29 @@ async function doSpin() {
   } finally {
     endSpinSession();
   }
+  if (win) {
+    await handleSpinWinner(win, resultOpts, opts);
+  }
 }
 
-async function doFling(velocityRadPerSec) {
+/**
+ * @param {number} velocityRadPerSec
+ * @param {{ fromLandAction?: boolean }} [opts]
+ */
+async function doFling(velocityRadPerSec, opts = {}) {
   // Allow fling after grab-stop even if a previous session is cleaning up
   if (wheel.spinning || wheel._dragging) return;
   if (spinBusy) {
     // Previous spin was interrupted by grab; session already ending
     spinBusy = false;
   }
+  if (!opts.fromLandAction) landActionChainDepth = 0;
   if (!(await beginSpinSession())) return;
+  /** @type {{ id: string, label?: string } | null} */
+  let win = null;
   try {
     const rig = getSpinRigOptions();
-    const win = await wheel.fling(velocityRadPerSec, rig);
-    // Fling is always "rigged" label; also when secret Rig it is on
-    if (win) {
-      try {
-        showResult(win, { rigged: true });
-      } catch (err) {
-        console.error("showResult after fling:", err);
-      }
-    }
+    win = await wheel.fling(velocityRadPerSec, rig);
   } catch (err) {
     console.error("doFling failed:", err);
     try {
@@ -8211,6 +8392,10 @@ async function doFling(velocityRadPerSec) {
     }
   } finally {
     endSpinSession();
+  }
+  // Fling is always "rigged" label; also when secret Rig it is on
+  if (win) {
+    await handleSpinWinner(win, { rigged: true }, opts);
   }
 }
 

@@ -36,8 +36,16 @@
  *   imageRotation: number,
  *   landSfxData: string|null,
  *   landSfxName: string|null,
- *   landSfxVolume: number
+ *   landSfxVolume: number,
+ *   landAction: 'none'|'respin'|'otherWheel',
+ *   landTargetWheelId: string|null
  * }} Section */
+
+/** Per-section action when this slice wins a spin. */
+export function normalizeLandAction(v) {
+  if (v === "respin" || v === "otherWheel") return v;
+  return "none";
+}
 
 const STORAGE_KEY = "spin-wheel-studio-v1";
 
@@ -1053,6 +1061,12 @@ function normalizeSection(s, groups, groupIdsSet) {
     winEffect = "custom";
   }
 
+  const landAction = normalizeLandAction(s.landAction);
+  let landTargetWheelId = null;
+  if (s.landTargetWheelId != null && String(s.landTargetWheelId).trim()) {
+    landTargetWheelId = String(s.landTargetWheelId).trim();
+  }
+
   return {
     id: s.id || uid("sec"),
     label: String(s.label ?? "Untitled"),
@@ -1073,6 +1087,8 @@ function normalizeSection(s, groups, groupIdsSet) {
       s.landSfxVolume,
       0.4
     ),
+    landAction,
+    landTargetWheelId,
   };
 }
 
