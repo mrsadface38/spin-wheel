@@ -504,6 +504,11 @@ export function defaultState() {
       centerColor: "#1a1f35",
       centerImage: null,
       centerSize: 0.16,
+      /**
+       * When true, the center hub disc and center image rotate with the wheel.
+       * Off by default so the hub stays fixed in screen space.
+       */
+      spinCenterHub: false,
       borderColor: "#f0d78c",
       textColor: "#ffffff",
       /**
@@ -741,8 +746,12 @@ function migrate(data) {
   look.forceTextFont = look.forceTextFont === true;
   // Wheel drag defaults on; only false when explicitly saved off
   look.allowWheelDrag = look.allowWheelDrag !== false;
+  // Grab mid-spin defaults on; only false when explicitly saved off
+  look.allowGrabStopSpin = look.allowGrabStopSpin !== false;
   // Fair drag spin: only on when explicitly saved (default off)
   look.fairDragSpin = look.fairDragSpin === true;
+  // Center hub spins with wheel only when explicitly enabled (default off)
+  look.spinCenterHub = look.spinCenterHub === true;
   // Pointer angle 0–360 (0 = top, 90 = right default). Missing → right.
   {
     let pad = Number(look.pointerAngleDeg);

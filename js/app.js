@@ -5587,6 +5587,9 @@ function bindLook() {
   $("#bg-color").value = state.look.backgroundColor;
   $("#center-color").value = state.look.centerColor;
   $("#center-size").value = state.look.centerSize;
+  if ($("#chk-spin-center-hub")) {
+    $("#chk-spin-center-hub").checked = state.look.spinCenterHub === true;
+  }
   $("#border-color").value = state.look.borderColor;
   $("#text-color").value = state.look.textColor;
   if ($("#winner-text-color")) {
@@ -8067,6 +8070,9 @@ async function onLookChange() {
   state.look.backgroundColor = $("#bg-color").value;
   state.look.centerColor = $("#center-color").value;
   state.look.centerSize = Number($("#center-size").value);
+  if ($("#chk-spin-center-hub")) {
+    state.look.spinCenterHub = $("#chk-spin-center-hub").checked === true;
+  }
   state.look.borderColor = $("#border-color").value;
   state.look.textColor = $("#text-color").value;
   if ($("#winner-text-color")) {
@@ -8122,6 +8128,10 @@ async function onLookChange() {
   if ($("#chk-wheel-drag")) {
     state.look.allowWheelDrag = $("#chk-wheel-drag").checked !== false;
   }
+  if ($("#chk-grab-stop-spin")) {
+    state.look.allowGrabStopSpin =
+      $("#chk-grab-stop-spin").checked !== false;
+  }
   if ($("#chk-fair-drag-spin")) {
     state.look.fairDragSpin = $("#chk-fair-drag-spin").checked === true;
   }
@@ -8166,7 +8176,7 @@ async function onLookChange() {
   scheduleAutoSpin();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "text-style", "text-font", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-double-click-spin", "chk-wheel-drag", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "chk-spin-center-hub", "border-color", "text-color", "text-style", "text-font", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-double-click-spin", "chk-wheel-drag", "chk-grab-stop-spin", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -10815,6 +10825,7 @@ async function init() {
           !pointerDrag.active &&
           getActiveSections(state).length > 0,
         getAllowWheelDrag: () => state.look?.allowWheelDrag !== false,
+        getAllowGrabStopSpin: () => state.look?.allowGrabStopSpin !== false,
         getFairDragSpin: () => state.look?.fairDragSpin === true,
         onDragStart: ({ interrupted } = {}) => {
           audio.ensure();

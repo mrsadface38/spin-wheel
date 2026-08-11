@@ -464,6 +464,21 @@ export class Wheel {
     const d = Math.max(8, hubR * 2 - 4);
     el.style.width = `${d}px`;
     el.style.height = `${d}px`;
+    this._syncCenterMediaRotation();
+  }
+
+  /**
+   * Center image is fixed by default; when look.spinCenterHub is on,
+   * rotate it with the wheel (matches canvas hub).
+   */
+  _syncCenterMediaRotation() {
+    const el = this.centerMediaEl;
+    if (!el) return;
+    if (this.look.spinCenterHub === true) {
+      el.style.transform = `translate(-50%, -50%) rotate(${this.rotation}rad)`;
+    } else {
+      el.style.transform = "translate(-50%, -50%)";
+    }
   }
 
   async _rebuildSliceMedia() {
@@ -686,6 +701,7 @@ export class Wheel {
       // translateZ promotes to compositor layer; avoids reflow during spin
       this.sliceRotatorEl.style.transform = `rotate(${this.rotation}rad) translateZ(0)`;
     }
+    this._syncCenterMediaRotation();
   }
 
   drawBackground() {
@@ -873,8 +889,15 @@ export class Wheel {
       }
     }
 
-    // Center hub BEFORE labels so names are never painted under the hub
+    // Center hub BEFORE labels so names are never painted under the hub.
+    // Default: hub is fixed in screen space (undo wheel rotation).
+    // look.spinCenterHub: hub rotates with the wheel (stay in rotated space).
     const hubR = radius * (this.look.centerSize ?? 0.16);
+    const spinHub = this.look.spinCenterHub === true;
+    if (!spinHub) {
+      front.save();
+      front.rotate(-this.rotation);
+    }
     front.beginPath();
     front.arc(0, 0, hubR, 0, Math.PI * 2);
     front.fillStyle = this.look.centerColor || "#1a1f35";
@@ -882,6 +905,9 @@ export class Wheel {
     front.strokeStyle = this.look.borderColor || "#f0d78c";
     front.lineWidth = 4 * this._dpr;
     front.stroke();
+    if (!spinHub) {
+      front.restore();
+    }
 
     // Labels last (on top of hub/separators) — clipped to each wedge so no bleed
     for (const sl of slices) {
