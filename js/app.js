@@ -810,18 +810,17 @@ async function renameCurrentWheel() {
 }
 
 /**
- * Replace the active wheel contents with an empty Blank preset (no sections).
- * Keeps the same library slot and name.
+ * Replace the active wheel with a fresh Blank preset (no sections, preset name).
  */
 async function clearActiveWheelToBlank() {
-  const slot = getActiveSlot(library);
-  const name = slot?.name || "My wheel";
   try {
     wheel.cancelAnimatedSpin?.();
   } catch {
     /* ignore */
   }
+  const preset = getWheelPreset("blank");
   const blank = blankWheelState();
+  const name = preset?.defaultName || "New wheel";
   library = writeActiveState(library, blank);
   library = renameWheel(library, library.activeId, name);
   await applyLoadedWheel(library, blank);
@@ -829,12 +828,12 @@ async function clearActiveWheelToBlank() {
 
 async function deleteCurrentWheel() {
   const slot = getActiveSlot(library);
-  // Only one saved wheel: clear it to empty (no sections), don't block.
+  // Only one saved wheel: replace with Blank preset (empty, renamed).
   if (library.wheels.length <= 1) {
     if (
       !(await safeConfirm(
-        `Clear wheel “${slot.name}”?\n\nAll sections and settings on this wheel will be removed. You will be left with an empty wheel (no sections).\n\nTip: hold Delete for 5 seconds to erase all saved wheels.`,
-        "Clear wheel"
+        `Delete wheel “${slot.name}”?\n\nYou will be switched to a new Blank wheel (no sections).\n\nTip: hold Delete for 5 seconds to erase all saved wheels.`,
+        "Delete wheel"
       ))
     ) {
       return;
