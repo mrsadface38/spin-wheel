@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#150</span>
+        <span class="app-version" id="app-version" title="Update number">#151</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -190,22 +190,6 @@
             <p id="spin-until-bgm-hint" class="hint" hidden>
               Spin length matches the current Sound → Background music track (plays once from the start). Fixed duration above is ignored.
             </p>
-            <label class="field">
-              <span>Land zone (section area pointer can hit)</span>
-              <div class="slider-with-value">
-                <input
-                  type="range"
-                  id="spin-land-zone"
-                  min="1"
-                  max="99"
-                  step="1"
-                  value="99"
-                  title="Percent of each section the pointer may land in (centered)"
-                />
-                <span id="spin-land-zone-label" class="slider-value">99%</span>
-              </div>
-              <small>1%–99% of the section, centered. Edges are margin so it cannot land on a border. 100% is not allowed.</small>
-            </label>
           </div>
 
           <div class="form-block">
@@ -435,6 +419,29 @@
                 <input type="number" id="weight-slider-step" min="0.01" max="100" step="any" value="1" />
               </label>
             </div>
+          </div>
+
+          <div class="form-block">
+            <h3>Land zone</h3>
+            <label class="field">
+              <span>Section area the pointer can hit</span>
+              <div class="slider-with-value">
+                <input
+                  type="range"
+                  id="spin-land-zone"
+                  min="1"
+                  max="99"
+                  step="1"
+                  value="99"
+                  title="Percent of each section the pointer may land in (centered)"
+                />
+                <span id="spin-land-zone-label" class="slider-value">99%</span>
+              </div>
+              <small>
+                1%–99% of the section, centered. Edges are margin so it cannot land on a border. 100% is not allowed.
+                <strong>Recommended: keep at 99%.</strong>
+              </small>
+            </label>
           </div>
         </div>
 
