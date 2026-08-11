@@ -253,6 +253,15 @@ export function deleteWheel(lib, id) {
 }
 
 /**
+ * Wipe every saved wheel and return a fresh single default wheel.
+ * @param {string} [name]
+ * @returns {WheelLibrary}
+ */
+export function clearAllWheels(name = "My wheel") {
+  return createFreshLibrary(name, null);
+}
+
+/**
  * Duplicate a wheel (by id) and switch to the copy.
  * @param {WheelLibrary} lib
  * @param {string} id

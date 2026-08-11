@@ -37,6 +37,7 @@ import {
   addWheel,
   renameWheel,
   deleteWheel,
+  clearAllWheels,
   duplicateWheel,
 } from "./wheels.js";
 import { AudioManager } from "./audio.js";
@@ -541,8 +542,10 @@ function fillWheelSelect() {
       return `<option value="${w.id}"${w.id === cur ? " selected" : ""}>${label}</option>`;
     })
     .join("");
+  // Delete stays enabled always: click removes the current wheel (if >1),
+  // hold 5s wipes the whole library even when only one remains.
   const del = $("#btn-wheel-delete");
-  if (del) del.disabled = library.wheels.length <= 1;
+  if (del) del.disabled = false;
 }
 
 // --- Storage size meter (estimate localStorage pressure) ---
@@ -807,13 +810,15 @@ async function renameCurrentWheel() {
 
 async function deleteCurrentWheel() {
   if (library.wheels.length <= 1) {
-    await safeAlert("You need at least one wheel.");
+    await safeAlert(
+      "You need at least one wheel.\n\nHold Delete for 5 seconds to erase every saved wheel and start fresh."
+    );
     return;
   }
   const slot = getActiveSlot(library);
   if (
     !(await safeConfirm(
-      `Delete wheel “${slot.name}”? This cannot be undone.\nYour other wheels stay saved.`,
+      `Delete wheel “${slot.name}”? This cannot be undone.\nYour other wheels stay saved.\n\nTip: hold Delete for 5 seconds to erase all saved wheels.`,
       "Delete wheel"
     ))
   ) {
@@ -825,6 +830,35 @@ async function deleteCurrentWheel() {
   const result = switchActive(next, next.activeId);
   if (!result) return;
   await applyLoadedWheel(result.lib, result.state);
+}
+
+/** Hold Delete 5s — wipe entire library and load one blank default wheel. */
+async function deleteAllSavedWheels() {
+  const n = library.wheels?.length || 0;
+  const names = (library.wheels || [])
+    .map((w) => w.name || "Untitled")
+    .slice(0, 8);
+  const list =
+    names.length > 0
+      ? `\n\n${names.map((x) => `• ${x}`).join("\n")}${n > 8 ? `\n• …and ${n - 8} more` : ""}`
+      : "";
+  if (
+    !(await safeConfirm(
+      `Delete ALL ${n} saved wheel${n === 1 ? "" : "s"}? This cannot be undone.${list}\n\nYou will get one new blank wheel.`,
+      "Delete all wheels"
+    ))
+  ) {
+    return;
+  }
+  try {
+    wheel.cancelAnimatedSpin?.();
+  } catch {
+    /* ignore */
+  }
+  const fresh = clearAllWheels("My wheel");
+  const slot = getActiveSlot(fresh);
+  await applyLoadedWheel(fresh, hydrateState(slot.data));
+  await safeAlert("All saved wheels were deleted. You have a new blank wheel.");
 }
 
 async function refreshWheel() {
@@ -10448,9 +10482,81 @@ $("#btn-wheel-rename")?.addEventListener("click", () => {
   renameCurrentWheel().catch((err) => safeAlert(err.message || err));
 });
 
-$("#btn-wheel-delete")?.addEventListener("click", () => {
-  deleteCurrentWheel().catch((err) => alert(err.message || err));
-});
+// Delete: click = current wheel; hold 5s = all saved wheels
+{
+  const delBtn = $("#btn-wheel-delete");
+  const HOLD_ALL_MS = 5000;
+  let holdTimer = null;
+  let holdCompleted = false;
+  let holdPointerId = null;
+
+  function stopHoldVisual() {
+    if (!delBtn) return;
+    delBtn.classList.remove("is-holding");
+    delBtn.removeAttribute("aria-busy");
+  }
+
+  function cancelHold() {
+    if (holdTimer != null) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+    holdPointerId = null;
+    stopHoldVisual();
+  }
+
+  delBtn?.addEventListener("pointerdown", (e) => {
+    if (e.button != null && e.button !== 0) return;
+    if (delBtn.disabled) return;
+    holdCompleted = false;
+    cancelHold();
+    holdPointerId = e.pointerId;
+    try {
+      delBtn.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    delBtn.classList.add("is-holding");
+    delBtn.setAttribute("aria-busy", "true");
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      holdCompleted = true;
+      stopHoldVisual();
+      try {
+        if (holdPointerId != null) delBtn.releasePointerCapture(holdPointerId);
+      } catch {
+        /* ignore */
+      }
+      holdPointerId = null;
+      deleteAllSavedWheels().catch((err) =>
+        safeAlert(err.message || String(err))
+      );
+    }, HOLD_ALL_MS);
+  });
+
+  const endHold = (e) => {
+    if (holdPointerId != null && e.pointerId !== holdPointerId) return;
+    // Only cancel if hold has not already fired
+    if (!holdCompleted) cancelHold();
+    else stopHoldVisual();
+  };
+  delBtn?.addEventListener("pointerup", endHold);
+  delBtn?.addEventListener("pointercancel", endHold);
+  delBtn?.addEventListener("lostpointercapture", () => {
+    if (!holdCompleted) cancelHold();
+  });
+
+  delBtn?.addEventListener("click", (e) => {
+    if (holdCompleted) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      holdCompleted = false;
+      return;
+    }
+    // Ignore click if this was a long partial hold (>400ms) — avoid surprise delete
+    deleteCurrentWheel().catch((err) => alert(err.message || err));
+  });
+}
 
 $("#btn-undo").addEventListener("click", () => {
   performUndo();

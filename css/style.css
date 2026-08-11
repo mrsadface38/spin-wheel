@@ -2176,6 +2176,32 @@ label.field[hidden] {
   background: rgba(232, 93, 108, 0.1);
 }
 
+/* Hold Delete 5s → wipe all wheels: fill progress while pressing */
+#btn-wheel-delete.is-holding {
+  border-color: var(--danger);
+  color: #fff;
+  background-color: rgba(232, 93, 108, 0.15);
+  background-image: linear-gradient(
+    to right,
+    rgba(232, 93, 108, 0.85),
+    rgba(232, 93, 108, 0.85)
+  );
+  background-repeat: no-repeat;
+  background-size: 0% 100%;
+  animation: wheel-delete-hold-fill 5s linear forwards;
+  user-select: none;
+  touch-action: none;
+}
+
+@keyframes wheel-delete-hold-fill {
+  from {
+    background-size: 0% 100%;
+  }
+  to {
+    background-size: 100% 100%;
+  }
+}
+
 /* Hide help / hint copy when Misc → Hide help text is on */
 body.hide-hints .hint,
 body.hide-hints small {
