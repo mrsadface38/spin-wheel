@@ -480,7 +480,7 @@ export function defaultState() {
       textStyle: "bold",
       /**
        * When true, wheel labels always use look.textStyle
-       * (ignores section / group text styles).
+       * (ignores section / group text formats).
        */
       forceTextStyle: false,
       /** Color of the winning name on the result overlay (separate from wheel labels) */

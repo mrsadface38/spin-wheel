@@ -5674,7 +5674,7 @@ function updateTextColorOverrideButton() {
     : "Override off — use section/group text colors when set (click to force Look color)";
 }
 
-/** Sync Look → Text style Override button active state */
+/** Sync Look → Text format Override button active state */
 function updateTextStyleOverrideButton() {
   const btn = $("#btn-text-style-override");
   if (!btn) return;
@@ -5682,8 +5682,8 @@ function updateTextStyleOverrideButton() {
   btn.classList.toggle("is-active", on);
   btn.setAttribute("aria-pressed", on ? "true" : "false");
   btn.title = on
-    ? "Override on — every section label uses Look text style (click to turn off)"
-    : "Override off — use section/group text styles when set (click to force Look style)";
+    ? "Override on — every section label uses Look text format (click to turn off)"
+    : "Override off — use section/group text formats when set (click to force Look format)";
 }
 
 /** Sync Look → Winner text color Override button active state */
