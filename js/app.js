@@ -22,6 +22,7 @@ import {
   normalizeLandAction,
   normalizeLandShowResultUnit,
   landShowResultMs,
+  normalizeWinBgm,
   normalizeReturnAfterMs,
   normalizeReturnsAt,
 } from "./state.js";
@@ -444,6 +445,7 @@ async function applyLoadedWheel(nextLib, nextState) {
   state = nextState;
   undoStack.length = 0;
   lastWinnerId = null;
+  winBgmOverrideActive = false;
   hideResults();
   saveLibrary(library);
   fillWheelSelect();
@@ -830,6 +832,13 @@ async function preloadAudio() {
     if (s.landSfxData) {
       await audio.loadDataUrl(`land_${s.id}`, s.landSfxData);
     }
+    if (normalizeWinBgm(s.winBgm) === "custom" && s.winBgmData) {
+      try {
+        await audio.loadDataUrl(`bgm_sec_${s.id}`, s.winBgmData);
+      } catch (err) {
+        console.warn("section win BGM preload:", err);
+      }
+    }
   }
   for (const g of state.groups) {
     if (g.landSfxData) {
@@ -838,6 +847,9 @@ async function preloadAudio() {
   }
 }
 
+/** True while a section win has replaced the wheel BGM. */
+let winBgmOverrideActive = false;
+
 /**
  * Keep continuous BGM in sync with settings (always mode).
  * Does not start spin-only BGM — that starts with a spin.
@@ -845,6 +857,14 @@ async function preloadAudio() {
 function syncBgm() {
   if (!state.sound.enabled || state.sound.bgmMode === "off") {
     audio.stopBgm();
+    winBgmOverrideActive = false;
+    return;
+  }
+  // Don't clobber a section win track while the result is up
+  if (winBgmOverrideActive) {
+    if (audio.isBgmPlaying) {
+      audio.setBgmVolume(state.sound.bgmVolume ?? 0.4);
+    }
     return;
   }
   if (!audio.buffers.has("bgm")) {
@@ -874,6 +894,9 @@ function syncBgm() {
 function startBgmForSpin() {
   if (!state.sound.enabled) return;
   if (state.sound.bgmMode !== "spin" && state.sound.bgmMode !== "always") return;
+  // Next spin always returns to the wheel's own BGM
+  const wasOverride = winBgmOverrideActive;
+  winBgmOverrideActive = false;
   if (!audio.buffers.has("bgm")) {
     ensureBgmBuffer()
       .then((ok) => {
@@ -882,7 +905,7 @@ function startBgmForSpin() {
       .catch(() => {});
     return;
   }
-  if (!audio.isBgmPlaying) {
+  if (!audio.isBgmPlaying || wasOverride) {
     audio.startBgm("bgm", state.sound.bgmVolume ?? 0.4);
   } else {
     audio.setBgmVolume(state.sound.bgmVolume ?? 0.4);
@@ -890,9 +913,71 @@ function startBgmForSpin() {
 }
 
 function stopBgmAfterSpin() {
+  // Keep win-section music through the result screen; only stop idle spin-BGM
+  if (winBgmOverrideActive) return;
   // Keep music if set to play always; stop if spin-only
   if (state.sound.bgmMode === "spin") {
     audio.stopBgm();
+  }
+}
+
+/**
+ * Clear per-section win BGM override and optionally restart wheel music.
+ * @param {{ restartMain?: boolean }} [opts]
+ */
+async function clearWinBgmOverride(opts = {}) {
+  const restartMain = opts.restartMain !== false;
+  const was = winBgmOverrideActive;
+  winBgmOverrideActive = false;
+  if (!restartMain) return;
+  if (!was && state.sound?.bgmMode !== "always") return;
+  try {
+    if (!state.sound?.enabled || state.sound.bgmMode === "off") {
+      audio.stopBgm();
+      return;
+    }
+    if (state.sound.bgmMode === "always") {
+      const ok = await ensureBgmBuffer();
+      if (ok) {
+        audio.startBgm("bgm", state.sound.bgmVolume ?? 0.4);
+      }
+    } else if (state.sound.bgmMode === "spin") {
+      // Idle between spins — no BGM unless always mode
+      if (!wheel?.spinning && !spinBusy) audio.stopBgm();
+    }
+  } catch (err) {
+    console.warn("restore main BGM:", err);
+  }
+}
+
+/**
+ * Switch (or mute) background music when a section wins.
+ * @param {{ id?: string, winBgm?: string, winBgmData?: string|null }} section
+ */
+async function applySectionWinBgm(section) {
+  if (!section) return;
+  const raw =
+    state.sections.find((s) => s.id === section.id) || section;
+  const mode = normalizeWinBgm(raw.winBgm);
+  if (mode === "inherit") return;
+  if (!state.sound?.enabled || state.sound.bgmMode === "off") return;
+
+  const vol = state.sound.bgmVolume ?? 0.4;
+  try {
+    if (mode === "mute") {
+      audio.stopBgm();
+      winBgmOverrideActive = true;
+      return;
+    }
+    if (mode === "custom" && raw.winBgmData) {
+      const key = `bgm_sec_${raw.id || "win"}`;
+      await audio.loadDataUrl(key, raw.winBgmData);
+      audio.startBgm(key, vol);
+      winBgmOverrideActive = true;
+      return;
+    }
+  } catch (err) {
+    console.warn("section win BGM:", err);
   }
 }
 
@@ -1344,6 +1429,11 @@ function renderSections() {
             : "🖼 fill"
           : "",
         disp.landSfxData ? "🔊" : "",
+        normalizeWinBgm(s.winBgm) === "custom"
+          ? "🎵"
+          : normalizeWinBgm(s.winBgm) === "mute"
+            ? "🔇"
+            : "",
         landActionBadge(s),
         returnTimerBadge(s),
         !s.enabled
@@ -1497,6 +1587,15 @@ function cloneSectionForDuplicate(section) {
       return Math.min(99999, Math.round(n));
     })(),
     landShowResultUnit: normalizeLandShowResultUnit(section.landShowResultUnit),
+    winBgm: normalizeWinBgm(section.winBgm),
+    winBgmData:
+      normalizeWinBgm(section.winBgm) === "custom"
+        ? section.winBgmData || null
+        : null,
+    winBgmName:
+      normalizeWinBgm(section.winBgm) === "custom"
+        ? section.winBgmName || null
+        : null,
     returnAfterMs: normalizeReturnAfterMs(section.returnAfterMs),
     returnsAt: null, // new copy is enabled path; no pending return
   };
@@ -3583,6 +3682,10 @@ let pendingSectionImage = null;
 let pendingSectionSfx = null;
 let pendingSectionSfxName = null;
 /** @type {string|null} */
+let pendingSectionWinBgm = null;
+/** @type {string|null} */
+let pendingSectionWinBgmName = null;
+/** @type {string|null} */
 let pendingSectionWinEffectData = null;
 /** @type {string|null} */
 let pendingSectionWinEffectName = null;
@@ -4308,6 +4411,15 @@ function openSectionModal(section) {
   updateSectionSfxPresetUI();
   updateSectionWinEffectUI();
   {
+    const mode = normalizeWinBgm(section?.winBgm);
+    pendingSectionWinBgm =
+      mode === "custom" ? section?.winBgmData ?? null : null;
+    pendingSectionWinBgmName =
+      mode === "custom" ? section?.winBgmName ?? null : null;
+    if ($("#section-win-bgm")) $("#section-win-bgm").value = mode;
+    updateSectionWinBgmUI();
+  }
+  {
     const vol =
       section?.landSfxVolume != null && Number.isFinite(Number(section.landSfxVolume))
         ? Number(section.landSfxVolume)
@@ -4577,6 +4689,125 @@ $("#section-sfx-clear").addEventListener("click", () => {
   updateSectionSfxPresetUI();
 });
 
+function updateSectionWinBgmUI() {
+  const mode = normalizeWinBgm($("#section-win-bgm")?.value);
+  const row = $("#section-win-bgm-custom-row");
+  const nameEl = $("#section-win-bgm-name");
+  if (row) {
+    row.hidden = mode !== "custom";
+    row.style.display = mode === "custom" ? "" : "none";
+  }
+  if (nameEl) {
+    if (mode === "custom") {
+      nameEl.textContent =
+        pendingSectionWinBgmName ||
+        (pendingSectionWinBgm ? "Custom music" : "No custom file chosen");
+    } else if (mode === "mute") {
+      nameEl.textContent = "Music will mute on win";
+    } else {
+      nameEl.textContent = "Keep current wheel music";
+    }
+  }
+}
+
+$("#section-win-bgm")?.addEventListener("change", () => {
+  const mode = normalizeWinBgm($("#section-win-bgm")?.value);
+  if (mode !== "custom") {
+    // Keep pending file in memory if they switch back to custom
+  } else if (!pendingSectionWinBgm) {
+    $("#section-win-bgm-input")?.click();
+  }
+  updateSectionWinBgmUI();
+});
+
+$("#section-win-bgm-input")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) {
+    updateSectionWinBgmUI();
+    return;
+  }
+  try {
+    pendingSectionWinBgm = await fileToDataUrl(file);
+    pendingSectionWinBgmName = file.name || "Custom music";
+    if ($("#section-win-bgm")) $("#section-win-bgm").value = "custom";
+    updateSectionWinBgmUI();
+  } catch (err) {
+    console.warn("section win BGM load:", err);
+    alert("Could not load music file.");
+    updateSectionWinBgmUI();
+  }
+});
+
+$("#section-win-bgm-clear")?.addEventListener("click", () => {
+  pendingSectionWinBgm = null;
+  pendingSectionWinBgmName = null;
+  if ($("#section-win-bgm")) $("#section-win-bgm").value = "inherit";
+  updateSectionWinBgmUI();
+});
+
+$("#section-win-bgm-preview")?.addEventListener("click", async () => {
+  audio.ensure();
+  if (audio.isPreviewPlaying) {
+    audio.stopPreview();
+    return;
+  }
+  const mode = normalizeWinBgm($("#section-win-bgm")?.value);
+  const vol = state.sound?.bgmVolume ?? 0.4;
+  try {
+    if (mode === "mute") {
+      // No preview for mute
+      return;
+    }
+    if (mode === "custom" && pendingSectionWinBgm) {
+      await audio.loadDataUrl("preview_section_bgm", pendingSectionWinBgm);
+      if (audio.isPreviewPlaying) return;
+      // Use one-shot preview of a short portion via playOneShot if available
+      // Prefer looping preview stoppable via stopPreview
+      if (typeof audio.startBgm === "function") {
+        // Stop any main BGM briefly for preview
+        const wasOverride = winBgmOverrideActive;
+        const wasPlaying = audio.isBgmPlaying;
+        audio.stopBgm();
+        audio.startBgm("preview_section_bgm", vol);
+        // Mark as preview by scheduling stop after a few seconds
+        setTimeout(() => {
+          try {
+            if (audio.buffers.has("preview_section_bgm")) {
+              audio.stopBgm();
+            }
+          } catch {
+            /* ignore */
+          }
+          if (wasPlaying && !wasOverride) {
+            void ensureBgmBuffer().then((ok) => {
+              if (ok && state.sound?.bgmMode === "always") {
+                audio.startBgm("bgm", vol);
+              }
+            });
+          }
+        }, 5000);
+      }
+      return;
+    }
+    // inherit — preview wheel BGM
+    const ok = await ensureBgmBuffer();
+    if (ok) {
+      audio.stopBgm();
+      audio.startBgm("bgm", vol);
+      setTimeout(() => {
+        try {
+          if (state.sound?.bgmMode !== "always") audio.stopBgm();
+        } catch {
+          /* ignore */
+        }
+      }, 5000);
+    }
+  } catch (err) {
+    console.warn("section win BGM preview:", err);
+  }
+});
+
 $("#section-win-effect")?.addEventListener("change", () => {
   const v = $("#section-win-effect")?.value;
   if (v === "inherit") {
@@ -4801,9 +5032,20 @@ $("#section-form").addEventListener("submit", async (e) => {
     landTargetWheelId: null,
     landShowResultEvery: 0,
     landShowResultUnit: "seconds",
+    winBgm: normalizeWinBgm($("#section-win-bgm")?.value),
+    winBgmData: null,
+    winBgmName: null,
     returnAfterMs: readSectionReturnAfterMsFromForm(),
     returnsAt: null,
   };
+  if (payload.winBgm === "custom") {
+    if (pendingSectionWinBgm) {
+      payload.winBgmData = pendingSectionWinBgm;
+      payload.winBgmName = pendingSectionWinBgmName || "Custom music";
+    } else {
+      payload.winBgm = "inherit";
+    }
+  }
   if (payload.landAction === "otherWheel") {
     const tid = $("#section-land-target-wheel")?.value || "";
     payload.landTargetWheelId =
@@ -6084,6 +6326,10 @@ function showResult(section, opts = {}) {
       }
     }
     playWinEffect(section);
+    // Per-section background music switch (custom / mute)
+    void applySectionWinBgm(section).catch((err) =>
+      console.warn("win BGM:", err)
+    );
 
     // Don't show results — skip overlay; still eliminate / history / effects
     // forceShow: land-action “show result for” still displays even if Look is −1
@@ -8778,9 +9024,14 @@ function sleepMs(ms) {
 
 /**
  * Resolve per-section land action after a spin.
- * @returns {Promise<{ type: 'show' } | { type: 'respin' } | { type: 'otherWheel', wheelId: string }>}
+ * @returns {{
+ *   type: 'show' | 'respin' | 'otherWheel',
+ *   wheelId?: string,
+ *   showMs?: number,
+ *   section?: object,
+ * }}
  */
-async function resolveLandAction(winSection, resultOpts = {}) {
+function resolveLandAction(winSection) {
   const raw =
     state.sections.find((s) => s.id === winSection?.id) || winSection;
   if (!raw) return { type: "show" };
@@ -8795,13 +9046,13 @@ async function resolveLandAction(winSection, resultOpts = {}) {
     return { type: "show" };
   }
 
+  const showMs = landShowResultMs(
+    raw.landShowResultEvery,
+    raw.landShowResultUnit
+  );
+
   if (action === "respin") {
-    try {
-      recordSpinHistory(raw, { ...resultOpts, landAction: "respin" });
-    } catch (err) {
-      console.warn("history (respin):", err);
-    }
-    return { type: "respin" };
+    return { type: "respin", showMs, section: raw };
   }
 
   if (action === "otherWheel") {
@@ -8811,22 +9062,60 @@ async function resolveLandAction(winSection, resultOpts = {}) {
       tid !== library.activeId &&
       library.wheels.some((w) => w.id === tid)
     ) {
-      try {
-        recordSpinHistory(raw, {
-          ...resultOpts,
-          landAction: "otherWheel",
-          landTargetWheelId: tid,
-        });
-      } catch (err) {
-        console.warn("history (other wheel):", err);
-      }
-      return { type: "otherWheel", wheelId: tid };
+      return {
+        type: "otherWheel",
+        wheelId: tid,
+        showMs,
+        section: raw,
+      };
     }
     // Missing / deleted target — treat as normal win
     return { type: "show" };
   }
 
   return { type: "show" };
+}
+
+/**
+ * Show win UI for land-action chain, wait, then clear (no eliminate).
+ * @param {{ id: string, label?: string }} win
+ * @param {{ rigged?: boolean }} resultOpts
+ * @param {number} showMs
+ */
+async function showLandActionResultThenWait(win, resultOpts, showMs) {
+  if (!(showMs > 0)) {
+    try {
+      recordSpinHistory(win, resultOpts);
+    } catch (err) {
+      console.warn("history (land chain):", err);
+    }
+    // Still switch music even when skipping the win screen
+    try {
+      await applySectionWinBgm(win);
+    } catch (err) {
+      console.warn("win BGM (land chain):", err);
+    }
+    await sleepMs(450);
+    return;
+  }
+  showResult(win, {
+    ...resultOpts,
+    forceShow: true,
+    skipEliminate: true,
+    skipAutoDismiss: true,
+  });
+  await sleepMs(showMs);
+  // Dismiss without eliminate-after-win (already skipped when showing)
+  pendingEliminateId = null;
+  pendingEliminateMode = null;
+  clearAutoDismissTimer();
+  resultBanner?.classList?.add("hidden");
+  resultCenter?.classList?.add("hidden");
+  resultActionsBar?.classList?.add("hidden");
+  clearResultCenterBg?.();
+  resultShowsRigged = false;
+  setResultRiggedVisible(isRigItActive() || isReverseRigActive());
+  lastWinnerId = null;
 }
 
 /**
@@ -8838,19 +9127,18 @@ async function resolveLandAction(winSection, resultOpts = {}) {
 async function handleSpinWinner(win, resultOpts = {}, spinOpts = {}) {
   if (!win) return;
   try {
-    const next = await resolveLandAction(win, resultOpts);
+    const next = resolveLandAction(win);
     if (next.type === "respin") {
       landActionChainDepth += 1;
-      hideResults();
-      await sleepMs(450);
+      await showLandActionResultThenWait(win, resultOpts, next.showMs || 0);
       await doSpin({ fromLandAction: true });
       return;
     }
     if (next.type === "otherWheel" && next.wheelId) {
       landActionChainDepth += 1;
-      hideResults();
+      await showLandActionResultThenWait(win, resultOpts, next.showMs || 0);
       await switchToWheelId(next.wheelId);
-      await sleepMs(350);
+      await sleepMs(200);
       await doSpin({ fromLandAction: true });
       return;
     }

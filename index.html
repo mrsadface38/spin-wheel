@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#125</span>
+        <span class="app-version" id="app-version" title="Update number">#126</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -945,6 +945,32 @@
                 <span id="section-sfx-volume-label" class="slider-value">70%</span>
               </div>
             </label>
+          </div>
+
+          <div class="form-block compact">
+            <h3>Background music on win (this section)</h3>
+            <label class="field">
+              <span>Music</span>
+              <div class="slider-with-value">
+                <select id="section-win-bgm" title="Change background music when this section wins">
+                  <option value="inherit">Don't change</option>
+                  <option value="custom">Custom file…</option>
+                  <option value="mute">Mute music</option>
+                </select>
+                <button type="button" id="section-win-bgm-preview" class="btn small ghost">Preview</button>
+              </div>
+              <small>When this section wins, switch (or mute) the background music. Wheel music returns on the next spin.</small>
+            </label>
+            <div class="audio-pick" id="section-win-bgm-custom-row" hidden>
+              <span id="section-win-bgm-name" class="audio-name">No custom file</span>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose file
+                  <input type="file" id="section-win-bgm-input" accept="audio/*" hidden />
+                </label>
+                <button type="button" id="section-win-bgm-clear" class="btn small ghost">Clear file</button>
+              </div>
+            </div>
           </div>
 
           <div class="form-block compact">

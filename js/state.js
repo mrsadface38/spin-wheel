@@ -41,6 +41,9 @@
  *   landTargetWheelId: string|null,
  *   landShowResultEvery: number,
  *   landShowResultUnit: 'seconds'|'minutes'|'hours'|'days',
+ *   winBgm: 'inherit'|'custom'|'mute',
+ *   winBgmData: string|null,
+ *   winBgmName: string|null,
  *   returnAfterMs: number,
  *   returnsAt: number|null
  * }} Section */
@@ -58,6 +61,15 @@ export function normalizeLandShowResultUnit(v) {
   if (v === "hours" || v === "hr") return "hours";
   if (v === "days") return "days";
   return "seconds";
+}
+
+/**
+ * Background music when this section wins.
+ * inherit = keep current/wheel BGM; custom = section file; mute = stop music.
+ */
+export function normalizeWinBgm(v) {
+  if (v === "custom" || v === "mute") return v;
+  return "inherit";
 }
 
 /**
@@ -1156,6 +1168,17 @@ function normalizeSection(s, groups, groupIdsSet) {
   landShowResultEvery = Math.min(99999, Math.round(landShowResultEvery));
   const landShowResultUnit = normalizeLandShowResultUnit(s.landShowResultUnit);
 
+  let winBgm = normalizeWinBgm(s.winBgm);
+  let winBgmData = s.winBgmData || null;
+  let winBgmName = s.winBgmName || null;
+  if (winBgm === "custom" && !winBgmData) {
+    winBgm = "inherit";
+  }
+  if (winBgm !== "custom") {
+    winBgmData = null;
+    winBgmName = null;
+  }
+
   const returnAfterMs = normalizeReturnAfterMs(s.returnAfterMs);
   // Only keep a scheduled return while the section is actually off the wheel
   let returnsAt = normalizeReturnsAt(s.returnsAt);
@@ -1185,6 +1208,9 @@ function normalizeSection(s, groups, groupIdsSet) {
     landTargetWheelId,
     landShowResultEvery,
     landShowResultUnit,
+    winBgm,
+    winBgmData,
+    winBgmName,
     returnAfterMs,
     returnsAt,
   };
