@@ -486,7 +486,7 @@ export function coinFlipState() {
       borderColor: "#90caf9",
       textColor: "#f5f0d8",
       winnerLabel: "Flip",
-      winEffect: "confetti",
+      winEffect: "none",
       // Drag-release = full timed spin (not mouse-velocity fling)
       fairDragSpin: true,
     },
@@ -549,6 +549,7 @@ export function d20State() {
       winnerTextColor: "#ffffff",
       winnerLabel: "Rolled",
       resultStyle: "banner",
+      winEffect: "none",
       // Drag-release = full timed spin (not mouse-velocity fling)
       fairDragSpin: true,
       // d20 rolls: only Continue — no Hide / Remove on the result bar
