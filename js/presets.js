@@ -10,20 +10,50 @@ import {
   uid,
 } from "./state.js";
 
-/**
- * Solid d20 face colors only: green, blue, red, yellow, cyan, purple.
- * Repeated around the wheel; ordered so neighbors usually differ.
- * Hex only (normalizeHexColor rejects non-hex).
- * @type {{ color: string, text: string }[]}
- */
-const D20_SOLIDS = [
+/** Solid d20 palette: green, blue, red, yellow, cyan, purple (hex only). */
+const D20_BLUE = { color: "#1e88e5", text: "#ffffff" };
+const D20_CYAN = { color: "#00acc1", text: "#ffffff" };
+const D20_OTHERS = [
   { color: "#e53935", text: "#ffffff" }, // red
-  { color: "#1e88e5", text: "#ffffff" }, // blue
   { color: "#43a047", text: "#ffffff" }, // green
   { color: "#fdd835", text: "#1a1408" }, // yellow
   { color: "#8e24aa", text: "#ffffff" }, // purple
-  { color: "#00acc1", text: "#ffffff" }, // cyan
 ];
+
+/** @template T @param {T[]} arr */
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = arr[i];
+    arr[i] = arr[j];
+    arr[j] = t;
+  }
+  return arr;
+}
+
+/**
+ * Shuffle solid colors for 20 faces. Blue and cyan are always adjacent
+ * (glued as a pair, order blue→cyan or cyan→blue is random).
+ * @returns {{ color: string, text: string }[]}
+ */
+function shuffledD20Colors() {
+  // Blue + cyan stay next to each other
+  const pair =
+    Math.random() < 0.5 ? [D20_BLUE, D20_CYAN] : [D20_CYAN, D20_BLUE];
+  // Shuffle the other four, then treat pair as one unit among five units
+  const singles = D20_OTHERS.map((c) => [{ ...c }]);
+  shuffleInPlace(singles);
+  /** @type {{ color: string, text: string }[][]} */
+  const units = [...singles, pair.map((c) => ({ ...c }))];
+  shuffleInPlace(units);
+  const cycle = units.flat();
+  // Tile the 6-color cycle onto 20 faces
+  const out = [];
+  for (let i = 0; i < 20; i++) {
+    out.push(cycle[i % cycle.length]);
+  }
+  return out;
+}
 
 /**
  * Around-the-wheel order: low/high interleaved so neighbors aren’t sequential.
@@ -97,10 +127,10 @@ export function d20State() {
 
   const sections = [];
   const faces = d20FaceOrder();
+  const colors = shuffledD20Colors(); // new shuffle each d20; blue always next to cyan
   for (let i = 0; i < faces.length; i++) {
     const n = faces[i];
-    // Cycle solid palette around the wheel (neighbors usually differ)
-    const pair = D20_SOLIDS[i % D20_SOLIDS.length];
+    const pair = colors[i];
     sections.push({
       id: uid("sec"),
       label: String(n),
