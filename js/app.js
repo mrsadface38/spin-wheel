@@ -8510,7 +8510,7 @@ function payloadHasImages(payload) {
   return false;
 }
 
-/** Strip bulky media so a compact #wheel= fallback stays pasteable if hosting fails. */
+/** Strip bulky media so a compact share stays pasteable if full host fails. */
 function stripSharePayloadMedia(payload) {
   const p = JSON.parse(JSON.stringify(payload));
   const d = p.data || p;
@@ -8527,6 +8527,10 @@ function stripSharePayloadMedia(payload) {
     s.landSfxData = null;
     s.landSfxName = null;
     s.customImage = false;
+    // Per-section win BGM can be multi‑MB
+    s.winBgmData = null;
+    s.winBgmName = null;
+    if (s.winBgm === "custom") s.winBgm = "inherit";
   }
   for (const g of d.groups || []) {
     g.imageData = null;
@@ -8543,9 +8547,25 @@ function stripSharePayloadMedia(payload) {
   return p;
 }
 
+/**
+ * Fetch with a timeout so Share doesn't hang forever.
+ * @param {string} url
+ * @param {RequestInit} [init]
+ * @param {number} [ms]
+ */
+async function fetchWithTimeout(url, init = {}, ms = 25000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /** bytebin.lucko.me — CORS OK from GitHub Pages, good for larger JSON. */
 async function uploadSharePayloadToBytebin(payload) {
-  const res = await fetch("https://bytebin.lucko.me/post", {
+  const res = await fetchWithTimeout("https://bytebin.lucko.me/post", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -8554,19 +8574,28 @@ async function uploadSharePayloadToBytebin(payload) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`bytebin ${res.status}`);
-  let key = (res.headers.get("Location") || "").trim();
-  if (!key) {
-    const data = await res.json().catch(() => ({}));
-    key = data.key || "";
+  // Prefer JSON body (reliable); Location is often just the bare key
+  let key = "";
+  try {
+    const data = await res.clone().json();
+    key = data?.key || "";
+  } catch {
+    /* ignore */
   }
-  key = key.replace(/^https?:\/\/[^/]+\//, "").replace(/^\//, "");
+  if (!key) {
+    key = (res.headers.get("Location") || "").trim();
+  }
+  key = String(key)
+    .replace(/^https?:\/\/[^/]+\//, "")
+    .replace(/^\//, "")
+    .trim();
   if (!key) throw new Error("bytebin: no key");
   return { kind: "b", id: key };
 }
 
-/** jsonblob.com — CORS OK; anonymous blobs ~24h. */
+/** jsonblob.com — CORS OK; anonymous blobs ~24h (size-limited). */
 async function uploadSharePayloadToJsonBlob(payload) {
-  const res = await fetch("https://jsonblob.com/api/jsonBlob", {
+  const res = await fetchWithTimeout("https://jsonblob.com/api/jsonBlob", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -8582,20 +8611,89 @@ async function uploadSharePayloadToJsonBlob(payload) {
   if (!id) {
     const loc = res.headers.get("Location") || res.headers.get("location") || "";
     const m = loc.match(/jsonBlob\/([^/?#]+)/i);
-    id = m?.[1] || "";
+    id = m?.[1] || loc.replace(/^\/api\/jsonBlob\//i, "").replace(/^\//, "");
   }
   if (!id) throw new Error("jsonblob: no id");
-  return { kind: "j", id };
+  return { kind: "j", id: String(id).trim() };
 }
 
-/** Host full share payload; try bytebin then jsonblob. */
+/**
+ * Host full share payload. Tries bytebin then jsonblob.
+ * @param {object} payload
+ */
 async function uploadSharePayload(payload) {
+  const errors = [];
   try {
     return await uploadSharePayloadToBytebin(payload);
   } catch (e1) {
+    errors.push(e1);
     console.warn("bytebin host failed:", e1);
-    return await uploadSharePayloadToJsonBlob(payload);
   }
+  try {
+    return await uploadSharePayloadToJsonBlob(payload);
+  } catch (e2) {
+    errors.push(e2);
+    console.warn("jsonblob host failed:", e2);
+  }
+  throw new Error(
+    "Could not host share payload: " +
+      errors.map((e) => e?.message || e).join("; ")
+  );
+}
+
+/**
+ * Shorten an already-short app URL (e.g. …#b=key) via free shorteners.
+ * Skips mega-links that shorteners reject.
+ * @param {string} longUrl
+ * @returns {Promise<string|null>}
+ */
+async function shortenAppUrl(longUrl) {
+  const url = String(longUrl || "");
+  // Only shorten hosted short hashes — not multi-MB #wheel= payloads
+  if (!url || url.length > 1800) return null;
+  if (!/#([bj])=/.test(url) && !/#wheel=/.test(url)) {
+    // Still try for normal app URLs under limit
+  }
+  if (/#wheel=/.test(url) && url.length > 500) return null;
+
+  const tryIsGd = async (api) => {
+    const u = new URL(api);
+    u.searchParams.set("format", "json");
+    u.searchParams.set("url", url);
+    const res = await fetchWithTimeout(u.toString(), { method: "GET" }, 12000);
+    if (!res.ok) throw new Error(`${api} ${res.status}`);
+    const data = await res.json();
+    if (data?.shorturl) return String(data.shorturl);
+    if (data?.errormessage) throw new Error(data.errormessage);
+    throw new Error("no shorturl");
+  };
+
+  try {
+    const s = await tryIsGd("https://is.gd/create.php");
+    if (s) return s;
+  } catch (e) {
+    console.warn("is.gd shorten failed:", e);
+  }
+  try {
+    const s = await tryIsGd("https://v.gd/create.php");
+    if (s) return s;
+  } catch (e) {
+    console.warn("v.gd shorten failed:", e);
+  }
+  try {
+    const res = await fetchWithTimeout(
+      `https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`,
+      { method: "GET" },
+      12000
+    );
+    if (!res.ok) throw new Error(`tinyurl ${res.status}`);
+    const text = (await res.text()).trim();
+    if (/^https?:\/\/\S+$/i.test(text)) return text;
+    throw new Error(text || "tinyurl failed");
+  } catch (e) {
+    console.warn("tinyurl shorten failed:", e);
+  }
+  return null;
 }
 
 async function copyTextToClipboard(text) {
@@ -8632,7 +8730,8 @@ function getShareAppBase() {
 
 /**
  * Build a paste-friendly share URL.
- * Prefer hosting the payload (#b= / #j=) so the link stays short — no TinyURL/is.gd.
+ * Always try hosting first (#b= / #j=) so the link is short, then optionally
+ * shorten that app URL via is.gd / v.gd / tinyurl.
  */
 async function buildShareCopyUrl(payload) {
   const base = getShareAppBase();
@@ -8643,73 +8742,116 @@ async function buildShareCopyUrl(payload) {
     console.warn("base64 encode failed:", err);
   }
 
-  const mustHost =
-    !b64 || b64.length > SHARE_INLINE_MAX_B64 || payloadHasImages(payload);
-
   let appUrl = null;
   let note = "";
   let hosted = false;
   let inline = false;
   let compact = false;
+  let shortened = false;
+  let mediaStripped = false;
 
-  if (mustHost) {
+  // 1) Always try to host the full wheel for a short #b= / #j= link
+  try {
+    const up = await uploadSharePayload(payload);
+    appUrl =
+      up.kind === "b"
+        ? `${base}#b=${encodeURIComponent(up.id)}`
+        : `${base}#j=${encodeURIComponent(up.id)}`;
+    hosted = true;
+    note =
+      "Short share link ready (includes images).\n\n" +
+      "⏱ Hosted link may expire after about 24 hours.\n" +
+      "For a permanent copy: Export JSON → send the file → Import.\n\n";
+  } catch (hostErr) {
+    console.warn("Share host (full) failed:", hostErr);
+  }
+
+  // 2) Host a media-stripped copy (still a short #b=/#j= link)
+  if (!appUrl) {
     try {
-      const up = await uploadSharePayload(payload);
-      // #b= bytebin, #j= jsonblob — short enough to paste; no third-party shortener
+      const slim = stripSharePayloadMedia(payload);
+      const up = await uploadSharePayload(slim);
       appUrl =
         up.kind === "b"
           ? `${base}#b=${encodeURIComponent(up.id)}`
           : `${base}#j=${encodeURIComponent(up.id)}`;
       hosted = true;
+      mediaStripped = true;
+      compact = true;
       note =
-        "Share link ready (includes images).\n\n" +
-        "⏱ Hosted link may expire after about 24 hours.\n" +
-        "For a permanent copy: Export JSON → send the file → Import.\n\n";
-    } catch (hostErr) {
-      console.warn("Share host failed:", hostErr);
+        "Short share link ready — images/sounds were removed so hosting would work.\n" +
+        "⏱ Hosted link may expire ~24h. For full media use Export JSON.\n\n";
+    } catch (hostErr2) {
+      console.warn("Share host (compact) failed:", hostErr2);
     }
   }
 
-  // Small wheels: inline is fine
+  // 3) Small wheels: inline #wheel= only if hosting failed
   if (!appUrl && b64 && b64.length <= SHARE_INLINE_MAX_B64) {
     appUrl = `${base}#wheel=${b64}`;
     inline = true;
-    if (payloadHasImages(payload)) {
-      note =
-        "Share link ready.\n\n" +
-        "This link embeds data in the URL (no host expiry), but can break if an app truncates it.\n" +
-        "For a permanent safe copy use Export JSON.\n\n";
-    }
+    note =
+      "Share link ready (embedded in the URL — hosting was unavailable).\n" +
+      "If paste fails, use Export JSON.\n\n";
   }
 
-  // Host failed + large wheel: compact no-media link
+  // 4) Last resort: long compact or full mega-link
   if (!appUrl) {
     const slim = stripSharePayloadMedia(payload);
-    const slimB64 = utf8ToBase64(JSON.stringify(slim));
-    if (slimB64.length <= 100000) {
+    let slimB64 = "";
+    try {
+      slimB64 = utf8ToBase64(JSON.stringify(slim));
+    } catch {
+      slimB64 = "";
+    }
+    if (slimB64 && slimB64.length <= 100000) {
       appUrl = `${base}#wheel=${slimB64}`;
       compact = true;
+      mediaStripped = true;
       note =
-        "Compact link (images/sounds removed — hosting was unavailable).\n" +
+        "Long compact link (images/sounds removed — hosting was unavailable).\n" +
         "For full images use Export JSON (permanent).\n\n";
     } else if (b64) {
       appUrl = `${base}#wheel=${b64}`;
       inline = true;
       note =
-        "Full mega-link (very long).\n" +
+        "Full mega-link (very long — hosting was unavailable).\n" +
         "Prefer Export JSON if paste fails — that file does not expire.\n\n";
     } else {
       throw new Error("Could not build any share URL");
     }
   }
 
+  // 5) Extra shorten only for already-short hosted / small links
+  let shareUrl = appUrl;
+  if (hosted || (inline && appUrl.length < 500)) {
+    try {
+      const short = await shortenAppUrl(appUrl);
+      if (short && short.length < appUrl.length) {
+        shareUrl = short;
+        shortened = true;
+        note =
+          (hosted
+            ? mediaStripped
+              ? "Short link ready (media stripped for hosting).\n"
+              : "Short link ready (includes images).\n"
+            : "Short link ready.\n") +
+          "⏱ Hosted data may expire ~24h — Export JSON for permanent.\n\n";
+      }
+    } catch (e) {
+      console.warn("URL shorten skipped:", e);
+    }
+  }
+
   return {
-    shareUrl: appUrl,
+    shareUrl,
     appUrl,
     note,
     inline,
     hosted,
     compact,
+    shortened,
+    mediaStripped,
   };
 }
 
@@ -8730,13 +8872,21 @@ async function shareCurrentWheel() {
     .replace(/^-|-$/g, "")
     .slice(0, 40) || "wheel";
 
+  const btn = $("#btn-share-wheel");
+  const prevLabel = btn?.textContent;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Sharing…";
+  }
   try {
     const built = await buildShareCopyUrl(payload);
-    const kind = built.hosted
-      ? "Share link"
-      : built.compact
-        ? "Compact share link"
-        : "Share link";
+    const kind = built.shortened
+      ? "Short link"
+      : built.hosted
+        ? "Hosted short link"
+        : built.compact
+          ? "Compact share link"
+          : "Share link";
     await offerShareCopyPaste(
       built.shareUrl,
       `${built.note}${kind} ready.\n\n`
@@ -8744,12 +8894,17 @@ async function shareCurrentWheel() {
     return;
   } catch (err) {
     console.warn("Share link failed:", err);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prevLabel || "Share";
+    }
   }
 
   // Only if nothing else worked
   downloadJson(`sad-wheel-${safeName}.json`, payload);
   alert(
-    "Could not create a share link (hosting may be blocked).\n\n" +
+    "Could not create a short share link (hosting may be blocked or full).\n\n" +
       "Downloaded a JSON file instead — send that file and use Import."
   );
 }
