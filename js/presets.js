@@ -11,62 +11,33 @@ import {
 } from "./state.js";
 
 /**
- * HSL → #rrggbb (app only accepts hex colors via normalizeHexColor).
- * @param {number} h 0–360
- * @param {number} s 0–100
- * @param {number} l 0–100
- */
-function hslToHex(h, s, l) {
-  const hh = ((Number(h) % 360) + 360) % 360;
-  const ss = Math.min(100, Math.max(0, Number(s))) / 100;
-  const ll = Math.min(100, Math.max(0, Number(l))) / 100;
-  const c = (1 - Math.abs(2 * ll - 1)) * ss;
-  const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
-  const m = ll - c / 2;
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  if (hh < 60) {
-    r = c;
-    g = x;
-  } else if (hh < 120) {
-    r = x;
-    g = c;
-  } else if (hh < 180) {
-    g = c;
-    b = x;
-  } else if (hh < 240) {
-    g = x;
-    b = c;
-  } else if (hh < 300) {
-    r = x;
-    b = c;
-  } else {
-    r = c;
-    b = x;
-  }
-  const to = (v) => {
-    const n = Math.round((v + m) * 255);
-    return Math.min(255, Math.max(0, n)).toString(16).padStart(2, "0");
-  };
-  return `#${to(r)}${to(g)}${to(b)}`;
-}
-
-/**
- * Rainbow spectrum for d20 faces (20 hues as hex — required by the color system).
+ * Merry-go-round / carnival face colors — bright and mixed, not a red→blue
+ * spectrum. Ordered so neighbors jump around the hue wheel for contrast.
+ * Hex only (normalizeHexColor rejects non-hex).
  * @type {{ color: string, text: string }[]}
  */
-const D20_RAINBOW = (() => {
-  const out = [];
-  for (let i = 0; i < 20; i++) {
-    const h = (i / 20) * 360;
-    const color = hslToHex(h, 78, 48);
-    // Dark text on yellow–lime band; white elsewhere
-    const text = h >= 45 && h <= 75 ? "#1a1408" : "#ffffff";
-    out.push({ color, text });
-  }
-  return out;
-})();
+const D20_MERRY = [
+  { color: "#e74c3c", text: "#ffffff" }, // red
+  { color: "#f1c40f", text: "#1a1408" }, // gold
+  { color: "#3498db", text: "#ffffff" }, // sky
+  { color: "#2ecc71", text: "#ffffff" }, // green
+  { color: "#9b59b6", text: "#ffffff" }, // purple
+  { color: "#e67e22", text: "#ffffff" }, // orange
+  { color: "#1abc9c", text: "#ffffff" }, // teal
+  { color: "#e91e63", text: "#ffffff" }, // pink
+  { color: "#f39c12", text: "#1a1408" }, // amber
+  { color: "#2980b9", text: "#ffffff" }, // cobalt
+  { color: "#27ae60", text: "#ffffff" }, // forest
+  { color: "#c0392b", text: "#ffffff" }, // crimson
+  { color: "#8e44ad", text: "#ffffff" }, // violet
+  { color: "#16a085", text: "#ffffff" }, // sea
+  { color: "#d35400", text: "#ffffff" }, // rust
+  { color: "#f4d03f", text: "#1a1408" }, // lemon
+  { color: "#5dade2", text: "#1a1408" }, // light blue
+  { color: "#af7ac5", text: "#ffffff" }, // lilac
+  { color: "#58d68d", text: "#1a1408" }, // mint
+  { color: "#ec7063", text: "#ffffff" }, // coral
+];
 
 /**
  * Around-the-wheel order: low/high interleaved so neighbors aren’t sequential.
@@ -142,8 +113,8 @@ export function d20State() {
   const faces = d20FaceOrder();
   for (let i = 0; i < faces.length; i++) {
     const n = faces[i];
-    // Color by face number so 1→20 walks the rainbow (stable if order changes)
-    const pair = D20_RAINBOW[(n - 1) % D20_RAINBOW.length];
+    // Color by wheel position (mixed merry-go-round), not face number order
+    const pair = D20_MERRY[i % D20_MERRY.length];
     sections.push({
       id: uid("sec"),
       label: String(n),
@@ -172,9 +143,9 @@ export function d20State() {
     yourOrderIds: sections.map((s) => s.id),
     look: {
       ...base.look,
-      backgroundColor: "#0c0e18",
-      centerColor: "#1a1f35",
-      borderColor: "#e8e0ff",
+      backgroundColor: "#120c14",
+      centerColor: "#1f1528",
+      borderColor: "#f0d78c",
       textColor: "#f5f0d8",
       winnerTextColor: "#ffffff",
       winnerLabel: "Rolled",
