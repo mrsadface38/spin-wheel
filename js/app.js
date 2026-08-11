@@ -6622,19 +6622,40 @@ function playCustomWinMedia(dataUrl, opts = {}) {
   }
 }
 
+/** Bumps when a new confetti run starts so old RAF loops stop. */
+let confettiGeneration = 0;
+
+/** Remove confetti + custom win-effect layers (and stop confetti RAF). */
+function clearWinOverlays() {
+  confettiGeneration += 1;
+  try {
+    document.getElementById("confetti-layer")?.remove();
+  } catch {
+    /* ignore */
+  }
+  try {
+    document.getElementById("win-effect-media-layer")?.remove();
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Confetti falls from the top of the screen (flutter + drift), no dependency.
+ * Only one run at a time — a new win cancels the previous loop.
  */
 function fireConfetti() {
   try {
-    let layer = document.getElementById("confetti-layer");
-    if (!layer) {
-      layer = document.createElement("div");
-      layer.id = "confetti-layer";
-      layer.setAttribute("aria-hidden", "true");
-      document.body.appendChild(layer);
-    }
-    layer.innerHTML = "";
+    // Kill any prior confetti RAF + layer so rapid spins cannot stack
+    confettiGeneration += 1;
+    const gen = confettiGeneration;
+    document.getElementById("confetti-layer")?.remove();
+
+    const layer = document.createElement("div");
+    layer.id = "confetti-layer";
+    layer.setAttribute("aria-hidden", "true");
+    document.body.appendChild(layer);
+
     const canvas = document.createElement("canvas");
     layer.appendChild(canvas);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -6657,55 +6678,47 @@ function fireConfetti() {
       "#b388ff",
       "#ff9f43",
     ];
-    // Rain from the top: many pieces, staggered start so it keeps falling
-    const n = 280;
+    // Fewer pieces than before — enough sparkle, much less main-thread load
+    const n = 120;
     const parts = [];
     for (let i = 0; i < n; i++) {
       const wave = i / n;
       const fallSpeed = 1.6 + Math.random() * 2.8;
       parts.push({
-        // Spawn across the full top edge (slightly above viewport)
         x: Math.random() * w,
         y: -12 - Math.random() * h * 0.35 - wave * 80,
-        // Gentle horizontal drift + flutter
         vx: (Math.random() - 0.5) * 1.8,
         vy: fallSpeed,
-        // Side-to-side sway
         swayAmp: 0.6 + Math.random() * 1.4,
         swayFreq: 0.04 + Math.random() * 0.08,
         swayPhase: Math.random() * Math.PI * 2,
-        // Paper-like tumble
         rot: Math.random() * Math.PI * 2,
         vr: (Math.random() - 0.5) * 0.18,
         wobble: 0.02 + Math.random() * 0.05,
         size: 5 + Math.random() * 9,
-        // Thin rectangle aspect (confetti strip)
         aspect: 0.35 + Math.random() * 0.45,
         color: colors[i % colors.length],
-        // Staggered entry over the first ~1.5s of the effect
         delay: wave * 0.28,
         life: 1,
       });
     }
     const start = performance.now();
-    const dur = 5600;
+    const dur = 4200;
     const frame = (now) => {
+      // Superseded by a newer confetti / clearWinOverlays
+      if (gen !== confettiGeneration) return;
       const elapsed = now - start;
       const t = elapsed / dur;
       ctx.clearRect(0, 0, w, h);
       for (const p of parts) {
         const age = elapsed / 1000 - p.delay * (dur / 1000);
         if (age < 0) continue;
-        // Gravity pull downward (terminal-ish fall)
         p.vy = Math.min(p.vy + 0.035, 5.5);
-        // Flutter: sine sway on X, slight coupling to rotation
         p.x += p.vx + Math.sin(age * 60 * p.swayFreq + p.swayPhase) * p.swayAmp;
         p.y += p.vy;
         p.rot += p.vr + Math.sin(age * 40 + p.swayPhase) * p.wobble;
-        // Soft drag on horizontal so it doesn't fly off
         p.vx *= 0.995;
 
-        // Fade only near the end or when well below the screen
         const pastBottom = p.y > h + 30;
         const fadeT = t < 0.72 ? 1 : Math.max(0, 1 - (t - 0.72) / 0.28);
         p.life = pastBottom ? Math.min(fadeT, 0.35) : fadeT;
@@ -6716,16 +6729,16 @@ function fireConfetti() {
         ctx.rotate(p.rot);
         ctx.globalAlpha = p.life;
         ctx.fillStyle = p.color;
-        // Flat strip + slight thickness variation reads as falling paper
         const sw = p.size;
         const sh = p.size * p.aspect;
         ctx.fillRect(-sw / 2, -sh / 2, sw, sh);
         ctx.restore();
       }
-      if (t < 1) requestAnimationFrame(frame);
-      else {
+      if (t < 1 && gen === confettiGeneration) {
+        requestAnimationFrame(frame);
+      } else {
         try {
-          layer.remove();
+          if (gen === confettiGeneration) layer.remove();
         } catch {
           /* ignore */
         }
@@ -9983,8 +9996,18 @@ async function beginSpinSession() {
     alert("No active sections. Enable at least one section in an active group.");
     return false;
   }
+  // Unstick a hung previous spin so rapid spins don't leave a blank canvas
+  try {
+    if (wheel?.spinning || wheel?._spinResolve) {
+      wheel.cancelAnimatedSpin?.();
+    }
+  } catch {
+    /* ignore */
+  }
   spinBusy = true;
   hideResults();
+  // Don't let confetti/win media stack across spins
+  clearWinOverlays();
   startSpinLoopIfNeeded();
   // untilBgmEnds: play once from the start; otherwise normal looping BGM
   startBgmForSpin({
@@ -10018,6 +10041,48 @@ function endSpinSession() {
     }
   } catch {
     /* ignore */
+  }
+  // Recover blank stage (0-size canvas / missed idle redraw after many spins)
+  try {
+    recoverWheelView();
+  } catch (err) {
+    console.warn("recoverWheelView:", err);
+  }
+}
+
+/**
+ * Redraw stage after hung spin / blank canvas. Safe to call often.
+ */
+function recoverWheelView() {
+  try {
+    spinBusy = false;
+    if (wheel) {
+      wheel._dragging = false;
+      wheel._dragPointerId = null;
+      if (wheel.spinning || wheel._spinResolve) {
+        try {
+          wheel.cancelAnimatedSpin?.();
+        } catch {
+          /* ignore */
+        }
+      }
+      try {
+        if (!wheel.wheelCanvas?.width || !wheel.wheelCanvas?.height) {
+          wheel.resize?.();
+        } else {
+          wheel.draw?.({ spinFrame: false });
+          wheel.layoutPointer?.();
+        }
+      } catch {
+        try {
+          wheel.resize?.();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("recoverWheelView failed:", err);
   }
 }
 
@@ -10490,6 +10555,11 @@ function forceUiInteractive() {
     /* ignore */
   }
   try {
+    clearWinOverlays();
+  } catch {
+    /* ignore */
+  }
+  try {
     document.body.classList.remove("group-drag-cursor");
     document.querySelectorAll(".group-drag-ghost").forEach((g) => g.remove());
     groupsList?.classList?.remove("is-reordering");
@@ -10511,6 +10581,11 @@ function forceUiInteractive() {
     } catch {
       /* ignore */
     }
+  } catch {
+    /* ignore */
+  }
+  try {
+    recoverWheelView();
   } catch {
     /* ignore */
   }

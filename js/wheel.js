@@ -706,6 +706,20 @@ export class Wheel {
     const spinFrame =
       !!opts.spinFrame && (this.spinning || this._dragging);
 
+    // Blank stage recovery: canvas lost size (layout thrash / GPU stall)
+    if (
+      !this.wheelCanvas?.width ||
+      !this.wheelCanvas?.height ||
+      !this.wctx
+    ) {
+      try {
+        this._applySizeFromParent();
+      } catch {
+        /* ignore */
+      }
+      if (!this.wheelCanvas?.width || !this.wctx) return;
+    }
+
     if (!spinFrame) {
       this.drawBackground();
     }
