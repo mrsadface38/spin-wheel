@@ -163,6 +163,203 @@ const sectionSearchInput = $("#section-search");
 const sectionSearchClear = $("#section-search-clear");
 const sectionSearchMeta = $("#section-search-meta");
 
+// --- In-app dialogs (Electron does not support window.prompt) ---
+const isElectronShell = /Electron/i.test(
+  typeof navigator !== "undefined" ? navigator.userAgent || "" : ""
+);
+
+/**
+ * Show a modal dialog. Modes: "alert" | "confirm" | "prompt".
+ * @param {{
+ *   mode?: "alert"|"confirm"|"prompt",
+ *   title?: string,
+ *   message?: string,
+ *   defaultValue?: string,
+ *   okLabel?: string,
+ *   cancelLabel?: string,
+ * }} opts
+ * @returns {Promise<string|boolean|null>}
+ *   alert → true; confirm → boolean; prompt → string | null (cancel)
+ */
+function showAppDialog(opts = {}) {
+  const mode = opts.mode === "confirm" || opts.mode === "prompt" ? opts.mode : "alert";
+  const dlg = $("#app-dialog");
+  const form = $("#app-dialog-form");
+  const titleEl = $("#app-dialog-title");
+  const msgEl = $("#app-dialog-message");
+  const inputWrap = $("#app-dialog-input-wrap");
+  const inputEl = $("#app-dialog-input");
+  const okBtn = $("#app-dialog-ok");
+  const cancelBtn = $("#app-dialog-cancel");
+
+  // Fallback if dialog markup is missing
+  if (!dlg || !form) {
+    if (mode === "prompt") {
+      try {
+        return Promise.resolve(window.prompt(opts.message || "", opts.defaultValue ?? ""));
+      } catch {
+        return Promise.resolve(opts.defaultValue ?? "");
+      }
+    }
+    if (mode === "confirm") {
+      try {
+        return Promise.resolve(window.confirm(opts.message || ""));
+      } catch {
+        return Promise.resolve(false);
+      }
+    }
+    try {
+      window.alert(opts.message || "");
+    } catch {
+      /* ignore */
+    }
+    return Promise.resolve(true);
+  }
+
+  return new Promise((resolve) => {
+    const title =
+      opts.title ||
+      (mode === "prompt" ? "Enter a value" : mode === "confirm" ? "Confirm" : "Notice");
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = opts.message || "";
+    if (okBtn) okBtn.textContent = opts.okLabel || "OK";
+    if (cancelBtn) {
+      cancelBtn.textContent = opts.cancelLabel || "Cancel";
+      cancelBtn.hidden = mode === "alert";
+    }
+    if (inputWrap && inputEl) {
+      const showInput = mode === "prompt";
+      inputWrap.hidden = !showInput;
+      if (showInput) {
+        inputEl.value = opts.defaultValue != null ? String(opts.defaultValue) : "";
+      }
+    }
+
+    const finish = (value) => {
+      form.removeEventListener("submit", onSubmit);
+      cancelBtn?.removeEventListener("click", onCancel);
+      dlg.removeEventListener("cancel", onEscape);
+      try {
+        if (dlg.open) dlg.close();
+      } catch {
+        dlg.removeAttribute("open");
+      }
+      resolve(value);
+    };
+
+    const onSubmit = (e) => {
+      e.preventDefault();
+      if (mode === "prompt") finish(inputEl?.value ?? "");
+      else if (mode === "confirm") finish(true);
+      else finish(true);
+    };
+    const onCancel = (e) => {
+      e.preventDefault();
+      if (mode === "prompt") finish(null);
+      else if (mode === "confirm") finish(false);
+      else finish(true);
+    };
+    const onEscape = (e) => {
+      e.preventDefault();
+      onCancel(e);
+    };
+
+    form.addEventListener("submit", onSubmit);
+    cancelBtn?.addEventListener("click", onCancel);
+    dlg.addEventListener("cancel", onEscape);
+
+    try {
+      if (typeof dlg.showModal === "function") dlg.showModal();
+      else dlg.setAttribute("open", "");
+    } catch {
+      dlg.setAttribute("open", "");
+    }
+    requestAnimationFrame(() => {
+      if (mode === "prompt" && inputEl) {
+        inputEl.focus();
+        inputEl.select?.();
+      } else {
+        okBtn?.focus?.();
+      }
+    });
+  });
+}
+
+/** @param {string} message @param {string} [title] */
+function appAlert(message, title = "Notice") {
+  return showAppDialog({ mode: "alert", message: String(message ?? ""), title }).then(
+    () => undefined
+  );
+}
+
+/** @param {string} message @param {string} [title] @returns {Promise<boolean>} */
+function appConfirm(message, title = "Confirm") {
+  return showAppDialog({
+    mode: "confirm",
+    message: String(message ?? ""),
+    title,
+  }).then((v) => v === true);
+}
+
+/**
+ * @param {string} message
+ * @param {string} [defaultValue]
+ * @param {string} [title]
+ * @returns {Promise<string|null>} null if cancelled
+ */
+function appPrompt(message, defaultValue = "", title = "Enter a value") {
+  return showAppDialog({
+    mode: "prompt",
+    message: String(message ?? ""),
+    defaultValue: defaultValue != null ? String(defaultValue) : "",
+    title,
+  }).then((v) => (v === null ? null : String(v)));
+}
+
+/**
+ * Prefer in-app prompt in Electron (and any environment where native prompt fails).
+ * @param {string} message
+ * @param {string} [defaultValue]
+ * @param {string} [title]
+ */
+async function safePrompt(message, defaultValue = "", title = "Enter a value") {
+  if (isElectronShell) return appPrompt(message, defaultValue, title);
+  try {
+    const v = window.prompt(message, defaultValue);
+    return v;
+  } catch {
+    return appPrompt(message, defaultValue, title);
+  }
+}
+
+/**
+ * Prefer in-app confirm in Electron for reliability.
+ * @param {string} message
+ * @param {string} [title]
+ */
+async function safeConfirm(message, title = "Confirm") {
+  if (isElectronShell) return appConfirm(message, title);
+  try {
+    return window.confirm(message);
+  } catch {
+    return appConfirm(message, title);
+  }
+}
+
+/**
+ * Prefer in-app alert in Electron when native alert is awkward / blocked.
+ * @param {string} message
+ * @param {string} [title]
+ */
+async function safeAlert(message, title = "Notice") {
+  if (isElectronShell) return appAlert(message, title);
+  try {
+    window.alert(message);
+  } catch {
+    await appAlert(message, title);
+  }
+}
+
 /** @type {string|null} */
 let lastWinnerId = null;
 /** Current sections search query */
@@ -483,14 +680,18 @@ async function createNewWheelFromPreset(presetId = "default") {
   if (!preset) return;
   const suggested =
     preset.defaultName || `Wheel ${library.wheels.length + 1}`;
-  const name = prompt("Name for the new wheel:", suggested);
+  const name = await safePrompt(
+    "Name for the new wheel:",
+    suggested,
+    "New wheel"
+  );
   if (name === null) return; // cancelled
   let fromState;
   try {
     fromState = buildPresetState(preset.id);
   } catch (err) {
     console.error("Preset build failed:", err);
-    alert("Could not build that preset. Using default instead.");
+    await safeAlert("Could not build that preset. Using default instead.");
     fromState = buildPresetState("default");
   }
   const result = addWheel(library, name || suggested, fromState);
@@ -562,7 +763,7 @@ function bindWheelNewMenu() {
     const id = item.getAttribute("data-preset") || "default";
     closeWheelNewMenu();
     createNewWheelFromPreset(id).catch((err) =>
-      alert(err.message || String(err))
+      safeAlert(err.message || String(err))
     );
   });
 
@@ -588,9 +789,13 @@ async function duplicateCurrentWheel() {
   await applyLoadedWheel(result.lib, result.state);
 }
 
-function renameCurrentWheel() {
+async function renameCurrentWheel() {
   const slot = getActiveSlot(library);
-  const name = prompt("Rename wheel:", slot.name || "My wheel");
+  const name = await safePrompt(
+    "Rename wheel:",
+    slot.name || "My wheel",
+    "Rename wheel"
+  );
   if (name === null) return;
   library = writeActiveState(library, state);
   library = renameWheel(library, library.activeId, name);
@@ -600,14 +805,15 @@ function renameCurrentWheel() {
 
 async function deleteCurrentWheel() {
   if (library.wheels.length <= 1) {
-    alert("You need at least one wheel.");
+    await safeAlert("You need at least one wheel.");
     return;
   }
   const slot = getActiveSlot(library);
   if (
-    !confirm(
-      `Delete wheel “${slot.name}”? This cannot be undone.\nYour other wheels stay saved.`
-    )
+    !(await safeConfirm(
+      `Delete wheel “${slot.name}”? This cannot be undone.\nYour other wheels stay saved.`,
+      "Delete wheel"
+    ))
   ) {
     return;
   }
@@ -9163,9 +9369,10 @@ async function buildShareCopyUrl(payload) {
 async function offerShareCopyPaste(shareUrl, titleLines) {
   const copied = await copyTextToClipboard(shareUrl);
   const body = copied
-    ? `${titleLines}Copied to clipboard.\n\nCopy again from here if needed (select all → Ctrl+C, then Enter):`
-    : `${titleLines}Select the link and press Ctrl+C to copy, then Enter:`;
-  prompt(body, shareUrl);
+    ? `${titleLines}Copied to clipboard.\n\nCopy again from here if needed (select all → Ctrl+C, then OK):`
+    : `${titleLines}Select the link and press Ctrl+C to copy, then OK:`;
+  // Uses prompt-style dialog so the URL is selectable (native prompt fails in Electron)
+  await safePrompt(body, shareUrl, "Share link");
 }
 
 async function shareCurrentWheel() {
@@ -9994,7 +10201,7 @@ $("#btn-wheel-dup")?.addEventListener("click", () => {
 });
 
 $("#btn-wheel-rename")?.addEventListener("click", () => {
-  renameCurrentWheel();
+  renameCurrentWheel().catch((err) => safeAlert(err.message || err));
 });
 
 $("#btn-wheel-delete")?.addEventListener("click", () => {

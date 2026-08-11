@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#155</span>
+        <span class="app-version" id="app-version" title="Update number">#156</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -1441,6 +1441,22 @@
       <div class="modal-actions">
         <button type="button" id="bulk-cancel" class="btn ghost">Cancel</button>
         <button type="submit" class="btn primary">Add all</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- In-app alert / confirm / prompt (Electron has no window.prompt) -->
+  <dialog id="app-dialog" class="modal app-dialog" aria-labelledby="app-dialog-title">
+    <form method="dialog" id="app-dialog-form">
+      <h2 id="app-dialog-title">Message</h2>
+      <p id="app-dialog-message" class="app-dialog-message"></p>
+      <label class="field" id="app-dialog-input-wrap" hidden>
+        <span id="app-dialog-input-label" class="sr-only">Value</span>
+        <input type="text" id="app-dialog-input" autocomplete="off" />
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="app-dialog-cancel" class="btn ghost">Cancel</button>
+        <button type="submit" id="app-dialog-ok" class="btn primary">OK</button>
       </div>
     </form>
   </dialog>

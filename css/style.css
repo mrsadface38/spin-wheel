@@ -2160,6 +2160,34 @@ dialog.modal:not([open]) {
   pointer-events: none !important;
 }
 
+/* In-app alert / confirm / prompt (used when native prompt is unavailable, e.g. Electron) */
+.app-dialog {
+  max-width: 420px;
+}
+.app-dialog-message {
+  margin: 0 0 0.85rem;
+  white-space: pre-wrap;
+  line-height: 1.45;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.app-dialog #app-dialog-input {
+  width: 100%;
+}
+.app-dialog .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+.app-dialog form {
+  padding: 1.15rem 1.25rem 1rem;
+}
+
 /* Modal */
 .modal {
   border: 1px solid var(--border);
