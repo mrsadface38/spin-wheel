@@ -11,32 +11,18 @@ import {
 } from "./state.js";
 
 /**
- * Merry-go-round face colors — neon / carnival bright, mixed (not a spectrum).
- * High saturation; dark text only on the lightest yellows/cyans.
+ * Solid d20 face colors only: green, blue, red, yellow, cyan, purple.
+ * Repeated around the wheel; ordered so neighbors usually differ.
  * Hex only (normalizeHexColor rejects non-hex).
  * @type {{ color: string, text: string }[]}
  */
-const D20_MERRY = [
-  { color: "#ff1744", text: "#ffffff" }, // neon red
-  { color: "#ffea00", text: "#1a1408" }, // electric yellow
-  { color: "#2979ff", text: "#ffffff" }, // vivid blue
-  { color: "#00e676", text: "#1a1408" }, // neon green
-  { color: "#d500f9", text: "#ffffff" }, // electric purple
-  { color: "#ff9100", text: "#1a1408" }, // bright orange
-  { color: "#00e5ff", text: "#1a1408" }, // cyan
-  { color: "#ff4081", text: "#ffffff" }, // hot pink
-  { color: "#ffc400", text: "#1a1408" }, // amber flash
-  { color: "#3d5afe", text: "#ffffff" }, // indigo
-  { color: "#76ff03", text: "#1a1408" }, // lime
-  { color: "#ff3d00", text: "#ffffff" }, // deep orange-red
-  { color: "#aa00ff", text: "#ffffff" }, // vivid violet
-  { color: "#1de9b6", text: "#1a1408" }, // aqua
-  { color: "#ff6d00", text: "#ffffff" }, // tangerine
-  { color: "#ffff00", text: "#1a1408" }, // pure yellow
-  { color: "#00b0ff", text: "#ffffff" }, // bright sky
-  { color: "#f50057", text: "#ffffff" }, // magenta pink
-  { color: "#64dd17", text: "#1a1408" }, // chartreuse
-  { color: "#ff5252", text: "#ffffff" }, // coral red
+const D20_SOLIDS = [
+  { color: "#e53935", text: "#ffffff" }, // red
+  { color: "#1e88e5", text: "#ffffff" }, // blue
+  { color: "#43a047", text: "#ffffff" }, // green
+  { color: "#fdd835", text: "#1a1408" }, // yellow
+  { color: "#8e24aa", text: "#ffffff" }, // purple
+  { color: "#00acc1", text: "#ffffff" }, // cyan
 ];
 
 /**
@@ -113,8 +99,8 @@ export function d20State() {
   const faces = d20FaceOrder();
   for (let i = 0; i < faces.length; i++) {
     const n = faces[i];
-    // Color by wheel position (mixed merry-go-round), not face number order
-    const pair = D20_MERRY[i % D20_MERRY.length];
+    // Cycle solid palette around the wheel (neighbors usually differ)
+    const pair = D20_SOLIDS[i % D20_SOLIDS.length];
     sections.push({
       id: uid("sec"),
       label: String(n),
