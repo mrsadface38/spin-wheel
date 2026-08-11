@@ -551,6 +551,9 @@ export function d20State() {
       resultStyle: "banner",
       // Drag-release = full timed spin (not mouse-velocity fling)
       fairDragSpin: true,
+      // d20 rolls: only Continue — no Hide / Remove on the result bar
+      allowWinnerHide: false,
+      allowWinnerRemove: false,
     },
     sound: {
       ...base.sound,
