@@ -25,6 +25,7 @@ import {
   normalizeWinBgm,
   normalizeReturnAfterMs,
   normalizeReturnsAt,
+  normalizeTextStyle,
 } from "./state.js";
 import {
   loadLibrary,
@@ -1532,6 +1533,7 @@ function renderGroups() {
       const ovParts = [
         g.overrideColor ? "slice" : "",
         g.overrideTextColor ? "text" : "",
+        g.overrideTextStyle ? "style" : "",
         g.overrideWinnerTextColor ? "win" : "",
         g.overrideImage ? "img" : "",
         g.overrideSfx ? "sfx" : "",
@@ -2018,12 +2020,14 @@ function cloneGroupForDuplicate(group) {
     active: group.active !== false,
     overrideColor: group.overrideColor === true,
     overrideTextColor: group.overrideTextColor === true,
+    overrideTextStyle: group.overrideTextStyle === true,
     overrideWinnerTextColor: group.overrideWinnerTextColor === true,
     overrideImage: group.overrideImage === true,
     overrideSfx: group.overrideSfx === true,
     overrideWinEffect: group.overrideWinEffect === true,
     color: group.color,
     textColor: group.textColor,
+    textStyle: group.textStyle,
     winnerTextColor: group.winnerTextColor,
     imageData: group.imageData || null,
     imageMode: group.imageMode,
@@ -3026,6 +3030,7 @@ function readGroupProfileFromForm() {
   return normalizeProfileFields({
     color: $("#group-color")?.value || "#4a6cf7",
     textColor: $("#group-text-color")?.value || "#ffffff",
+    textStyle: normalizeTextStyle($("#group-text-style")?.value, "bold"),
     winnerTextColor:
       $("#group-winner-text-color")?.value ||
       state.look?.winnerTextColor ||
@@ -3055,6 +3060,7 @@ function readOverridePartsFromForm() {
   return {
     overrideColor: $("#group-override-color")?.checked === true,
     overrideTextColor: $("#group-override-text-color")?.checked === true,
+    overrideTextStyle: $("#group-override-text-style")?.checked === true,
     overrideWinnerTextColor:
       $("#group-override-winner-text-color")?.checked === true,
     overrideImage: $("#group-override-image")?.checked === true,
@@ -3067,6 +3073,7 @@ function readApplyPartsFromForm() {
   return {
     color: $("#group-apply-color")?.checked === true,
     textColor: $("#group-apply-text-color")?.checked === true,
+    textStyle: $("#group-apply-text-style")?.checked === true,
     winnerTextColor: $("#group-apply-winner-text-color")?.checked === true,
     image: $("#group-apply-image")?.checked === true,
     sfx: $("#group-apply-sfx")?.checked === true,
@@ -3081,6 +3088,9 @@ function fillGroupProfileForm(group) {
   }
   if ($("#group-override-text-color")) {
     $("#group-override-text-color").checked = g.overrideTextColor === true;
+  }
+  if ($("#group-override-text-style")) {
+    $("#group-override-text-style").checked = g.overrideTextStyle === true;
   }
   if ($("#group-override-winner-text-color")) {
     $("#group-override-winner-text-color").checked =
@@ -3098,6 +3108,7 @@ function fillGroupProfileForm(group) {
   // Apply chips: default image+color+text on, SFX off (so you don't wipe audio by accident)
   if ($("#group-apply-color")) $("#group-apply-color").checked = true;
   if ($("#group-apply-text-color")) $("#group-apply-text-color").checked = true;
+  if ($("#group-apply-text-style")) $("#group-apply-text-style").checked = true;
   if ($("#group-apply-winner-text-color")) {
     $("#group-apply-winner-text-color").checked = true;
   }
@@ -3107,6 +3118,9 @@ function fillGroupProfileForm(group) {
   if ($("#group-color")) $("#group-color").value = g.color || "#4a6cf7";
   if ($("#group-text-color")) {
     $("#group-text-color").value = g.textColor || "#ffffff";
+  }
+  if ($("#group-text-style")) {
+    $("#group-text-style").value = normalizeTextStyle(g.textStyle, "bold");
   }
   if ($("#group-winner-text-color")) {
     $("#group-winner-text-color").value =
@@ -3344,6 +3358,7 @@ $("#group-cancel").addEventListener("click", () => {
 $("#group-name")?.addEventListener("input", scheduleGroupLivePreview);
 $("#group-color")?.addEventListener("input", scheduleGroupLivePreview);
 $("#group-text-color")?.addEventListener("input", scheduleGroupLivePreview);
+$("#group-text-style")?.addEventListener("change", scheduleGroupLivePreview);
 $("#group-winner-text-color")?.addEventListener(
   "input",
   scheduleGroupLivePreview
@@ -3780,6 +3795,7 @@ let sectionEditCustom = {
 function markSectionDirty(channel) {
   if (channel === "color") sectionEditDirty.color = true;
   if (channel === "textColor") sectionEditDirty.textColor = true;
+  if (channel === "textStyle") sectionEditDirty.textStyle = true;
   if (channel === "winnerTextColor") sectionEditDirty.winnerTextColor = true;
   if (channel === "image") sectionEditDirty.image = true;
   if (channel === "sfx") sectionEditDirty.sfx = true;
@@ -3860,6 +3876,10 @@ function getSectionDraft() {
       nextUnnamedLabel(),
     color: $("#section-color")?.value || "#4a6cf7",
     textColor: $("#section-text-color")?.value || state.look?.textColor || "#ffffff",
+    textStyle: normalizeTextStyle(
+      $("#section-text-style")?.value || state.look?.textStyle,
+      "bold"
+    ),
     imageData: pendingSectionImage,
     imageMode: $("#section-image-mode")?.value === "tile" ? "tile" : "fill",
     imageFillScale: Math.min(
@@ -4293,6 +4313,7 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
       span: labelSpan,
       label: draft.label,
       textColor: draft.textColor,
+      textStyle: draft.textStyle || state.look?.textStyle || "bold",
       fallbackTextColor: state.look?.textColor || "#fff",
       centerSize: state.look?.centerSize ?? 0.16,
       dpr,
@@ -4360,6 +4381,7 @@ function openSectionModal(section) {
   sectionEditDirty = {
     color: false,
     textColor: false,
+    textStyle: false,
     winnerTextColor: false,
     image: false,
     sfx: false,
@@ -4368,6 +4390,7 @@ function openSectionModal(section) {
   sectionEditCustom = {
     color: section ? section.customColor === true : false,
     textColor: section ? section.customTextColor === true : false,
+    textStyle: section ? section.customTextStyle === true : false,
     winnerTextColor: section ? section.customWinnerTextColor === true : false,
     image: section ? section.customImage === true : false,
     sfx: section ? section.customSfx === true : false,
@@ -4380,6 +4403,7 @@ function openSectionModal(section) {
     : null;
   const colorSrc = sectionEditCustom.color ? section : resolved;
   const textSrc = sectionEditCustom.textColor ? section : resolved;
+  const textStyleSrc = sectionEditCustom.textStyle ? section : resolved;
   const winnerTextSrc = sectionEditCustom.winnerTextColor
     ? section
     : resolved;
@@ -4404,6 +4428,12 @@ function openSectionModal(section) {
       textSrc?.textColor ||
       state.look?.textColor ||
       "#ffffff";
+  }
+  if ($("#section-text-style")) {
+    $("#section-text-style").value = normalizeTextStyle(
+      textStyleSrc?.textStyle || state.look?.textStyle,
+      "bold"
+    );
   }
   if ($("#section-winner-text-color")) {
     $("#section-winner-text-color").value =
@@ -4652,6 +4682,11 @@ $("#section-image-rotation")?.addEventListener("input", () => {
 
 // Live preview for label / color / weight
 $("#section-label")?.addEventListener("input", scheduleSectionLivePreview);
+$("#section-text-style")?.addEventListener("change", () => {
+  markSectionDirty("textStyle");
+  sectionEditCustom.textStyle = true;
+  scheduleSectionLivePreview();
+});
 $("#section-text-color")?.addEventListener("input", () => {
   markSectionDirty("textColor");
   scheduleSectionLivePreview();
@@ -4970,6 +5005,7 @@ $("#section-form").addEventListener("submit", async (e) => {
   // custom* : stay unedited (inherit groups) until the user touches that channel
   let customColor = existing ? existing.customColor === true : false;
   let customTextColor = existing ? existing.customTextColor === true : false;
+  let customTextStyle = existing ? existing.customTextStyle === true : false;
   let customWinnerTextColor = existing
     ? existing.customWinnerTextColor === true
     : false;
@@ -4978,6 +5014,7 @@ $("#section-form").addEventListener("submit", async (e) => {
   let customWinEffect = existing ? existing.customWinEffect === true : false;
   if (sectionEditDirty.color) customColor = true;
   if (sectionEditDirty.textColor) customTextColor = true;
+  if (sectionEditDirty.textStyle) customTextStyle = true;
   if (sectionEditDirty.winnerTextColor) customWinnerTextColor = true;
   if (sectionEditDirty.image) {
     // Clear with no image → inherit again; pick/adjust image → own
@@ -5062,6 +5099,14 @@ $("#section-form").addEventListener("submit", async (e) => {
         $("#section-text-color")?.value ||
         state.look?.textColor ||
         "#ffffff",
+    textStyle: customTextStyle
+      ? normalizeTextStyle($("#section-text-style")?.value, "bold")
+      : normalizeTextStyle(
+          existing?.textStyle ||
+            $("#section-text-style")?.value ||
+            state.look?.textStyle,
+          "bold"
+        ),
     winnerTextColor: customWinnerTextColor
       ? $("#section-winner-text-color")?.value || "#ffffff"
       : existing?.winnerTextColor ||
@@ -5072,6 +5117,7 @@ $("#section-form").addEventListener("submit", async (e) => {
     enabled: $("#section-enabled").checked,
     customColor,
     customTextColor,
+    customTextStyle,
     customWinnerTextColor,
     customImage,
     customSfx,
@@ -5165,6 +5211,7 @@ $("#section-form").addEventListener("submit", async (e) => {
       // Brand-new section: untouched channels stay inherited
       customColor: sectionEditDirty.color,
       customTextColor: sectionEditDirty.textColor,
+      customTextStyle: sectionEditDirty.textStyle,
       customWinnerTextColor: sectionEditDirty.winnerTextColor,
       customImage: sectionEditDirty.image && !!pendingSectionImage,
       customSfx: sectionEditDirty.sfx && !!pendingSectionSfx,
@@ -5177,6 +5224,9 @@ $("#section-form").addEventListener("submit", async (e) => {
       textColor: sectionEditDirty.textColor
         ? $("#section-text-color")?.value || "#ffffff"
         : state.look?.textColor || "#ffffff",
+      textStyle: sectionEditDirty.textStyle
+        ? normalizeTextStyle($("#section-text-style")?.value, "bold")
+        : normalizeTextStyle(state.look?.textStyle, "bold"),
       winnerTextColor: sectionEditDirty.winnerTextColor
         ? $("#section-winner-text-color")?.value || "#ffffff"
         : state.look?.winnerTextColor ||
@@ -5239,6 +5289,7 @@ $("#bulk-form").addEventListener("submit", async (e) => {
       label,
       color,
       textColor: state.look?.textColor || "#ffffff",
+      textStyle: normalizeTextStyle(state.look?.textStyle, "bold"),
       winnerTextColor:
         state.look?.winnerTextColor || state.look?.textColor || "#ffffff",
       weight,
@@ -5247,6 +5298,7 @@ $("#bulk-form").addEventListener("submit", async (e) => {
       // Unedited image/SFX inherit group profiles; color only owned if set in bulk line
       customColor: colorGiven,
       customTextColor: false,
+      customTextStyle: false,
       customWinnerTextColor: false,
       customImage: false,
       customSfx: false,
@@ -5284,7 +5336,11 @@ function bindLook() {
     $("#winner-text-color").value =
       state.look.winnerTextColor || state.look.textColor || "#ffffff";
   }
+  if ($("#text-style")) {
+    $("#text-style").value = normalizeTextStyle(state.look.textStyle, "bold");
+  }
   updateTextColorOverrideButton();
+  updateTextStyleOverrideButton();
   updateWinnerTextOverrideButton();
   $("#chk-show-labels").checked = state.look.showLabels !== false;
   $("#chk-show-images").checked = state.look.showImages !== false;
@@ -5412,6 +5468,18 @@ function updateTextColorOverrideButton() {
     : "Override off — use section/group text colors when set (click to force Look color)";
 }
 
+/** Sync Look → Text style Override button active state */
+function updateTextStyleOverrideButton() {
+  const btn = $("#btn-text-style-override");
+  if (!btn) return;
+  const on = state.look?.forceTextStyle === true;
+  btn.classList.toggle("is-active", on);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.title = on
+    ? "Override on — every section label uses Look text style (click to turn off)"
+    : "Override off — use section/group text styles when set (click to force Look style)";
+}
+
 /** Sync Look → Winner text color Override button active state */
 function updateWinnerTextOverrideButton() {
   const btn = $("#btn-winner-text-override");
@@ -5428,6 +5496,14 @@ $("#btn-text-color-override")?.addEventListener("click", async () => {
   checkpoint();
   state.look.forceTextColor = !(state.look.forceTextColor === true);
   updateTextColorOverrideButton();
+  persist();
+  await refreshWheel();
+});
+
+$("#btn-text-style-override")?.addEventListener("click", async () => {
+  checkpoint();
+  state.look.forceTextStyle = !(state.look.forceTextStyle === true);
+  updateTextStyleOverrideButton();
   persist();
   await refreshWheel();
 });
@@ -7690,7 +7766,10 @@ async function onLookChange() {
   if ($("#winner-text-color")) {
     state.look.winnerTextColor = $("#winner-text-color").value;
   }
-  // forceWinnerTextColor is toggled by the Override button, not these fields
+  if ($("#text-style")) {
+    state.look.textStyle = normalizeTextStyle($("#text-style").value, "bold");
+  }
+  // forceTextColor / forceTextStyle / forceWinnerTextColor: Override buttons
   state.look.showLabels = $("#chk-show-labels").checked;
   state.look.showImages = $("#chk-show-images").checked;
   if ($("#image-layout-mode")) {
@@ -7778,7 +7857,7 @@ async function onLookChange() {
   scheduleAutoSpin();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "text-style", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {

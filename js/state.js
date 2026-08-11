@@ -133,6 +133,7 @@ const PALETTE = [
 export const PROFILE_KEYS = [
   "color",
   "textColor",
+  "textStyle",
   "winnerTextColor",
   "imageData",
   "imageMode",
@@ -152,7 +153,27 @@ export const PROFILE_KEYS = [
 
 export const COLOR_KEYS = ["color"];
 export const TEXT_COLOR_KEYS = ["textColor"];
+/** Label weight/italic style (normal | bold | italic | bold-italic) */
+export const TEXT_STYLE_KEYS = ["textStyle"];
 export const WINNER_TEXT_COLOR_KEYS = ["winnerTextColor"];
+
+/** @param {unknown} v @param {string} [fallback="bold"] */
+export function normalizeTextStyle(v, fallback = "bold") {
+  if (
+    v === "normal" ||
+    v === "bold" ||
+    v === "italic" ||
+    v === "bold-italic"
+  ) {
+    return v;
+  }
+  return fallback === "normal" ||
+    fallback === "bold" ||
+    fallback === "italic" ||
+    fallback === "bold-italic"
+    ? fallback
+    : "bold";
+}
 export const IMAGE_KEYS = [
   "imageData",
   "imageMode",
@@ -167,7 +188,7 @@ export const IMAGE_KEYS = [
 export const SFX_KEYS = ["landSfxData", "landSfxName"];
 export const WIN_EFFECT_KEYS = ["winEffect", "winEffectData", "winEffectName"];
 
-/** @typedef {{ color?: boolean, textColor?: boolean, winnerTextColor?: boolean, image?: boolean, sfx?: boolean, winEffect?: boolean }} ProfileParts */
+/** @typedef {{ color?: boolean, textColor?: boolean, textStyle?: boolean, winnerTextColor?: boolean, image?: boolean, sfx?: boolean, winEffect?: boolean }} ProfileParts */
 
 /** Normalize after-win effect id. */
 export function normalizeWinEffect(v, fallback = "confetti") {
@@ -183,12 +204,14 @@ export function defaultGroupProfile() {
   return {
     overrideColor: false,
     overrideTextColor: false,
+    overrideTextStyle: false,
     overrideWinnerTextColor: false,
     overrideImage: false,
     overrideSfx: false,
     overrideWinEffect: false,
     color: "#4a6cf7",
     textColor: "#ffffff",
+    textStyle: "bold",
     winnerTextColor: "#ffffff",
     imageData: null,
     imageMode: "fill",
@@ -213,6 +236,7 @@ export function groupHasAnyOverride(g) {
     g &&
     (g.overrideColor ||
       g.overrideTextColor ||
+      g.overrideTextStyle ||
       g.overrideWinnerTextColor ||
       g.overrideImage ||
       g.overrideSfx ||
@@ -259,6 +283,7 @@ export function normalizeProfileFields(src = {}) {
   return {
     color: normalizeHexColor(src.color, "#4a6cf7"),
     textColor: normalizeHexColor(src.textColor, "#ffffff"),
+    textStyle: normalizeTextStyle(src.textStyle, "bold"),
     winnerTextColor: normalizeHexColor(
       src.winnerTextColor ?? src.textColor,
       "#ffffff"
@@ -312,6 +337,7 @@ export function normalizeGroup(g = {}) {
     overrideTextColor:
       g.overrideTextColor === true ||
       (g.overrideTextColor == null && legacyAll),
+    overrideTextStyle: g.overrideTextStyle === true,
     overrideWinnerTextColor: g.overrideWinnerTextColor === true,
     overrideImage:
       g.overrideImage === true || (g.overrideImage == null && legacyAll),
@@ -347,6 +373,7 @@ export function applyProfileToSection(section, profile, parts) {
       ? {
           color: parts.color === true,
           textColor: parts.textColor === true,
+          textStyle: parts.textStyle === true,
           winnerTextColor: parts.winnerTextColor === true,
           image: parts.image === true,
           sfx: parts.sfx === true,
@@ -355,6 +382,7 @@ export function applyProfileToSection(section, profile, parts) {
       : {
           color: true,
           textColor: true,
+          textStyle: true,
           winnerTextColor: true,
           image: true,
           sfx: true,
@@ -367,6 +395,10 @@ export function applyProfileToSection(section, profile, parts) {
   if (want.textColor) {
     for (const k of TEXT_COLOR_KEYS) section[k] = p[k];
     section.customTextColor = true;
+  }
+  if (want.textStyle) {
+    for (const k of TEXT_STYLE_KEYS) section[k] = p[k];
+    section.customTextStyle = true;
   }
   if (want.winnerTextColor) {
     for (const k of WINNER_TEXT_COLOR_KEYS) section[k] = p[k];
@@ -405,12 +437,14 @@ export function defaultState() {
     // Own colors by default; image/SFX inherit from groups until edited
     customColor: true,
     customTextColor: false,
+    customTextStyle: false,
     customWinnerTextColor: false,
     customImage: false,
     customSfx: false,
     ...normalizeProfileFields({
       color: PALETTE[i % PALETTE.length],
       textColor: "#ffffff",
+      textStyle: "bold",
       winnerTextColor: "#ffffff",
     }),
   }));
@@ -439,6 +473,16 @@ export function defaultState() {
        * (ignores section / group text colors).
        */
       forceTextColor: false,
+      /**
+       * Default label format: normal | bold | italic | bold-italic
+       * (matches historical bold weight-700 look).
+       */
+      textStyle: "bold",
+      /**
+       * When true, wheel labels always use look.textStyle
+       * (ignores section / group text styles).
+       */
+      forceTextStyle: false,
       /** Color of the winning name on the result overlay (separate from wheel labels) */
       winnerTextColor: "#ffffff",
       /**
@@ -629,6 +673,8 @@ function migrate(data) {
   }
   look.forceTextColor = look.forceTextColor === true;
   look.forceWinnerTextColor = look.forceWinnerTextColor === true;
+  look.textStyle = normalizeTextStyle(look.textStyle, "bold");
+  look.forceTextStyle = look.forceTextStyle === true;
   // Fair drag spin: only on when explicitly saved (default off)
   look.fairDragSpin = look.fairDragSpin === true;
   // Pointer angle 0–360 (0 = top, 90 = right default). Missing → right.
@@ -933,6 +979,7 @@ export function inheritGroupForChannel(state, section, channel) {
   for (const g of members) {
     if (channel === "color") return g;
     if (channel === "textColor") return g;
+    if (channel === "textStyle") return g;
     if (channel === "winnerTextColor") return g;
     if (channel === "image" && g.imageData) return g;
     if (channel === "sfx" && g.landSfxData) return g;
@@ -971,6 +1018,7 @@ export function resolveSectionForDisplay(state, section) {
     profileOverrides: {
       color: false,
       textColor: false,
+      textStyle: false,
       winnerTextColor: false,
       image: false,
       sfx: false,
@@ -979,6 +1027,7 @@ export function resolveSectionForDisplay(state, section) {
     profileFrom: {
       color: { source: "section", groupId: null },
       textColor: { source: "section", groupId: null },
+      textStyle: { source: "section", groupId: null },
       winnerTextColor: { source: "section", groupId: null },
       image: { source: "section", groupId: null },
       sfx: { source: "section", groupId: null },
@@ -1025,6 +1074,27 @@ export function resolveSectionForDisplay(state, section) {
           "#ffffff"
         );
         out.profileFrom.textColor = { source: "look", groupId: null };
+      }
+    }
+  }
+
+  // --- Text style (bold / italic / etc.) ---
+  if (state.look?.forceTextStyle === true) {
+    out.textStyle = normalizeTextStyle(state.look?.textStyle, "bold");
+    out.profileFrom.textStyle = { source: "look", groupId: null };
+    out.profileOverrides.textStyle = true;
+  } else {
+    const forceStyle = forceOverrideGroup(state, section, "overrideTextStyle");
+    if (forceStyle) {
+      applyFromGroup(forceStyle, TEXT_STYLE_KEYS, "textStyle");
+      out.profileOverrides.textStyle = true;
+    } else if (!section.customTextStyle) {
+      const fromG = inheritGroupForChannel(state, section, "textStyle");
+      if (fromG) {
+        applyFromGroup(fromG, TEXT_STYLE_KEYS, "textStyle");
+      } else {
+        out.textStyle = normalizeTextStyle(state.look?.textStyle, "bold");
+        out.profileFrom.textStyle = { source: "look", groupId: null };
       }
     }
   }
@@ -1115,6 +1185,10 @@ export function resolveSectionForDisplay(state, section) {
     out.textColor || state.look?.textColor,
     "#ffffff"
   );
+  out.textStyle = normalizeTextStyle(
+    out.textStyle || state.look?.textStyle,
+    "bold"
+  );
   out.winnerTextColor = normalizeHexColor(
     out.winnerTextColor ||
       state.look?.winnerTextColor ||
@@ -1156,6 +1230,7 @@ function normalizeSection(s, groups, groupIdsSet) {
   const hasCustomFlags =
     s.customColor != null ||
     s.customTextColor != null ||
+    s.customTextStyle != null ||
     s.customWinnerTextColor != null ||
     s.customImage != null ||
     s.customSfx != null ||
@@ -1164,6 +1239,7 @@ function normalizeSection(s, groups, groupIdsSet) {
   // Legacy saves: keep existing media/color as section-owned so looks don't jump
   let customColor;
   let customTextColor;
+  let customTextStyle;
   let customWinnerTextColor;
   let customImage;
   let customSfx;
@@ -1172,6 +1248,7 @@ function normalizeSection(s, groups, groupIdsSet) {
     customColor = s.customColor === true;
     customTextColor = s.customTextColor === true;
     // New channel: only owned when explicitly flagged (old saves inherit Look/group)
+    customTextStyle = s.customTextStyle === true;
     customWinnerTextColor = s.customWinnerTextColor === true;
     customImage = s.customImage === true;
     customSfx = s.customSfx === true;
@@ -1180,6 +1257,7 @@ function normalizeSection(s, groups, groupIdsSet) {
     customColor = true;
     // Old projects: inherit text color (Look / group) unless they set one
     customTextColor = s.textColor != null && s.textColor !== "";
+    customTextStyle = false;
     customWinnerTextColor = false;
     customImage = !!profile.imageData;
     customSfx = !!profile.landSfxData;
@@ -1234,6 +1312,7 @@ function normalizeSection(s, groups, groupIdsSet) {
     groupIds: gids,
     customColor,
     customTextColor,
+    customTextStyle,
     customWinnerTextColor,
     customImage,
     customSfx,

@@ -946,7 +946,7 @@ export class Wheel {
 
   /**
    * Radial labels (shared with editor preview — see slice-labels.js).
-   * @param {boolean} spinFrame skip soft label shadow (stroke border still drawn)
+   * @param {boolean} spinFrame kept for API; soft shadow always drawn for readability
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
     drawSliceLabel(ctx, {
@@ -955,6 +955,7 @@ export class Wheel {
       span: sl?.span,
       label: sl?.section?.label,
       textColor: sl?.section?.textColor,
+      textStyle: sl?.section?.textStyle || this.look.textStyle || "bold",
       fallbackTextColor: this.look.textColor || "#fff",
       centerSize: this.look.centerSize ?? 0.16,
       dpr: this._dpr || 1,

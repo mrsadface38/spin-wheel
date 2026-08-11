@@ -15,6 +15,42 @@ export function measureLabelWidth(ctx, text) {
 }
 
 /**
+ * Normalize wheel label style.
+ * @param {unknown} v
+ * @param {string} [fallback="bold"]
+ * @returns {"normal"|"bold"|"italic"|"bold-italic"}
+ */
+export function normalizeTextStyle(v, fallback = "bold") {
+  if (
+    v === "normal" ||
+    v === "bold" ||
+    v === "italic" ||
+    v === "bold-italic"
+  ) {
+    return v;
+  }
+  return fallback === "normal" ||
+    fallback === "bold" ||
+    fallback === "italic" ||
+    fallback === "bold-italic"
+    ? fallback
+    : "bold";
+}
+
+/**
+ * CSS font shorthand for canvas labels.
+ * @param {unknown} style
+ * @param {number} sizePx
+ */
+export function fontFromTextStyle(style, sizePx) {
+  const s = normalizeTextStyle(style);
+  const italic = s === "italic" || s === "bold-italic" ? "italic " : "";
+  const weight = s === "bold" || s === "bold-italic" ? 700 : 400;
+  const px = Math.max(1, Number(sizePx) || 16);
+  return `${italic}${weight} ${px}px system-ui,sans-serif`;
+}
+
+/**
  * Word-wrap so each line fits maxWidth (full text, no ellipsis).
  * @returns {string[]}
  */
@@ -98,12 +134,13 @@ export function wrapLabelLinesMax(ctx, label, maxWidth, maxLines) {
  * @param {number} opts.span wedge span (radians)
  * @param {string} opts.label
  * @param {string} [opts.textColor]
+ * @param {string} [opts.textStyle] normal | bold | italic | bold-italic
  * @param {number} [opts.centerSize] hub size fraction 0–1 (Look)
  * @param {number} [opts.dpr]
  * @param {boolean} [opts.showLabels]
  * @param {boolean} [opts.asSolidDisc] single full-wheel section
  * @param {boolean} [opts.forceRadial] always hub→rim (skip horizontal full-disc layout)
- * @param {boolean} [opts.spinFrame] skip soft shadow while spinning (stroke border always on)
+ * @param {boolean} [opts.spinFrame] reserved (shadow kept for readable outline while spinning)
  * @param {string} [opts.fallbackTextColor]
  */
 export function drawSliceLabel(ctx, opts = {}) {
@@ -123,50 +160,19 @@ export function drawSliceLabel(ctx, opts = {}) {
     const solid =
       !opts.forceRadial &&
       (opts.asSolidDisc === true || span >= Math.PI * 2 - 1e-4);
-    const weight = 700;
     const baseFont = Math.max(16, 48 * dpr);
     const lineGap = 1.12;
-    // Dark outline so labels stay readable on any slice color (kept while spinning).
-    // On-screen width ~px; paintLine divides by current scale() so it stays consistent.
-    const strokePx = Math.max(2.5 * dpr, baseFont * 0.09);
-    const strokeColor = "rgba(0, 0, 0, 0.92)";
-
-    /**
-     * Fill + dark border. Soft shadow only when idle (blur is costly every spin frame).
-     * Call after ctx.scale(s,s) so font size is correct; pass that s for stroke thickness.
-     * @param {string} text
-     * @param {number} x
-     * @param {number} y
-     * @param {number} s current uniform scale on the context
-     */
-    const paintLine = (text, x, y, s = 1) => {
-      const sc = Math.max(0.05, Number(s) || 1);
-      ctx.lineJoin = "round";
-      ctx.miterLimit = 2;
-      ctx.lineWidth = strokePx / sc;
-      ctx.strokeStyle = strokeColor;
-      // Soft halo only when idle — stroke border is always drawn (including spin)
-      if (!opts.spinFrame) {
-        ctx.shadowColor = "rgba(0,0,0,0.7)";
-        ctx.shadowBlur = (3.5 * dpr) / sc;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
-      } else {
-        ctx.shadowColor = "transparent";
-        ctx.shadowBlur = 0;
-      }
-      ctx.strokeText(text, x, y);
-      // Clear shadow before fill so the glyph stays crisp
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
-      ctx.fillText(text, x, y);
-    };
+    const textStyle = normalizeTextStyle(opts.textStyle, "bold");
 
     ctx.save();
     ctx.fillStyle =
       opts.textColor || opts.fallbackTextColor || "#fff";
     ctx.textBaseline = "middle";
-    ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
+    // Soft dark halo = the original “border”. Keep it while spinning so labels
+    // stay readable (no hard strokeText, which made glyphs look blocky).
+    ctx.shadowColor = "rgba(0,0,0,0.85)";
+    ctx.shadowBlur = 4 * dpr;
+    ctx.font = fontFromTextStyle(textStyle, baseFont);
     let th = baseFont * 1.05;
     try {
       const m = ctx.measureText(label);
@@ -228,7 +234,7 @@ export function drawSliceLabel(ctx, opts = {}) {
       ctx.scale(s, s);
       for (let i = 0; i < lines.length; i++) {
         const y = (i - (lines.length - 1) / 2) * lineH;
-        paintLine(lines[i], 0, y, s);
+        ctx.fillText(lines[i], 0, y);
       }
       ctx.restore();
       return;
@@ -318,7 +324,7 @@ export function drawSliceLabel(ctx, opts = {}) {
     ctx.scale(s, s);
     for (let i = 0; i < lines.length; i++) {
       const y = (i - (lines.length - 1) / 2) * lineH;
-      paintLine(lines[i], 0, y, s);
+      ctx.fillText(lines[i], 0, y);
     }
     ctx.restore();
   } catch (err) {

@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#153</span>
+        <span class="app-version" id="app-version" title="Update number">#154</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -252,6 +252,26 @@
                 </button>
               </div>
               <small>Used when a section has no own/group text color. Override forces this color on all labels.</small>
+            </label>
+            <label class="field">
+              <span>Text style</span>
+              <div class="field-with-action">
+                <select id="text-style" title="Default label weight / italic style">
+                  <option value="normal">Normal</option>
+                  <option value="bold" selected>Bold</option>
+                  <option value="italic">Italic</option>
+                  <option value="bold-italic">Bold italic</option>
+                </select>
+                <button
+                  type="button"
+                  id="btn-text-style-override"
+                  class="btn small ghost"
+                  title="Force this Look text style on every section label (ignores section/group styles)"
+                >
+                  Override
+                </button>
+              </div>
+              <small>Default format for section names on the wheel. Sections/groups can set their own unless Override is on.</small>
             </label>
             <label class="toggle-row">
               <input type="checkbox" id="chk-show-labels" checked />
@@ -836,6 +856,17 @@
             </label>
 
             <label class="field">
+              <span>Text style</span>
+              <select id="section-text-style" title="Label weight / italic for this section">
+                <option value="normal">Normal</option>
+                <option value="bold" selected>Bold</option>
+                <option value="italic">Italic</option>
+                <option value="bold-italic">Bold italic</option>
+              </select>
+              <small>Label format on the wheel (inherits group / Look until you change it)</small>
+            </label>
+
+            <label class="field">
               <span>Winner text color</span>
               <input type="color" id="section-winner-text-color" value="#ffffff" />
               <small>Color of this name on the result screen (inherits group / Look until you change it)</small>
@@ -1160,6 +1191,7 @@
               <div class="profile-parts-row">
                 <label class="chip-check"><input type="checkbox" id="group-override-color" /> Slice color</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-text-color" /> Text color</label>
+                <label class="chip-check"><input type="checkbox" id="group-override-text-style" /> Text style</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-winner-text-color" /> Winner text</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-image" /> Image</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-sfx" /> Land SFX</label>
@@ -1185,6 +1217,16 @@
               <span>Profile text color</span>
               <input type="color" id="group-text-color" value="#ffffff" />
               <small>Default label color for sections in this group</small>
+            </label>
+            <label class="field">
+              <span>Profile text style</span>
+              <select id="group-text-style" title="Default label weight / italic for this group">
+                <option value="normal">Normal</option>
+                <option value="bold" selected>Bold</option>
+                <option value="italic">Italic</option>
+                <option value="bold-italic">Bold italic</option>
+              </select>
+              <small>Default label format for sections in this group</small>
             </label>
             <label class="field">
               <span>Profile winner text color</span>
@@ -1322,6 +1364,7 @@
                 <div class="profile-parts-row">
                   <label class="chip-check"><input type="checkbox" id="group-apply-color" checked /> Slice color</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-text-color" checked /> Text color</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-text-style" checked /> Text style</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-winner-text-color" checked /> Winner text</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-image" checked /> Image</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-sfx" /> Land SFX</label>
