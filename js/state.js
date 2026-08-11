@@ -1088,7 +1088,9 @@ export function resolveSectionForDisplay(state, section) {
     }
   }
 
-  // --- Text style (bold / italic / etc.) ---
+  // --- Text format (bold / italic / etc.) ---
+  // Look dropdown is the default for all labels. Group only applies when its
+  // “Text format” force override is on; section owns after user edits format.
   if (state.look?.forceTextStyle === true) {
     out.textStyle = normalizeTextStyle(state.look?.textStyle, "bold");
     out.profileFrom.textStyle = { source: "look", groupId: null };
@@ -1098,14 +1100,12 @@ export function resolveSectionForDisplay(state, section) {
     if (forceStyle) {
       applyFromGroup(forceStyle, TEXT_STYLE_KEYS, "textStyle");
       out.profileOverrides.textStyle = true;
-    } else if (!section.customTextStyle) {
-      const fromG = inheritGroupForChannel(state, section, "textStyle");
-      if (fromG) {
-        applyFromGroup(fromG, TEXT_STYLE_KEYS, "textStyle");
-      } else {
-        out.textStyle = normalizeTextStyle(state.look?.textStyle, "bold");
-        out.profileFrom.textStyle = { source: "look", groupId: null };
-      }
+    } else if (section.customTextStyle === true) {
+      out.textStyle = normalizeTextStyle(section.textStyle, "bold");
+      out.profileFrom.textStyle = { source: "section", groupId: null };
+    } else {
+      out.textStyle = normalizeTextStyle(state.look?.textStyle, "bold");
+      out.profileFrom.textStyle = { source: "look", groupId: null };
     }
   }
 

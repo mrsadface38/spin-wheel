@@ -45,9 +45,11 @@ export function normalizeTextStyle(v, fallback = "bold") {
 export function fontFromTextStyle(style, sizePx) {
   const s = normalizeTextStyle(style);
   const italic = s === "italic" || s === "bold-italic" ? "italic " : "";
+  // Bold = 700 (historic default); normal = 400
   const weight = s === "bold" || s === "bold-italic" ? 700 : 400;
   const px = Math.max(1, Number(sizePx) || 16);
-  return `${italic}${weight} ${px}px system-ui,sans-serif`;
+  // Prefer faces that actually render italic/weight clearly on canvas
+  return `${italic}${weight} ${px}px "Segoe UI", system-ui, -apple-system, sans-serif`;
 }
 
 /**

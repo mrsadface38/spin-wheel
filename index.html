@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#162</span>
+        <span class="app-version" id="app-version" title="Update number">#164</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -271,7 +271,10 @@
                   Override
                 </button>
               </div>
-              <small>Default format for section names on the wheel. Sections/groups can set their own unless Override is on.</small>
+              <small>
+                Changes how section names look (normal / bold / italic). Applies to all labels by default.
+                Sections or groups can set their own; <strong>Override</strong> forces this Look format everywhere.
+              </small>
             </label>
             <label class="toggle-row">
               <input type="checkbox" id="chk-show-labels" checked />
@@ -880,7 +883,7 @@
             </label>
 
             <label class="field">
-              <span>Text style</span>
+              <span>Text format</span>
               <select id="section-text-style" title="Label weight / italic for this section">
                 <option value="normal">Normal</option>
                 <option value="bold" selected>Bold</option>
@@ -1215,7 +1218,7 @@
               <div class="profile-parts-row">
                 <label class="chip-check"><input type="checkbox" id="group-override-color" /> Slice color</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-text-color" /> Text color</label>
-                <label class="chip-check"><input type="checkbox" id="group-override-text-style" /> Text style</label>
+                <label class="chip-check"><input type="checkbox" id="group-override-text-style" /> Text format</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-winner-text-color" /> Winner text</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-image" /> Image</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-sfx" /> Land SFX</label>
@@ -1243,14 +1246,14 @@
               <small>Default label color for sections in this group</small>
             </label>
             <label class="field">
-              <span>Profile text style</span>
-              <select id="group-text-style" title="Default label weight / italic for this group">
+              <span>Profile text format</span>
+              <select id="group-text-style" title="Label weight / italic for this group">
                 <option value="normal">Normal</option>
                 <option value="bold" selected>Bold</option>
                 <option value="italic">Italic</option>
                 <option value="bold-italic">Bold italic</option>
               </select>
-              <small>Default label format for sections in this group</small>
+              <small>Used when this group’s Text format force is on, or when you apply text format to members.</small>
             </label>
             <label class="field">
               <span>Profile winner text color</span>
@@ -1388,7 +1391,7 @@
                 <div class="profile-parts-row">
                   <label class="chip-check"><input type="checkbox" id="group-apply-color" checked /> Slice color</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-text-color" checked /> Text color</label>
-                  <label class="chip-check"><input type="checkbox" id="group-apply-text-style" checked /> Text style</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-text-style" checked /> Text format</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-winner-text-color" checked /> Winner text</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-image" checked /> Image</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-sfx" /> Land SFX</label>
