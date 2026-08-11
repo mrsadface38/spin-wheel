@@ -278,6 +278,18 @@ export class Wheel {
     const h = this._cssH || 0;
     if (w < 2 || h < 2) return;
 
+    // One section = solid disc; no winner pointer (reads as a yellow cone on the rim)
+    const singleSection =
+      (this.spinning && this._spinSingle) ||
+      (!this.spinning && (this.sections?.length || 0) <= 1);
+    if (singleSection) {
+      el.style.visibility = "hidden";
+      el.style.pointerEvents = "none";
+      el.setAttribute("aria-hidden", "true");
+      return;
+    }
+    el.style.visibility = "";
+
     const cx = w / 2;
     const cy = h / 2;
     const wheelR = Math.min(w, h) * 0.42;
@@ -302,7 +314,7 @@ export class Wheel {
     el.classList.toggle("is-draggable", canDrag);
     el.style.pointerEvents = canDrag ? "auto" : "none";
     el.title = locked
-      ? "Pointer locked (Look → unlock to move)"
+      ? "Pointer locked (Misc → unlock to move)"
       : canDrag
         ? "Drag to move winner pointer (snaps to 0° / 90° / 180° / 270°)"
         : "Pointer";
@@ -845,17 +857,8 @@ export class Wheel {
     front.lineWidth = 6 * this._dpr;
     front.stroke();
 
-    // Pegs
-    if (single) {
-      const pegCount = 12;
-      for (let i = 0; i < pegCount; i++) {
-        const a = (i / pegCount) * Math.PI * 2;
-        front.beginPath();
-        front.arc(Math.cos(a) * radius, Math.sin(a) * radius, 4.5 * this._dpr, 0, Math.PI * 2);
-        front.fillStyle = this.look.borderColor || "#f0d78c";
-        front.fill();
-      }
-    } else {
+    // Pegs only between multi slices (not a full-disc single section)
+    if (!single) {
       for (const sl of slices) {
         front.beginPath();
         front.arc(
