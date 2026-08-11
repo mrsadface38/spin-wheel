@@ -922,32 +922,11 @@ export class Wheel {
     const hasImg = section.imageData && this.look.showImages !== false;
 
     if (solid) {
+      // One active section = one solid disc (no faux pie wedges / motion bands)
       ctx.beginPath();
       ctx.arc(0, 0, radius, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
-
-      // Motion bands only when idle / no image (expensive multi-path work)
-      if (!hasImg && !spinFrame) {
-        const bands = 8;
-        for (let i = 0; i < bands; i++) {
-          if (i % 2 === 0) continue;
-          const a0 = (i / bands) * Math.PI * 2;
-          const a1 = ((i + 1) / bands) * Math.PI * 2;
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.arc(0, 0, radius, a0, a1);
-          ctx.closePath();
-          ctx.fillStyle = "rgba(255,255,255,0.08)";
-          ctx.fill();
-        }
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.arc(0, 0, radius * 0.92, -0.12, 0.12);
-        ctx.closePath();
-        ctx.fillStyle = "rgba(255,255,255,0.18)";
-        ctx.fill();
-      }
     } else {
       ctx.beginPath();
       ctx.moveTo(0, 0);
@@ -1761,9 +1740,15 @@ export class Wheel {
     }
     if (!this.sections.length) return;
 
-    // Grab mid-spin: stop animation and take over with drag
+    // Grab mid-spin: stop animation and take over with drag (optional)
     const interrupted = this.spinning;
     if (interrupted) {
+      if (
+        typeof this._dragHooks?.getAllowGrabStopSpin === "function" &&
+        this._dragHooks.getAllowGrabStopSpin() === false
+      ) {
+        return;
+      }
       this.cancelAnimatedSpin();
     } else if (this._dragHooks?.canStart && !this._dragHooks.canStart()) {
       return;
