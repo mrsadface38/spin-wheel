@@ -11,32 +11,32 @@ import {
 } from "./state.js";
 
 /**
- * Merry-go-round / carnival face colors — bright and mixed, not a red→blue
- * spectrum. Ordered so neighbors jump around the hue wheel for contrast.
+ * Merry-go-round face colors — neon / carnival bright, mixed (not a spectrum).
+ * High saturation; dark text only on the lightest yellows/cyans.
  * Hex only (normalizeHexColor rejects non-hex).
  * @type {{ color: string, text: string }[]}
  */
 const D20_MERRY = [
-  { color: "#e74c3c", text: "#ffffff" }, // red
-  { color: "#f1c40f", text: "#1a1408" }, // gold
-  { color: "#3498db", text: "#ffffff" }, // sky
-  { color: "#2ecc71", text: "#ffffff" }, // green
-  { color: "#9b59b6", text: "#ffffff" }, // purple
-  { color: "#e67e22", text: "#ffffff" }, // orange
-  { color: "#1abc9c", text: "#ffffff" }, // teal
-  { color: "#e91e63", text: "#ffffff" }, // pink
-  { color: "#f39c12", text: "#1a1408" }, // amber
-  { color: "#2980b9", text: "#ffffff" }, // cobalt
-  { color: "#27ae60", text: "#ffffff" }, // forest
-  { color: "#c0392b", text: "#ffffff" }, // crimson
-  { color: "#8e44ad", text: "#ffffff" }, // violet
-  { color: "#16a085", text: "#ffffff" }, // sea
-  { color: "#d35400", text: "#ffffff" }, // rust
-  { color: "#f4d03f", text: "#1a1408" }, // lemon
-  { color: "#5dade2", text: "#1a1408" }, // light blue
-  { color: "#af7ac5", text: "#ffffff" }, // lilac
-  { color: "#58d68d", text: "#1a1408" }, // mint
-  { color: "#ec7063", text: "#ffffff" }, // coral
+  { color: "#ff1744", text: "#ffffff" }, // neon red
+  { color: "#ffea00", text: "#1a1408" }, // electric yellow
+  { color: "#2979ff", text: "#ffffff" }, // vivid blue
+  { color: "#00e676", text: "#1a1408" }, // neon green
+  { color: "#d500f9", text: "#ffffff" }, // electric purple
+  { color: "#ff9100", text: "#1a1408" }, // bright orange
+  { color: "#00e5ff", text: "#1a1408" }, // cyan
+  { color: "#ff4081", text: "#ffffff" }, // hot pink
+  { color: "#ffc400", text: "#1a1408" }, // amber flash
+  { color: "#3d5afe", text: "#ffffff" }, // indigo
+  { color: "#76ff03", text: "#1a1408" }, // lime
+  { color: "#ff3d00", text: "#ffffff" }, // deep orange-red
+  { color: "#aa00ff", text: "#ffffff" }, // vivid violet
+  { color: "#1de9b6", text: "#1a1408" }, // aqua
+  { color: "#ff6d00", text: "#ffffff" }, // tangerine
+  { color: "#ffff00", text: "#1a1408" }, // pure yellow
+  { color: "#00b0ff", text: "#ffffff" }, // bright sky
+  { color: "#f50057", text: "#ffffff" }, // magenta pink
+  { color: "#64dd17", text: "#1a1408" }, // chartreuse
+  { color: "#ff5252", text: "#ffffff" }, // coral red
 ];
 
 /**
