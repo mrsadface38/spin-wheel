@@ -77,8 +77,8 @@ export function coinFlipState() {
   const base = defaultState();
   const g = normalizeGroup({ id: uid("grp"), name: "Coin", active: true });
   const faces = [
-    { label: "Heads", color: "#1e88e5", text: "#ffffff" }, // solid blue
-    { label: "Tails", color: "#e53935", text: "#ffffff" }, // solid red
+    { label: "Heads", color: "#0000ff", text: "#ffffff" }, // RGB 0,0,255 blue
+    { label: "Tails", color: "#ff0000", text: "#ffffff" }, // RGB 255,0,0 red
   ];
   const sections = faces.map((f) => ({
     id: uid("sec"),
