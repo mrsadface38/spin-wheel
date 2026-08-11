@@ -541,7 +541,9 @@ export function d20State() {
       backgroundColor: "#120c14",
       centerColor: "#1f1528",
       borderColor: "#f0d78c",
-      textColor: "#f5f0d8",
+      // All face labels use black via Override (readable on every solid)
+      textColor: "#000000",
+      forceTextColor: true,
       winnerTextColor: "#ffffff",
       winnerLabel: "Rolled",
       resultStyle: "banner",
