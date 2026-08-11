@@ -3505,7 +3505,7 @@ $("#group-sfx-preview")?.addEventListener("click", async () => {
 
 /**
  * Randomize member section colors with the solid d20 palette system
- * (shuffled; blue next to cyan; no identical neighbors on the wheel).
+ * (shuffled; blue next to cyan; never same color on both neighbors).
  */
 $("#btn-group-randomize-colors")?.addEventListener("click", async () => {
   // Wheel order = state.sections array order among group members
@@ -3522,7 +3522,8 @@ $("#btn-group-randomize-colors")?.addEventListener("click", async () => {
     !confirm(
       `Randomize solid colors on ${ordered.length} section(s) in this group?\n\n` +
         `Uses the same palette as d20 (red, blue, green, cyan, yellow, purple).\n` +
-        `Blue stays next to cyan; no section has the same color on both sides.`
+        `Blue stays next to cyan.\n` +
+        `No two neighbors match, and no section has the same color on both sides.`
     )
   ) {
     return;
@@ -6386,9 +6387,9 @@ function showResult(section, opts = {}) {
   }
   try {
     // Clear previous overlay UI only (avoid recursive redraw thrash)
-    resultBanner.classList.add("hidden");
-    resultCenter.classList.add("hidden");
-    resultActionsBar.classList.add("hidden");
+    resultBanner?.classList?.add("hidden");
+    resultCenter?.classList?.add("hidden");
+    resultActionsBar?.classList?.add("hidden");
     clearResultCenterBg();
 
     lastWinnerId = section.id;
