@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#124</span>
+        <span class="app-version" id="app-version" title="Update number">#125</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -986,6 +986,27 @@
               <span>Target wheel</span>
               <select id="section-land-target-wheel" title="Wheel to switch to and spin"></select>
               <small>Create another wheel with + New if the list is empty.</small>
+            </label>
+            <label class="field" id="section-land-show-result-field" hidden>
+              <span>Show result for</span>
+              <div class="slider-with-value">
+                <input
+                  type="number"
+                  id="section-land-show-result-value"
+                  min="0"
+                  max="99999"
+                  step="1"
+                  value="0"
+                  title="How long to show this win before the next spin"
+                />
+                <select id="section-land-show-result-unit" title="Show result duration unit">
+                  <option value="seconds">sec</option>
+                  <option value="minutes">min</option>
+                  <option value="hours">hr</option>
+                  <option value="days">days</option>
+                </select>
+              </div>
+              <small><strong>0</strong> = skip the win screen and spin next right away. Otherwise show this result that long, then respin or switch wheels.</small>
             </label>
           </div>
         </div>

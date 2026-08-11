@@ -20,6 +20,8 @@ import {
   formatWeight,
   clampImageRotation,
   normalizeLandAction,
+  normalizeLandShowResultUnit,
+  landShowResultMs,
   normalizeReturnAfterMs,
   normalizeReturnsAt,
 } from "./state.js";
@@ -1489,6 +1491,12 @@ function cloneSectionForDuplicate(section) {
     winEffectName: section.winEffectName || null,
     landAction: normalizeLandAction(section.landAction),
     landTargetWheelId: section.landTargetWheelId || null,
+    landShowResultEvery: (() => {
+      let n = Number(section.landShowResultEvery);
+      if (!Number.isFinite(n) || n < 0) n = 0;
+      return Math.min(99999, Math.round(n));
+    })(),
+    landShowResultUnit: normalizeLandShowResultUnit(section.landShowResultUnit),
     returnAfterMs: normalizeReturnAfterMs(section.returnAfterMs),
     returnsAt: null, // new copy is enabled path; no pending return
   };
@@ -1840,6 +1848,42 @@ function updateSectionLandActionUI() {
   if (field) field.hidden = action !== "otherWheel";
   if (action === "otherWheel") {
     fillSectionLandTargetWheels($("#section-land-target-wheel")?.value);
+  }
+  const showField = $("#section-land-show-result-field");
+  if (showField) {
+    showField.hidden = action !== "respin" && action !== "otherWheel";
+  }
+}
+
+/**
+ * Read “show result for” value + unit from the section form.
+ * @returns {{ every: number, unit: string }}
+ */
+function readSectionLandShowResultFromForm() {
+  let n = Number($("#section-land-show-result-value")?.value);
+  if (!Number.isFinite(n) || n < 0) n = 0;
+  n = Math.min(99999, Math.round(n));
+  const unit = normalizeLandShowResultUnit(
+    $("#section-land-show-result-unit")?.value
+  );
+  return { every: n, unit };
+}
+
+/**
+ * Fill show-result duration controls from a section (or defaults).
+ * @param {{ landShowResultEvery?: number, landShowResultUnit?: string }|null} section
+ */
+function setSectionLandShowResultForm(section) {
+  let n = Number(section?.landShowResultEvery);
+  if (!Number.isFinite(n) || n < 0) n = 0;
+  n = Math.min(99999, Math.round(n));
+  if ($("#section-land-show-result-value")) {
+    $("#section-land-show-result-value").value = String(n);
+  }
+  if ($("#section-land-show-result-unit")) {
+    $("#section-land-show-result-unit").value = normalizeLandShowResultUnit(
+      section?.landShowResultUnit
+    );
   }
 }
 
@@ -4278,6 +4322,7 @@ function openSectionModal(section) {
     const action = normalizeLandAction(section?.landAction);
     if ($("#section-land-action")) $("#section-land-action").value = action;
     fillSectionLandTargetWheels(section?.landTargetWheelId || null);
+    setSectionLandShowResultForm(section || null);
     updateSectionLandActionUI();
   }
   setSectionReturnAfterForm(section?.returnAfterMs ?? 0);
@@ -4754,6 +4799,8 @@ $("#section-form").addEventListener("submit", async (e) => {
       : existing?.winEffectName ?? null,
     landAction: normalizeLandAction($("#section-land-action")?.value),
     landTargetWheelId: null,
+    landShowResultEvery: 0,
+    landShowResultUnit: "seconds",
     returnAfterMs: readSectionReturnAfterMsFromForm(),
     returnsAt: null,
   };
@@ -4767,6 +4814,11 @@ $("#section-form").addEventListener("submit", async (e) => {
       // No valid target — fall back to normal result behavior
       payload.landAction = "none";
     }
+  }
+  if (payload.landAction === "respin" || payload.landAction === "otherWheel") {
+    const show = readSectionLandShowResultFromForm();
+    payload.landShowResultEvery = show.every;
+    payload.landShowResultUnit = show.unit;
   }
   // Schedule / preserve return date when saving a hidden section
   if (payload.enabled === false) {
@@ -5988,7 +6040,13 @@ function fireConfetti() {
 
 /**
  * @param {{ id: string, label: string }} section
- * @param {{ rigged?: boolean }} [opts] rigged = fling or secret Rig it
+ * @param {{
+ *   rigged?: boolean,
+ *   forceShow?: boolean,
+ *   skipEliminate?: boolean,
+ *   skipAutoDismiss?: boolean,
+ *   skipHistory?: boolean,
+ * }} [opts] rigged = fling or secret Rig it
  */
 function showResult(section, opts = {}) {
   if (!section || section.id == null) {
@@ -6004,23 +6062,32 @@ function showResult(section, opts = {}) {
 
     lastWinnerId = section.id;
     // Schedule eliminate-after-win for when result is dismissed
-    const elim = state.look?.eliminateAfterWin;
-    if (elim === "hide" || elim === "remove") {
-      pendingEliminateId = section.id;
-      pendingEliminateMode = elim;
-    } else {
+    // (skipped when chaining respin / other-wheel so the portal slice stays)
+    if (opts.skipEliminate) {
       pendingEliminateId = null;
       pendingEliminateMode = null;
+    } else {
+      const elim = state.look?.eliminateAfterWin;
+      if (elim === "hide" || elim === "remove") {
+        pendingEliminateId = section.id;
+        pendingEliminateMode = elim;
+      } else {
+        pendingEliminateId = null;
+        pendingEliminateMode = null;
+      }
     }
-    try {
-      recordSpinHistory(section, opts);
-    } catch (err) {
-      console.warn("history:", err);
+    if (!opts.skipHistory) {
+      try {
+        recordSpinHistory(section, opts);
+      } catch (err) {
+        console.warn("history:", err);
+      }
     }
     playWinEffect(section);
 
     // Don't show results — skip overlay; still eliminate / history / effects
-    if (isResultDisplaySkipped()) {
+    // forceShow: land-action “show result for” still displays even if Look is −1
+    if (isResultDisplaySkipped() && !opts.forceShow) {
       clearAutoDismissTimer();
       // Keep rigged badge if armed; no win UI
       resultShowsRigged = false;
@@ -6036,7 +6103,11 @@ function showResult(section, opts = {}) {
       return;
     }
 
-    scheduleAutoDismiss();
+    if (opts.skipAutoDismiss) {
+      clearAutoDismissTimer();
+    } else {
+      scheduleAutoDismiss();
+    }
     const label = section.label || "Winner";
     // Resolve inherited group image if the section itself has no image
     const raw =

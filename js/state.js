@@ -39,6 +39,8 @@
  *   landSfxVolume: number,
  *   landAction: 'none'|'respin'|'otherWheel',
  *   landTargetWheelId: string|null,
+ *   landShowResultEvery: number,
+ *   landShowResultUnit: 'seconds'|'minutes'|'hours'|'days',
  *   returnAfterMs: number,
  *   returnsAt: number|null
  * }} Section */
@@ -47,6 +49,33 @@
 export function normalizeLandAction(v) {
   if (v === "respin" || v === "otherWheel") return v;
   return "none";
+}
+
+/** Unit for “show result for” before respin / other-wheel. */
+export function normalizeLandShowResultUnit(v) {
+  if (v === "seconds" || v === "sec") return "seconds";
+  if (v === "minutes" || v === "min") return "minutes";
+  if (v === "hours" || v === "hr") return "hours";
+  if (v === "days") return "days";
+  return "seconds";
+}
+
+/**
+ * How long to show the win screen before chaining respin / other wheel (0 = skip).
+ * @param {unknown} every
+ * @param {unknown} unit
+ * @returns {number} milliseconds
+ */
+export function landShowResultMs(every, unit) {
+  let n = Number(every);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  n = Math.min(99999, Math.round(n));
+  const u = normalizeLandShowResultUnit(unit);
+  if (u === "seconds") return n * 1_000;
+  if (u === "minutes") return n * 60_000;
+  if (u === "hours") return n * 3_600_000;
+  if (u === "days") return Math.min(2_147_483_647, n * 86_400_000);
+  return n * 1_000;
 }
 
 /** Max auto-return delay: 1 year. */
@@ -1120,6 +1149,13 @@ function normalizeSection(s, groups, groupIdsSet) {
     landTargetWheelId = String(s.landTargetWheelId).trim();
   }
 
+  let landShowResultEvery = Number(s.landShowResultEvery);
+  if (!Number.isFinite(landShowResultEvery) || landShowResultEvery < 0) {
+    landShowResultEvery = 0;
+  }
+  landShowResultEvery = Math.min(99999, Math.round(landShowResultEvery));
+  const landShowResultUnit = normalizeLandShowResultUnit(s.landShowResultUnit);
+
   const returnAfterMs = normalizeReturnAfterMs(s.returnAfterMs);
   // Only keep a scheduled return while the section is actually off the wheel
   let returnsAt = normalizeReturnsAt(s.returnsAt);
@@ -1147,6 +1183,8 @@ function normalizeSection(s, groups, groupIdsSet) {
     ),
     landAction,
     landTargetWheelId,
+    landShowResultEvery,
+    landShowResultUnit,
     returnAfterMs,
     returnsAt,
   };
