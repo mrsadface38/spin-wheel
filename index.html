@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#166</span>
+        <span class="app-version" id="app-version" title="Update number">#167</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -112,6 +112,7 @@
           <button type="button" class="tab active" data-tab="sections">Sections</button>
           <button type="button" class="tab" data-tab="groups">Groups</button>
           <button type="button" class="tab" data-tab="look">Look</button>
+          <button type="button" class="tab" data-tab="misc">Misc</button>
           <button type="button" class="tab" data-tab="sound">Sound</button>
           <button type="button" class="tab" data-tab="history">History</button>
           <button type="button" class="tab tab-secret hidden" data-tab="secret" id="tab-btn-secret" hidden>Secret</button>
@@ -167,31 +168,8 @@
           <div id="groups-list" class="groups-list"></div>
         </div>
 
-        <!-- Look tab -->
+        <!-- Look tab (appearance only) -->
         <div class="tab-panel" id="tab-look">
-          <div class="form-block">
-            <h3>Spin</h3>
-            <p class="hint">Double-click the wheel to spin.</p>
-            <label class="field" id="spin-duration-field">
-              <span>Duration</span>
-              <div class="slider-with-value">
-                <input type="range" id="spin-duration" min="1" max="30" step="0.5" value="9" title="Quick scrub 1–30s" />
-                <span class="slider-value-edit" title="Click to type any duration">
-                  <input type="number" id="spin-duration-input" min="0.1" max="600" step="any" value="9" />
-                  <span class="slider-value-unit">s</span>
-                </span>
-              </div>
-              <small>Slider: 1–30s. Click the number to type any length (e.g. 45 or 0.5).</small>
-            </label>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-spin-until-bgm-ends" />
-              <span>Spin until background music ends</span>
-            </label>
-            <p id="spin-until-bgm-hint" class="hint" hidden>
-              Spin length matches the current Sound → Background music track (plays once from the start). Fixed duration above is ignored.
-            </p>
-          </div>
-
           <div class="form-block">
             <h3>Background</h3>
             <div class="image-pick">
@@ -361,23 +339,6 @@
               </div>
               <small>Default for the winning name. Sections/groups can set their own unless Override is on.</small>
             </label>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-allow-winner-hide" checked />
-              <span>Show <strong>Hide</strong> button after a spin</span>
-            </label>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-allow-winner-remove" checked />
-              <span>Show <strong>Remove</strong> button after a spin</span>
-            </label>
-            <label class="field">
-              <span>After a win (when you Continue)</span>
-              <select id="eliminate-after-win" title="What happens to the winner when the result is dismissed">
-                <option value="off">Keep on wheel</option>
-                <option value="hide">Hide winner (eliminate)</option>
-                <option value="remove">Delete winner (eliminate)</option>
-              </select>
-              <small>Hide or delete applies when you dismiss the result (Continue). Undo restores it.</small>
-            </label>
             <label class="field">
               <span>After-win effect (global default)</span>
               <select id="win-effect" title="Default celebration when a spin lands (sections/groups can override)">
@@ -398,6 +359,13 @@
                 <button type="button" id="look-win-effect-preview" class="btn small ghost">Preview</button>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Misc tab (controls, spin behavior, editor prefs) -->
+        <div class="tab-panel" id="tab-misc">
+          <div class="form-block">
+            <h3>Controls</h3>
             <label class="toggle-row">
               <input type="checkbox" id="chk-keyboard-spin" checked />
               <span>Keyboard spin (Space / Enter)</span>
@@ -419,6 +387,72 @@
               (Spin duration) instead of matching how hard you threw it. Spins in the direction
               of your flick.
             </small>
+          </div>
+
+          <div class="form-block">
+            <h3>Spin</h3>
+            <p class="hint">Double-click the wheel to spin (when not dragging).</p>
+            <label class="field" id="spin-duration-field">
+              <span>Duration</span>
+              <div class="slider-with-value">
+                <input type="range" id="spin-duration" min="1" max="30" step="0.5" value="9" title="Quick scrub 1–30s" />
+                <span class="slider-value-edit" title="Click to type any duration">
+                  <input type="number" id="spin-duration-input" min="0.1" max="600" step="any" value="9" />
+                  <span class="slider-value-unit">s</span>
+                </span>
+              </div>
+              <small>Slider: 1–30s. Click the number to type any length (e.g. 45 or 0.5).</small>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-spin-until-bgm-ends" />
+              <span>Spin until background music ends</span>
+            </label>
+            <p id="spin-until-bgm-hint" class="hint" hidden>
+              Spin length matches the current Sound → Background music track (plays once from the start). Fixed duration above is ignored.
+            </p>
+            <label class="field">
+              <span>Wheel max speed</span>
+              <div class="slider-with-value">
+                <input
+                  type="range"
+                  id="spin-max-speed"
+                  min="25"
+                  max="200"
+                  step="5"
+                  value="100"
+                  title="Peak spin intensity relative to default (100%)"
+                />
+                <span id="spin-max-speed-label" class="slider-value">100%</span>
+              </div>
+              <small>
+                How fast the wheel can go. <strong>100%</strong> is normal.
+                Higher = more revolutions in a timed spin and faster drag flicks; lower = calmer spins.
+                Spin duration is unchanged.
+              </small>
+            </label>
+            <label class="field">
+              <span>Land zone (section area pointer can hit)</span>
+              <div class="slider-with-value">
+                <input
+                  type="range"
+                  id="spin-land-zone"
+                  min="1"
+                  max="99"
+                  step="1"
+                  value="99"
+                  title="Percent of each section the pointer may land in (centered)"
+                />
+                <span id="spin-land-zone-label" class="slider-value">99%</span>
+              </div>
+              <small>
+                1%–99% of the section, centered. Edges are margin so it cannot land on a border. 100% is not allowed.
+                <strong>Recommended: keep at 99%.</strong>
+              </small>
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Auto</h3>
             <label class="toggle-row">
               <input type="checkbox" id="chk-auto-spin" />
               <span>Auto spin</span>
@@ -463,7 +497,29 @@
           </div>
 
           <div class="form-block">
+            <h3>Results</h3>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-allow-winner-hide" checked />
+              <span>Show <strong>Hide</strong> button after a spin</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-allow-winner-remove" checked />
+              <span>Show <strong>Remove</strong> button after a spin</span>
+            </label>
+            <label class="field">
+              <span>After a win (when you Continue)</span>
+              <select id="eliminate-after-win" title="What happens to the winner when the result is dismissed">
+                <option value="off">Keep on wheel</option>
+                <option value="hide">Hide winner (eliminate)</option>
+                <option value="remove">Delete winner (eliminate)</option>
+              </select>
+              <small>Hide or delete applies when you dismiss the result (Continue). Undo restores it.</small>
+            </label>
+          </div>
+
+          <div class="form-block">
             <h3>Weight slider</h3>
+            <p class="hint">Range for the weight sliders on section cards (Sections tab).</p>
             <div class="weight-slider-opts">
               <label class="field">
                 <span>Min</span>
@@ -478,53 +534,6 @@
                 <input type="number" id="weight-slider-step" min="0.01" max="100" step="any" value="1" />
               </label>
             </div>
-          </div>
-
-          <div class="form-block">
-            <h3>Land zone</h3>
-            <label class="field">
-              <span>Section area the pointer can hit</span>
-              <div class="slider-with-value">
-                <input
-                  type="range"
-                  id="spin-land-zone"
-                  min="1"
-                  max="99"
-                  step="1"
-                  value="99"
-                  title="Percent of each section the pointer may land in (centered)"
-                />
-                <span id="spin-land-zone-label" class="slider-value">99%</span>
-              </div>
-              <small>
-                1%–99% of the section, centered. Edges are margin so it cannot land on a border. 100% is not allowed.
-                <strong>Recommended: keep at 99%.</strong>
-              </small>
-            </label>
-          </div>
-
-          <div class="form-block">
-            <h3>Max spin speed</h3>
-            <label class="field">
-              <span>Wheel max speed</span>
-              <div class="slider-with-value">
-                <input
-                  type="range"
-                  id="spin-max-speed"
-                  min="25"
-                  max="200"
-                  step="5"
-                  value="100"
-                  title="Peak spin intensity relative to default (100%)"
-                />
-                <span id="spin-max-speed-label" class="slider-value">100%</span>
-              </div>
-              <small>
-                How fast the wheel can go. <strong>100%</strong> is normal.
-                Higher = more revolutions in a timed spin and faster drag flicks; lower = calmer spins.
-                Spin duration is unchanged.
-              </small>
-            </label>
           </div>
         </div>
 
