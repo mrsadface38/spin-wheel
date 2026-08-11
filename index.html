@@ -216,6 +216,29 @@
               <span>Border color</span>
               <input type="color" id="border-color" value="#f0d78c" />
             </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-show-images" checked />
+              <span>Show section images</span>
+            </label>
+            <label class="field">
+              <span>Section image layout</span>
+              <select id="image-layout-mode">
+                <option value="slice" selected>Follow each slice angle</option>
+                <option value="fixed">Fixed (editor-style / upright)</option>
+              </select>
+              <small>
+                Follow slice rotates each image with its real wedge so framing matches the wheel.
+                Fixed keeps photos upright like the section editor (framed as if the slice were on top).
+              </small>
+            </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Text</h3>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-show-labels" checked />
+              <span>Show labels on wheel</span>
+            </label>
             <label class="field">
               <span>Default text color</span>
               <div class="field-with-action">
@@ -282,33 +305,6 @@
                 <strong>Override</strong> forces this Look font everywhere.
               </small>
             </label>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-show-labels" checked />
-              <span>Show labels on wheel</span>
-            </label>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-show-images" checked />
-              <span>Show section images</span>
-            </label>
-            <label class="field">
-              <span>Section image layout</span>
-              <select id="image-layout-mode">
-                <option value="slice" selected>Follow each slice angle</option>
-                <option value="fixed">Fixed (editor-style / upright)</option>
-              </select>
-              <small>
-                Follow slice rotates each image with its real wedge so framing matches the wheel.
-                Fixed keeps photos upright like the section editor (framed as if the slice were on top).
-              </small>
-            </label>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-pointer-locked" checked />
-              <span>Lock pointer</span>
-            </label>
-            <small>
-              When unlocked, drag the triangle around the wheel to choose where winners are read.
-              Snaps to 0° / 90° / 180° / 270° (top / right / bottom / left).
-            </small>
           </div>
 
           <div class="form-block">
@@ -448,6 +444,14 @@
               When on, a flick that is fast enough starts a normal full-force timed spin
               (Spin duration) instead of matching how hard you threw it. Spins in the direction
               of your flick.
+            </small>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-pointer-locked" checked />
+              <span>Lock pointer</span>
+            </label>
+            <small>
+              When unlocked, drag the triangle around the wheel to choose where winners are read.
+              Snaps to 0° / 90° / 180° / 270° (top / right / bottom / left).
             </small>
           </div>
 
