@@ -778,6 +778,7 @@ function migrate(data) {
     look.winEffect = we;
   }
   look.keyboardSpin = look.keyboardSpin !== false;
+  look.allowDoubleClickSpin = look.allowDoubleClickSpin !== false;
   look.allowWinnerHide = look.allowWinnerHide !== false;
   // Default follow-slice; only stay fixed if explicitly saved as fixed
   look.imageLayoutMode =
