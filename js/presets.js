@@ -113,6 +113,10 @@ export function coinFlipState() {
       winnerLabel: "Flip",
       winEffect: "confetti",
     },
+    sound: {
+      ...base.sound,
+      bgmMode: "off",
+    },
     spin: { ...base.spin, duration: 4 },
   };
 }
@@ -165,6 +169,11 @@ export function d20State() {
       textColor: "#f5f0d8",
       winnerTextColor: "#ffffff",
       winnerLabel: "Rolled",
+      resultStyle: "banner",
+    },
+    sound: {
+      ...base.sound,
+      bgmMode: "off",
     },
   };
 }
