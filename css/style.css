@@ -1170,6 +1170,30 @@ body.focus-mode .stage-panel {
   font-size: 0.82rem;
 }
 
+/*
+ * Help lines under settings (often a bare <small> after a toggle, not inside .field).
+ * Muted grey so they read as notes for the control above, not as primary labels.
+ */
+.form-block > small,
+.form-block > .hint,
+.form-block label + small,
+.form-block .toggle-row + small,
+.form-block .field + small,
+.editor-panel small,
+.modal small,
+.audio-pick .audio-name {
+  color: var(--muted);
+}
+
+.form-block > small,
+.form-block label + small,
+.form-block .toggle-row + small {
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin: 0.15rem 0 0.65rem;
+}
+
 /* Sections list */
 .sections-list,
 .groups-list {
