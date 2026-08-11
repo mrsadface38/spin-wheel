@@ -732,6 +732,8 @@ function migrate(data) {
   look.forceTextStyle = look.forceTextStyle === true;
   look.textFont = normalizeTextFont(look.textFont, "system");
   look.forceTextFont = look.forceTextFont === true;
+  // Wheel drag defaults on; only false when explicitly saved off
+  look.allowWheelDrag = look.allowWheelDrag !== false;
   // Fair drag spin: only on when explicitly saved (default off)
   look.fairDragSpin = look.fairDragSpin === true;
   // Pointer angle 0–360 (0 = top, 90 = right default). Missing → right.

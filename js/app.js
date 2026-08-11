@@ -8095,6 +8095,9 @@ async function onLookChange() {
   if ($("#chk-keyboard-spin")) {
     state.look.keyboardSpin = $("#chk-keyboard-spin").checked;
   }
+  if ($("#chk-wheel-drag")) {
+    state.look.allowWheelDrag = $("#chk-wheel-drag").checked !== false;
+  }
   if ($("#chk-fair-drag-spin")) {
     state.look.fairDragSpin = $("#chk-fair-drag-spin").checked === true;
   }
@@ -8139,7 +8142,7 @@ async function onLookChange() {
   scheduleAutoSpin();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "text-style", "text-font", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "text-style", "text-font", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-wheel-drag", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -10684,9 +10687,11 @@ async function init() {
     try {
       wheel.enablePointerDrag(spinTarget, {
         canStart: () =>
+          state.look?.allowWheelDrag !== false &&
           !wheel._dragging &&
           !pointerDrag.active &&
           getActiveSections(state).length > 0,
+        getAllowWheelDrag: () => state.look?.allowWheelDrag !== false,
         getFairDragSpin: () => state.look?.fairDragSpin === true,
         onDragStart: ({ interrupted } = {}) => {
           audio.ensure();

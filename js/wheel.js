@@ -1727,6 +1727,13 @@ export class Wheel {
   _dragPointerDown(e) {
     if (e.button != null && e.button !== 0) return;
     if (this._dragging) return;
+    // Look → allow wheel drag (default on)
+    if (
+      typeof this._dragHooks?.getAllowWheelDrag === "function" &&
+      this._dragHooks.getAllowWheelDrag() === false
+    ) {
+      return;
+    }
     // Ignore UI chrome inside stage (result buttons, etc.)
     if (
       e.target.closest &&
