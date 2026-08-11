@@ -9873,7 +9873,7 @@ function endSpinSession() {
 }
 
 /**
- * @param {{ fromLandAction?: boolean }} [opts]
+ * @param {{ fromLandAction?: boolean, spinDirection?: 1|-1 }} [opts]
  */
 async function doSpin(opts = {}) {
   if (spinBusy || wheel.spinning || wheel._dragging) return;
@@ -9903,6 +9903,10 @@ async function doSpin(opts = {}) {
   let resultOpts = {};
   try {
     const rig = getSpinRigOptions();
+    // Fair drag: full timed spin, but match flick direction
+    if (opts.spinDirection === 1 || opts.spinDirection === -1) {
+      rig.spinDirection = opts.spinDirection;
+    }
     win = await wheel.spin(durationSec, rig);
     // null = grab-interrupted mid-spin (user took over with drag)
     if (win) {

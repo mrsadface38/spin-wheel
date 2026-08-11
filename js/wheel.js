@@ -1357,6 +1357,9 @@ export class Wheel {
     let speedScale = Number(opts.maxSpeedScale);
     if (!Number.isFinite(speedScale) || speedScale <= 0) speedScale = 1;
     speedScale = Math.min(2, Math.max(0.25, speedScale));
+    // +1 = default (increasing rotation), -1 = opposite (fair drag follows mouse)
+    let spinDir = Number(opts.spinDirection);
+    if (spinDir !== -1 && spinDir !== 1) spinDir = 1;
     const baseExtra = Math.max(
       6,
       Math.round(durationSec * 1.1) + Math.floor(Math.random() * 3)
@@ -1365,8 +1368,13 @@ export class Wheel {
       2,
       Math.round(baseExtra * speedScale)
     );
-    while (target <= current) target += Math.PI * 2;
-    target += extraSpins * Math.PI * 2;
+    if (spinDir > 0) {
+      while (target <= current) target += Math.PI * 2;
+      target += extraSpins * Math.PI * 2;
+    } else {
+      while (target >= current) target -= Math.PI * 2;
+      target -= extraSpins * Math.PI * 2;
+    }
 
     const isSingle = this._spinSingle;
     const baseSingle = Math.max(
@@ -1378,8 +1386,13 @@ export class Wheel {
       : extraSpins;
     if (isSingle) {
       target = phi - landLocal;
-      while (target <= current) target += Math.PI * 2;
-      target += spins * Math.PI * 2;
+      if (spinDir > 0) {
+        while (target <= current) target += Math.PI * 2;
+        target += spins * Math.PI * 2;
+      } else {
+        while (target >= current) target -= Math.PI * 2;
+        target -= spins * Math.PI * 2;
+      }
     }
 
     this.spinning = true;
@@ -1815,8 +1828,12 @@ export class Wheel {
     }
 
     const samples = this._dragSamples;
+    const now = performance.now();
+    const lastMoveAt = this._dragLastMoveAt || 0;
+    const idleMs = now - lastMoveAt;
     this._dragging = false;
     this._dragPointerId = null;
+    this._dragLastMoveAt = 0;
     if (this._dragEl) this._dragEl.style.cursor = "grab";
 
     // Angular velocity rad/s from recent samples
@@ -1833,11 +1850,19 @@ export class Wheel {
     this._spinSlices = null;
     this._slicesCache = null;
 
-    // Both modes need a real flick speed; fair mode still uses full timed spin
-    // (app ignores velocity magnitude) but won't start on a slow park / aim drag.
+    const fair =
+      typeof this._dragHooks?.getFairDragSpin === "function"
+        ? this._dragHooks.getFairDragSpin() === true
+        : false;
+    // Fair mode: only spin if pointer was still moving at release (not paused then let go).
+    // ~100ms with no move counts as stopped — matches “stop 0.25s then release” ≠ spin.
+    const FAIR_STILL_MOVING_MS = 100;
+    const stillMoving = idleMs <= FAIR_STILL_MOVING_MS;
     const FLING_MIN = 2.2; // rad/s — below this, leave the wheel where it is
     const shouldSpin =
-      this.sections.length > 0 && Math.abs(velocity) >= FLING_MIN;
+      this.sections.length > 0 &&
+      Math.abs(velocity) >= FLING_MIN &&
+      (!fair || stillMoving);
     if (shouldSpin) {
       this._dragHooks?.onFling?.(velocity);
     } else {
