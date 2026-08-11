@@ -946,7 +946,7 @@ export class Wheel {
 
   /**
    * Radial labels (shared with editor preview — see slice-labels.js).
-   * @param {boolean} spinFrame lighter text (no shadow) while spinning
+   * @param {boolean} spinFrame skip soft label shadow (stroke border still drawn)
    */
   _drawSliceLabel(ctx, sl, radius, asSolidDisc = false, spinFrame = false) {
     drawSliceLabel(ctx, {

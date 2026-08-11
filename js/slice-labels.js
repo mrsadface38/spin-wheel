@@ -103,7 +103,7 @@ export function wrapLabelLinesMax(ctx, label, maxWidth, maxLines) {
  * @param {boolean} [opts.showLabels]
  * @param {boolean} [opts.asSolidDisc] single full-wheel section
  * @param {boolean} [opts.forceRadial] always hub→rim (skip horizontal full-disc layout)
- * @param {boolean} [opts.spinFrame] skip shadow while spinning
+ * @param {boolean} [opts.spinFrame] skip soft shadow while spinning (stroke border always on)
  * @param {string} [opts.fallbackTextColor]
  */
 export function drawSliceLabel(ctx, opts = {}) {
@@ -126,15 +126,46 @@ export function drawSliceLabel(ctx, opts = {}) {
     const weight = 700;
     const baseFont = Math.max(16, 48 * dpr);
     const lineGap = 1.12;
+    // Dark outline so labels stay readable on any slice color (kept while spinning).
+    // On-screen width ~px; paintLine divides by current scale() so it stays consistent.
+    const strokePx = Math.max(2.5 * dpr, baseFont * 0.09);
+    const strokeColor = "rgba(0, 0, 0, 0.92)";
+
+    /**
+     * Fill + dark border. Soft shadow only when idle (blur is costly every spin frame).
+     * Call after ctx.scale(s,s) so font size is correct; pass that s for stroke thickness.
+     * @param {string} text
+     * @param {number} x
+     * @param {number} y
+     * @param {number} s current uniform scale on the context
+     */
+    const paintLine = (text, x, y, s = 1) => {
+      const sc = Math.max(0.05, Number(s) || 1);
+      ctx.lineJoin = "round";
+      ctx.miterLimit = 2;
+      ctx.lineWidth = strokePx / sc;
+      ctx.strokeStyle = strokeColor;
+      // Soft halo only when idle — stroke border is always drawn (including spin)
+      if (!opts.spinFrame) {
+        ctx.shadowColor = "rgba(0,0,0,0.7)";
+        ctx.shadowBlur = (3.5 * dpr) / sc;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      } else {
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
+      }
+      ctx.strokeText(text, x, y);
+      // Clear shadow before fill so the glyph stays crisp
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.fillText(text, x, y);
+    };
 
     ctx.save();
     ctx.fillStyle =
       opts.textColor || opts.fallbackTextColor || "#fff";
     ctx.textBaseline = "middle";
-    if (!opts.spinFrame) {
-      ctx.shadowColor = "rgba(0,0,0,0.85)";
-      ctx.shadowBlur = 4 * dpr;
-    }
     ctx.font = `${weight} ${baseFont}px system-ui,sans-serif`;
     let th = baseFont * 1.05;
     try {
@@ -197,7 +228,7 @@ export function drawSliceLabel(ctx, opts = {}) {
       ctx.scale(s, s);
       for (let i = 0; i < lines.length; i++) {
         const y = (i - (lines.length - 1) / 2) * lineH;
-        ctx.fillText(lines[i], 0, y);
+        paintLine(lines[i], 0, y, s);
       }
       ctx.restore();
       return;
@@ -287,7 +318,7 @@ export function drawSliceLabel(ctx, opts = {}) {
     ctx.scale(s, s);
     for (let i = 0; i < lines.length; i++) {
       const y = (i - (lines.length - 1) / 2) * lineH;
-      ctx.fillText(lines[i], 0, y);
+      paintLine(lines[i], 0, y, s);
     }
     ctx.restore();
   } catch (err) {
