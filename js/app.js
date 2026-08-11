@@ -7385,6 +7385,7 @@ function getSpinRigOptions() {
     /** Expand avoid set on the wheel from live slice group membership */
     avoidGroupId: avoidGroupId || null,
     landZonePct: getLandZonePct(),
+    maxSpeedScale: getMaxSpeedScale(),
     steerMs: getDivertSteerMs(),
     reverseSteerMs: getReverseSteerMs(),
     comboOrder,
@@ -8174,6 +8175,27 @@ function syncLandZoneUI() {
   if (label) label.textContent = `${pct}%`;
 }
 
+/** Peak spin intensity vs default (25–200%). 100 = normal. */
+function getMaxSpeedPct() {
+  let n = Number(state.spin?.maxSpeedPct);
+  if (!Number.isFinite(n)) n = 100;
+  return Math.min(200, Math.max(25, Math.round(n)));
+}
+
+/** Multiplier passed into wheel.spin / wheel.fling (1 = default). */
+function getMaxSpeedScale() {
+  return getMaxSpeedPct() / 100;
+}
+
+function syncMaxSpeedUI() {
+  const pct = getMaxSpeedPct();
+  state.spin.maxSpeedPct = pct;
+  const slider = $("#spin-max-speed");
+  const label = $("#spin-max-speed-label");
+  if (slider) slider.value = String(pct);
+  if (label) label.textContent = `${pct}%`;
+}
+
 /**
  * Resolve how long this timed spin should last (seconds).
  * When “spin until BGM ends” is on, uses the loaded track length.
@@ -8242,6 +8264,7 @@ function bindSpinDuration() {
   syncSpinDurationUI(state.spin.duration ?? 9);
   updateSpinUntilBgmUI();
   syncLandZoneUI();
+  syncMaxSpeedUI();
 }
 
 $("#chk-sound").addEventListener("change", () => {
@@ -8337,6 +8360,16 @@ $("#spin-land-zone")?.addEventListener("input", () => {
   persist();
 });
 $("#spin-land-zone")?.addEventListener("change", () => endContinuous());
+
+$("#spin-max-speed")?.addEventListener("input", () => {
+  checkpointContinuous();
+  let n = Number($("#spin-max-speed")?.value);
+  if (!Number.isFinite(n)) n = 100;
+  state.spin.maxSpeedPct = Math.min(200, Math.max(25, Math.round(n)));
+  syncMaxSpeedUI();
+  persist();
+});
+$("#spin-max-speed")?.addEventListener("change", () => endContinuous());
 
 function applyDurationFromNumberInput(commit) {
   const raw = $("#spin-duration-input")?.value;

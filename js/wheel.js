@@ -1353,13 +1353,28 @@ export class Wheel {
     const current = this.rotation;
     const phi = this.pointerScreenAngle();
     let target = phi - landLocal;
-    const extraSpins = Math.max(6, Math.round(durationSec * 1.1) + Math.floor(Math.random() * 3));
+    // maxSpeedScale (default 1): more revolutions in the same duration = higher peak speed
+    let speedScale = Number(opts.maxSpeedScale);
+    if (!Number.isFinite(speedScale) || speedScale <= 0) speedScale = 1;
+    speedScale = Math.min(2, Math.max(0.25, speedScale));
+    const baseExtra = Math.max(
+      6,
+      Math.round(durationSec * 1.1) + Math.floor(Math.random() * 3)
+    );
+    const extraSpins = Math.max(
+      2,
+      Math.round(baseExtra * speedScale)
+    );
     while (target <= current) target += Math.PI * 2;
     target += extraSpins * Math.PI * 2;
 
     const isSingle = this._spinSingle;
+    const baseSingle = Math.max(
+      8,
+      Math.round(durationSec * 1.4) + Math.floor(Math.random() * 4)
+    );
     const spins = isSingle
-      ? Math.max(8, Math.round(durationSec * 1.4) + Math.floor(Math.random() * 4))
+      ? Math.max(3, Math.round(baseSingle * speedScale))
       : extraSpins;
     if (isSingle) {
       target = phi - landLocal;
@@ -1851,12 +1866,17 @@ export class Wheel {
       return Promise.resolve(null);
     }
 
-    // Cap so a wild flick doesn't spin forever
-    let v = Math.max(-50, Math.min(50, Number(velocityRadPerSec) || 0));
+    // Cap so a wild flick doesn't spin forever (scaled by Look → Max spin speed)
+    let speedScale = Number(opts.maxSpeedScale);
+    if (!Number.isFinite(speedScale) || speedScale <= 0) speedScale = 1;
+    speedScale = Math.min(2, Math.max(0.25, speedScale));
+    const vCap = 50 * speedScale;
+    let v = Math.max(-vCap, Math.min(vCap, Number(velocityRadPerSec) || 0));
     if (Math.abs(v) < 0.5) {
       this.draw({ spinFrame: false });
       return Promise.resolve(null);
     }
+    this._flingVCap = vCap;
 
     const forceId = opts.forceSectionId || null;
     {
@@ -2127,7 +2147,8 @@ export class Wheel {
         }
 
         this.draw({ spinFrame: true });
-        this.onFrame(Math.min(1, 1 - Math.abs(v) / 50));
+        const cap = this._flingVCap > 0 ? this._flingVCap : 50;
+        this.onFrame(Math.min(1, 1 - Math.abs(v) / cap));
 
         if (Math.abs(v) > stopSpeed) {
           this._raf = requestAnimationFrame(frame);

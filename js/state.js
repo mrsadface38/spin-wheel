@@ -586,6 +586,11 @@ export function defaultState() {
        * Centered; edges are margin so borders are avoided. Cannot be 100%.
        */
       landZonePct: 99,
+      /**
+       * Peak spin intensity vs default (25–200%). 100 = normal.
+       * Scales timed-spin revolutions and drag-fling velocity cap.
+       */
+      maxSpeedPct: 100,
     },
     /** Hidden “rig it” controls (unlock via UI gesture) */
     secret: {
@@ -764,6 +769,11 @@ function migrate(data) {
     let z = Number(spin.landZonePct);
     if (!Number.isFinite(z)) z = 99;
     spin.landZonePct = Math.min(99, Math.max(1, Math.round(z)));
+  }
+  {
+    let m = Number(spin.maxSpeedPct);
+    if (!Number.isFinite(m)) m = 100;
+    spin.maxSpeedPct = Math.min(200, Math.max(25, Math.round(m)));
   }
   const groups =
     Array.isArray(data.groups) && data.groups.length
