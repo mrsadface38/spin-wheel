@@ -10,9 +10,25 @@ import {
   uid,
 } from "./state.js";
 
-/** Classic polyhedral d20 greens / golds (alternating by position for adjacent contrast). */
-const D20_A = { color: "#1a6b3f", text: "#f5f0d8" };
-const D20_B = { color: "#c9a84c", text: "#1a1408" };
+/**
+ * Rainbow spectrum for d20 faces (20 hues around the wheel).
+ * Darker / saturated fills with readable text (light on deep colors, dark on bright).
+ * @type {{ color: string, text: string }[]}
+ */
+const D20_RAINBOW = (() => {
+  const out = [];
+  for (let i = 0; i < 20; i++) {
+    // Evenly spaced hues; slightly lower lightness for punchy “rainbow dice” look
+    const h = Math.round((i / 20) * 360);
+    const s = 78;
+    const l = 48;
+    const color = `hsl(${h} ${s}% ${l}%)`;
+    // Light text on mid/dark hues; dark text on yellow–lime band
+    const text = h >= 45 && h <= 75 ? "#1a1408" : "#ffffff";
+    out.push({ color, text });
+  }
+  return out;
+})();
 
 /**
  * Around-the-wheel order: low/high interleaved so neighbors aren’t sequential.
@@ -88,7 +104,8 @@ export function d20State() {
   const faces = d20FaceOrder();
   for (let i = 0; i < faces.length; i++) {
     const n = faces[i];
-    const pair = i % 2 === 0 ? D20_A : D20_B;
+    // Color by face number so 1→20 walks the rainbow (stable if order changes)
+    const pair = D20_RAINBOW[(n - 1) % D20_RAINBOW.length];
     sections.push({
       id: uid("sec"),
       label: String(n),
@@ -117,9 +134,9 @@ export function d20State() {
     yourOrderIds: sections.map((s) => s.id),
     look: {
       ...base.look,
-      backgroundColor: "#0c1210",
-      centerColor: "#14261a",
-      borderColor: "#c9a84c",
+      backgroundColor: "#0c0e18",
+      centerColor: "#1a1f35",
+      borderColor: "#e8e0ff",
       textColor: "#f5f0d8",
       winnerTextColor: "#ffffff",
       winnerLabel: "Rolled",
