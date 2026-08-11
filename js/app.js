@@ -869,7 +869,7 @@ async function deleteAllSavedWheels() {
       : "";
   if (
     !(await safeConfirm(
-      `Delete ALL ${n} saved wheel${n === 1 ? "" : "s"}? This cannot be undone.${list}\n\nYou will be left with one empty wheel (no sections).`,
+      `Delete ALL ${n} saved wheel${n === 1 ? "" : "s"}? This cannot be undone.${list}\n\nYou will be left with a new Blank wheel (no sections).`,
       "Delete all wheels"
     ))
   ) {
@@ -880,11 +880,12 @@ async function deleteAllSavedWheels() {
   } catch {
     /* ignore */
   }
-  const fresh = clearAllWheels("My wheel", blankWheelState());
+  const blankName = getWheelPreset("blank")?.defaultName || "New wheel";
+  const fresh = clearAllWheels(blankName, blankWheelState());
   const slot = getActiveSlot(fresh);
   await applyLoadedWheel(fresh, hydrateState(slot.data));
   await safeAlert(
-    "All saved wheels were deleted. You have one empty wheel (no sections)."
+    "All saved wheels were deleted. You have a new Blank wheel (no sections)."
   );
 }
 
