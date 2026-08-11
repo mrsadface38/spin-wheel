@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#167</span>
+        <span class="app-version" id="app-version" title="Update number">#168</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -365,31 +365,6 @@
         <!-- Misc tab (controls, spin behavior, editor prefs) -->
         <div class="tab-panel" id="tab-misc">
           <div class="form-block">
-            <h3>Controls</h3>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-keyboard-spin" checked />
-              <span>Keyboard spin (Space / Enter)</span>
-            </label>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-wheel-drag" checked />
-              <span>Allow mouse drag on wheel</span>
-            </label>
-            <small>
-              When off, you cannot drag, flick, or grab the wheel with the mouse.
-              Double-click and keyboard spin still work.
-            </small>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-fair-drag-spin" />
-              <span>Fair drag spin</span>
-            </label>
-            <small>
-              When on, a flick that is fast enough starts a normal full-force timed spin
-              (Spin duration) instead of matching how hard you threw it. Spins in the direction
-              of your flick.
-            </small>
-          </div>
-
-          <div class="form-block">
             <h3>Spin</h3>
             <p class="hint">Double-click the wheel to spin (when not dragging).</p>
             <label class="field" id="spin-duration-field">
@@ -449,6 +424,31 @@
                 <strong>Recommended: keep at 99%.</strong>
               </small>
             </label>
+          </div>
+
+          <div class="form-block">
+            <h3>Controls</h3>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-keyboard-spin" checked />
+              <span>Keyboard spin (Space / Enter)</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-wheel-drag" checked />
+              <span>Allow mouse drag on wheel</span>
+            </label>
+            <small>
+              When off, you cannot drag, flick, or grab the wheel with the mouse.
+              Double-click and keyboard spin still work.
+            </small>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-fair-drag-spin" />
+              <span>Fair drag spin</span>
+            </label>
+            <small>
+              When on, a flick that is fast enough starts a normal full-force timed spin
+              (Spin duration) instead of matching how hard you threw it. Spins in the direction
+              of your flick.
+            </small>
           </div>
 
           <div class="form-block">
