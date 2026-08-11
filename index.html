@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#144</span>
+        <span class="app-version" id="app-version" title="Update number">#145</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -256,8 +256,18 @@
             </label>
             <label class="field">
               <span>Default text color</span>
-              <input type="color" id="text-color" value="#ffffff" />
-              <small>Used when a section has no own/group text color</small>
+              <div class="field-with-action">
+                <input type="color" id="text-color" value="#ffffff" />
+                <button
+                  type="button"
+                  id="btn-text-color-override"
+                  class="btn small ghost"
+                  title="Force this Look color on every section label (ignores section/group text colors)"
+                >
+                  Override
+                </button>
+              </div>
+              <small>Used when a section has no own/group text color. Override forces this color on all labels.</small>
             </label>
             <label class="toggle-row">
               <input type="checkbox" id="chk-show-labels" checked />

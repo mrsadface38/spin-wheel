@@ -5283,6 +5283,7 @@ function bindLook() {
     $("#winner-text-color").value =
       state.look.winnerTextColor || state.look.textColor || "#ffffff";
   }
+  updateTextColorOverrideButton();
   updateWinnerTextOverrideButton();
   $("#chk-show-labels").checked = state.look.showLabels !== false;
   $("#chk-show-images").checked = state.look.showImages !== false;
@@ -5395,6 +5396,18 @@ function updateWinnerRemoveButton() {
   }
 }
 
+/** Sync Look → Default text color Override button active state */
+function updateTextColorOverrideButton() {
+  const btn = $("#btn-text-color-override");
+  if (!btn) return;
+  const on = state.look?.forceTextColor === true;
+  btn.classList.toggle("is-active", on);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.title = on
+    ? "Override on — every section label uses Look default text color (click to turn off)"
+    : "Override off — use section/group text colors when set (click to force Look color)";
+}
+
 /** Sync Look → Winner text color Override button active state */
 function updateWinnerTextOverrideButton() {
   const btn = $("#btn-winner-text-override");
@@ -5406,6 +5419,14 @@ function updateWinnerTextOverrideButton() {
     ? "Override on — result screen always uses Look winner text color (click to turn off)"
     : "Override off — use section/group winner text colors when set (click to force Look color)";
 }
+
+$("#btn-text-color-override")?.addEventListener("click", async () => {
+  checkpoint();
+  state.look.forceTextColor = !(state.look.forceTextColor === true);
+  updateTextColorOverrideButton();
+  persist();
+  await refreshWheel();
+});
 
 $("#btn-winner-text-override")?.addEventListener("click", () => {
   checkpoint();

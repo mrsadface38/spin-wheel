@@ -434,6 +434,11 @@ export function defaultState() {
       centerSize: 0.16,
       borderColor: "#f0d78c",
       textColor: "#ffffff",
+      /**
+       * When true, wheel labels always use look.textColor
+       * (ignores section / group text colors).
+       */
+      forceTextColor: false,
       /** Color of the winning name on the result overlay (separate from wheel labels) */
       winnerTextColor: "#ffffff",
       /**
@@ -616,6 +621,7 @@ function migrate(data) {
   if (look.winnerTextColor == null || look.winnerTextColor === "") {
     look.winnerTextColor = look.textColor || base.look.winnerTextColor;
   }
+  look.forceTextColor = look.forceTextColor === true;
   look.forceWinnerTextColor = look.forceWinnerTextColor === true;
   // Pointer angle 0–360 (0 = top, 90 = right default). Missing → right.
   {
@@ -990,21 +996,28 @@ export function resolveSectionForDisplay(state, section) {
   }
 
   // --- Text color (label on wheel) ---
-  const forceText = forceOverrideGroup(state, section, "overrideTextColor");
-  if (forceText) {
-    applyFromGroup(forceText, TEXT_COLOR_KEYS, "textColor");
+  if (state.look?.forceTextColor === true) {
+    // Look Override: always use Look default text color
+    out.textColor = normalizeHexColor(state.look?.textColor, "#ffffff");
+    out.profileFrom.textColor = { source: "look", groupId: null };
     out.profileOverrides.textColor = true;
-  } else if (!section.customTextColor) {
-    const fromG = inheritGroupForChannel(state, section, "textColor");
-    if (fromG) {
-      applyFromGroup(fromG, TEXT_COLOR_KEYS, "textColor");
-    } else {
-      // No group → Look default
-      out.textColor = normalizeHexColor(
-        state.look?.textColor,
-        "#ffffff"
-      );
-      out.profileFrom.textColor = { source: "look", groupId: null };
+  } else {
+    const forceText = forceOverrideGroup(state, section, "overrideTextColor");
+    if (forceText) {
+      applyFromGroup(forceText, TEXT_COLOR_KEYS, "textColor");
+      out.profileOverrides.textColor = true;
+    } else if (!section.customTextColor) {
+      const fromG = inheritGroupForChannel(state, section, "textColor");
+      if (fromG) {
+        applyFromGroup(fromG, TEXT_COLOR_KEYS, "textColor");
+      } else {
+        // No group → Look default
+        out.textColor = normalizeHexColor(
+          state.look?.textColor,
+          "#ffffff"
+        );
+        out.profileFrom.textColor = { source: "look", groupId: null };
+      }
     }
   }
 
