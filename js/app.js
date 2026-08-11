@@ -54,6 +54,7 @@ import {
   getWheelPreset,
   resolvePresetId,
   buildPresetState,
+  blankWheelState,
   shuffledSolidWheelColors,
 } from "./presets.js";
 import { APP_UPDATE } from "./version.js";
@@ -808,14 +809,39 @@ async function renameCurrentWheel() {
   fillWheelSelect();
 }
 
+/**
+ * Replace the active wheel contents with an empty Blank preset (no sections).
+ * Keeps the same library slot and name.
+ */
+async function clearActiveWheelToBlank() {
+  const slot = getActiveSlot(library);
+  const name = slot?.name || "My wheel";
+  try {
+    wheel.cancelAnimatedSpin?.();
+  } catch {
+    /* ignore */
+  }
+  const blank = blankWheelState();
+  library = writeActiveState(library, blank);
+  library = renameWheel(library, library.activeId, name);
+  await applyLoadedWheel(library, blank);
+}
+
 async function deleteCurrentWheel() {
+  const slot = getActiveSlot(library);
+  // Only one saved wheel: clear it to empty (no sections), don't block.
   if (library.wheels.length <= 1) {
-    await safeAlert(
-      "You need at least one wheel.\n\nHold Delete for 5 seconds to erase every saved wheel and start fresh."
-    );
+    if (
+      !(await safeConfirm(
+        `Clear wheel “${slot.name}”?\n\nAll sections and settings on this wheel will be removed. You will be left with an empty wheel (no sections).\n\nTip: hold Delete for 5 seconds to erase all saved wheels.`,
+        "Clear wheel"
+      ))
+    ) {
+      return;
+    }
+    await clearActiveWheelToBlank();
     return;
   }
-  const slot = getActiveSlot(library);
   if (
     !(await safeConfirm(
       `Delete wheel “${slot.name}”? This cannot be undone.\nYour other wheels stay saved.\n\nTip: hold Delete for 5 seconds to erase all saved wheels.`,
@@ -832,7 +858,7 @@ async function deleteCurrentWheel() {
   await applyLoadedWheel(result.lib, result.state);
 }
 
-/** Hold Delete 5s — wipe entire library and load one blank default wheel. */
+/** Hold Delete 5s — wipe entire library and load one empty blank wheel. */
 async function deleteAllSavedWheels() {
   const n = library.wheels?.length || 0;
   const names = (library.wheels || [])
@@ -844,7 +870,7 @@ async function deleteAllSavedWheels() {
       : "";
   if (
     !(await safeConfirm(
-      `Delete ALL ${n} saved wheel${n === 1 ? "" : "s"}? This cannot be undone.${list}\n\nYou will get one new blank wheel.`,
+      `Delete ALL ${n} saved wheel${n === 1 ? "" : "s"}? This cannot be undone.${list}\n\nYou will be left with one empty wheel (no sections).`,
       "Delete all wheels"
     ))
   ) {
@@ -855,10 +881,12 @@ async function deleteAllSavedWheels() {
   } catch {
     /* ignore */
   }
-  const fresh = clearAllWheels("My wheel");
+  const fresh = clearAllWheels("My wheel", blankWheelState());
   const slot = getActiveSlot(fresh);
   await applyLoadedWheel(fresh, hydrateState(slot.data));
-  await safeAlert("All saved wheels were deleted. You have a new blank wheel.");
+  await safeAlert(
+    "All saved wheels were deleted. You have one empty wheel (no sections)."
+  );
 }
 
 async function refreshWheel() {

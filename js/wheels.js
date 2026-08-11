@@ -253,12 +253,15 @@ export function deleteWheel(lib, id) {
 }
 
 /**
- * Wipe every saved wheel and return a fresh single default wheel.
+ * Wipe every saved wheel and return a single slot.
+ * Pass blank project data (e.g. blankWheelState()) so the survivor is empty —
+ * not the default prize preset.
  * @param {string} [name]
+ * @param {object|null} [data] project state for the new wheel
  * @returns {WheelLibrary}
  */
-export function clearAllWheels(name = "My wheel") {
-  return createFreshLibrary(name, null);
+export function clearAllWheels(name = "My wheel", data = null) {
+  return createFreshLibrary(name, data);
 }
 
 /**
