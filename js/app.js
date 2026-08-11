@@ -8099,6 +8099,10 @@ async function onLookChange() {
   if ($("#chk-keyboard-spin")) {
     state.look.keyboardSpin = $("#chk-keyboard-spin").checked;
   }
+  if ($("#chk-double-click-spin")) {
+    state.look.allowDoubleClickSpin =
+      $("#chk-double-click-spin").checked !== false;
+  }
   if ($("#chk-wheel-drag")) {
     state.look.allowWheelDrag = $("#chk-wheel-drag").checked !== false;
   }
@@ -8146,7 +8150,7 @@ async function onLookChange() {
   scheduleAutoSpin();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "text-style", "text-font", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-wheel-drag", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "text-style", "text-font", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-double-click-spin", "chk-wheel-drag", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -10714,6 +10718,7 @@ async function init() {
   if (spinTarget) {
     // Double-click: timed random spin (ignore UI chrome / rigged badge)
     spinTarget.addEventListener("dblclick", (e) => {
+      if (state.look?.allowDoubleClickSpin === false) return;
       if (
         e.target.closest?.(
           "#pointer, #result-rigged, .result-actions-bar, .result-center-inner, .result-banner, .btn-toggle-sidebar, button, a, input, select, textarea"
