@@ -1954,6 +1954,11 @@ label.field[hidden] {
   width: 120px;
 }
 
+/* Dim Look fields while a parent toggle is off (e.g. Auto spin interval) */
+.field.is-disabled {
+  opacity: 0.55;
+}
+
 .slider-with-value {
   display: grid;
   grid-template-columns: 1fr auto;

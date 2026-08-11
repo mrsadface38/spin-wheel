@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#121</span>
+        <span class="app-version" id="app-version" title="Update number">#122</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -333,6 +333,30 @@
             <label class="toggle-row">
               <input type="checkbox" id="chk-keyboard-spin" checked />
               <span>Keyboard spin (Space / Enter)</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-auto-spin" />
+              <span>Auto spin</span>
+            </label>
+            <label class="field" id="auto-spin-interval-field">
+              <span>Every</span>
+              <div class="slider-with-value">
+                <input
+                  type="number"
+                  id="auto-spin-value"
+                  min="1"
+                  max="9999"
+                  step="1"
+                  value="5"
+                  title="How often to auto spin"
+                />
+                <select id="auto-spin-unit" title="Auto spin interval unit">
+                  <option value="minutes">min</option>
+                  <option value="hours">hr</option>
+                  <option value="days">days</option>
+                </select>
+              </div>
+              <small>While this page is open, spin automatically on this interval. Works best with Auto-dismiss or Don’t show results so the win screen doesn’t block the next spin.</small>
             </label>
             <label class="field">
               <span>Auto-dismiss result</span>

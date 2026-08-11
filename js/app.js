@@ -4957,6 +4957,20 @@ function bindLook() {
   if ($("#chk-keyboard-spin")) {
     $("#chk-keyboard-spin").checked = state.look.keyboardSpin !== false;
   }
+  if ($("#chk-auto-spin")) {
+    $("#chk-auto-spin").checked = state.look.autoSpin === true;
+  }
+  {
+    let n = Number(state.look.autoSpinEvery);
+    if (!Number.isFinite(n) || n < 1) n = 5;
+    if ($("#auto-spin-value")) $("#auto-spin-value").value = String(Math.round(n));
+    const u = state.look.autoSpinUnit;
+    if ($("#auto-spin-unit")) {
+      $("#auto-spin-unit").value =
+        u === "hours" || u === "days" ? u : "minutes";
+    }
+  }
+  updateAutoSpinUI();
   if ($("#auto-dismiss-sec")) {
     const ad = Number(state.look.autoDismissSec);
     const allowed = ["-1", "0", "3", "5", "8", "10", "15", "30"];
@@ -4975,6 +4989,7 @@ function bindLook() {
   setImgPreview($("#center-preview"), state.look.centerImage);
   bindSpinDuration();
   updateHistoryTrackUi();
+  scheduleAutoSpin();
 }
 
 /** Global title above the winning section name (center style). */
@@ -7300,6 +7315,21 @@ async function onLookChange() {
   if ($("#chk-keyboard-spin")) {
     state.look.keyboardSpin = $("#chk-keyboard-spin").checked;
   }
+  if ($("#chk-auto-spin")) {
+    state.look.autoSpin = $("#chk-auto-spin").checked === true;
+  }
+  {
+    let n = Number($("#auto-spin-value")?.value);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    state.look.autoSpinEvery = Math.min(9999, Math.round(n));
+    if ($("#auto-spin-value")) {
+      $("#auto-spin-value").value = String(state.look.autoSpinEvery);
+    }
+    const u = $("#auto-spin-unit")?.value;
+    state.look.autoSpinUnit =
+      u === "hours" || u === "days" ? u : "minutes";
+  }
+  updateAutoSpinUI();
   if ($("#auto-dismiss-sec")) {
     let ad = Number($("#auto-dismiss-sec").value);
     if (!Number.isFinite(ad)) ad = 0;
@@ -7329,9 +7359,10 @@ async function onLookChange() {
   await refreshWheel();
   // Refresh section cards so slider min/max/step update live
   renderSections();
+  scheduleAutoSpin();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -8557,6 +8588,115 @@ const MAX_LAND_ACTION_CHAIN = 20;
 /** Depth of the current auto-respin / other-wheel chain (0 = user-started). */
 let landActionChainDepth = 0;
 
+// --- Auto spin (Look setting) ---
+/** @type {ReturnType<typeof setTimeout>|0} */
+let autoSpinTimer = 0;
+/** Browsers clamp setTimeout delays around 2^31-1 ms (~24.8 days). */
+const AUTO_SPIN_MAX_DELAY_MS = 2_147_483_647;
+
+function updateAutoSpinUI() {
+  const on = $("#chk-auto-spin")?.checked === true;
+  const field = $("#auto-spin-interval-field");
+  if (field) {
+    field.classList.toggle("is-disabled", !on);
+    const inputs = field.querySelectorAll("input, select");
+    inputs.forEach((el) => {
+      el.disabled = !on;
+    });
+  }
+}
+
+/**
+ * Interval in ms from Look auto-spin settings (0 = off).
+ * @returns {number}
+ */
+function getAutoSpinIntervalMs() {
+  if (state.look?.autoSpin !== true) return 0;
+  let n = Number(state.look.autoSpinEvery);
+  if (!Number.isFinite(n) || n < 1) n = 1;
+  n = Math.min(9999, Math.round(n));
+  const unit = state.look.autoSpinUnit;
+  let ms = n * 60_000; // minutes
+  if (unit === "hours") ms = n * 3_600_000;
+  else if (unit === "days") ms = n * 86_400_000;
+  return Math.min(AUTO_SPIN_MAX_DELAY_MS, Math.max(60_000, ms));
+}
+
+function clearAutoSpinTimer() {
+  if (autoSpinTimer) {
+    clearTimeout(autoSpinTimer);
+    autoSpinTimer = 0;
+  }
+}
+
+/** True when a win overlay is open and would block a clean auto-spin. */
+function isResultOverlayOpen() {
+  try {
+    if (resultCenter && !resultCenter.classList.contains("hidden")) return true;
+    if (resultBanner && !resultBanner.classList.contains("hidden")) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/**
+ * Schedule the next auto spin from Look settings.
+ * Resets any previous timer. No-op when auto spin is off or tab is hidden.
+ */
+function scheduleAutoSpin() {
+  clearAutoSpinTimer();
+  const ms = getAutoSpinIntervalMs();
+  if (ms <= 0) return;
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+    return;
+  }
+  autoSpinTimer = setTimeout(() => {
+    autoSpinTimer = 0;
+    void runAutoSpinTick();
+  }, ms);
+}
+
+async function runAutoSpinTick() {
+  try {
+    if (state.look?.autoSpin !== true) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
+    // Wait out an in-progress spin / drag, then try again soon
+    if (spinBusy || wheel?.spinning || wheel?._dragging) {
+      autoSpinTimer = setTimeout(() => {
+        autoSpinTimer = 0;
+        void runAutoSpinTick();
+      }, 1500);
+      return;
+    }
+    // Clear open result so the next spin can start
+    if (isResultOverlayOpen()) {
+      try {
+        hideResults();
+      } catch {
+        /* ignore */
+      }
+      // Give eliminate-after-win a moment to finish
+      await sleepMs(200);
+      if (spinBusy || wheel?.spinning) {
+        autoSpinTimer = setTimeout(() => {
+          autoSpinTimer = 0;
+          void runAutoSpinTick();
+        }, 1500);
+        return;
+      }
+    }
+    await doSpin();
+  } catch (err) {
+    console.warn("auto spin:", err);
+  } finally {
+    // Always re-arm for the next interval when still enabled
+    scheduleAutoSpin();
+  }
+}
+
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -9297,6 +9437,11 @@ async function init() {
   } catch (err) {
     console.warn("section returns on boot:", err);
   }
+  try {
+    scheduleAutoSpin();
+  } catch (err) {
+    console.warn("auto spin on boot:", err);
+  }
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       try {
@@ -9304,6 +9449,13 @@ async function init() {
       } catch (err) {
         console.warn("section returns on focus:", err);
       }
+      try {
+        scheduleAutoSpin();
+      } catch (err) {
+        console.warn("auto spin on focus:", err);
+      }
+    } else {
+      clearAutoSpinTimer();
     }
   });
   forceUiInteractive();

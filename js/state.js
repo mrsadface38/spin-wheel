@@ -432,6 +432,13 @@ export function defaultState() {
        * positive = auto-close after that many seconds.
        */
       autoDismissSec: 0,
+      /**
+       * Automatically spin on an interval while the page is open.
+       * Interval = autoSpinEvery × unit (minutes | hours | days).
+       */
+      autoSpin: false,
+      autoSpinEvery: 5,
+      autoSpinUnit: "minutes",
       // Section list weight range slider (manual number field can still use decimals)
       weightSliderMin: 1,
       weightSliderMax: 20,
@@ -615,6 +622,18 @@ function migrate(data) {
     if (ad < 0) ad = -1;
     else ad = Math.min(120, Math.round(ad));
     look.autoDismissSec = ad;
+  }
+  look.autoSpin = look.autoSpin === true;
+  {
+    let n = Number(look.autoSpinEvery);
+    if (!Number.isFinite(n) || n < 1) n = 5;
+    look.autoSpinEvery = Math.min(9999, Math.round(n));
+  }
+  {
+    const u = look.autoSpinUnit;
+    if (u === "hours" || u === "hr") look.autoSpinUnit = "hours";
+    else if (u === "days") look.autoSpinUnit = "days";
+    else look.autoSpinUnit = "minutes";
   }
   const spin = { ...base.spin, ...(data.spin || {}) };
   if (wasOldSave) {
