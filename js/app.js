@@ -3522,7 +3522,7 @@ $("#btn-group-randomize-colors")?.addEventListener("click", async () => {
     !confirm(
       `Randomize solid colors on ${ordered.length} section(s) in this group?\n\n` +
         `Uses the same palette as d20 (red, blue, green, cyan, yellow, purple).\n` +
-        `Blue stays next to cyan; same colors won’t sit side by side.`
+        `Blue stays next to cyan; no section has the same color on both sides.`
     )
   ) {
     return;

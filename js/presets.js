@@ -47,9 +47,18 @@ export const SOLID_WHEEL_COLORS = [
 function solidColorsOk(colors, n) {
   if (!colors || colors.length !== n) return false;
   if (n === 1) return true;
+  if (n === 2) {
+    // Only one other face — both “neighbors” are the same slot; just require different colors
+    return colors[0].color !== colors[1].color;
+  }
   for (let i = 0; i < n; i++) {
-    // No identical colors as neighbors (including last↔first on the wheel)
-    if (colors[i].color === colors[(i + 1) % n].color) return false;
+    const left = colors[(i - 1 + n) % n].color;
+    const right = colors[(i + 1) % n].color;
+    const here = colors[i].color;
+    // No identical colors as immediate neighbors
+    if (here === left || here === right) return false;
+    // Two neighbors must be different colors (no same color on both sides)
+    if (left === right) return false;
   }
   // Every blue next to a cyan, every cyan next to a blue
   for (let i = 0; i < n; i++) {
@@ -67,7 +76,8 @@ function solidColorsOk(colors, n) {
  * Random solid coloring for `n` sections (same rules as d20).
  * - Palette: red, blue, green, cyan, orange (255,255,0), purple (166,0,255)
  * - Blue+cyan always adjacent (glued pairs when n ≥ 2)
- * - Same color never next to itself (including wheel wrap)
+ * - Same color never next to itself
+ * - Each section’s two neighbors are different colors (no same color on both sides)
  * @param {number} n
  * @returns {{ color: string, text: string }[]}
  */
@@ -92,34 +102,35 @@ export function shuffledSolidWheelColors(n) {
 
   const singlePalette = [D20_RED, D20_GREEN, D20_ORANGE, D20_PURPLE];
 
-  for (let attempt = 0; attempt < 500; attempt++) {
+  for (let attempt = 0; attempt < 800; attempt++) {
     /** @type {{ color: string, text: string }[][]} */
     const units = [];
-    // As many blue↔cyan pairs as fit; leave room for variety
-    let pairCount = Math.max(1, Math.floor(count / 6));
+    // Blue↔cyan pairs; fewer pairs helps avoid same color on both sides
+    let pairCount = Math.max(1, Math.floor(count / 7));
     while (pairCount * 2 > count) pairCount -= 1;
     if (pairCount < 1 && count >= 2) pairCount = 1;
     while (pairCount * 2 > count) pairCount -= 1;
 
     for (let i = 0; i < pairCount; i++) units.push(makePair());
     const singleCount = count - pairCount * 2;
+    // Spread singles across palette so we have variety for neighbors
     for (let i = 0; i < singleCount; i++) {
       units.push([{ ...singlePalette[i % singlePalette.length] }]);
     }
 
     shuffleInPlace(units);
-    for (let fix = 0; fix < 50; fix++) {
+    for (let fix = 0; fix < 80; fix++) {
       const flat = units.flat();
       if (solidColorsOk(flat, count)) return flat;
       const pairs = units.filter((u) => u.length === 2);
       if (pairs.length) {
         pairs[Math.floor(Math.random() * pairs.length)].reverse();
       }
-      if (fix % 6 === 5) shuffleInPlace(units);
+      if (fix % 5 === 4) shuffleInPlace(units);
     }
   }
 
-  // Deterministic fallback: alternate palette (no same neighbors)
+  // Deterministic fallback: 6-color cycle → different neighbors on both sides
   const fallback = [];
   const seq = [
     D20_RED,
