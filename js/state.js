@@ -561,6 +561,8 @@ export function defaultState() {
       winEffectName: null,
       /** Space / Enter to spin when not typing (default on). */
       keyboardSpin: true,
+      /** Double-click the stage to spin (default on). */
+      allowDoubleClickSpin: true,
       /**
        * When false, mouse/touch drag on the wheel is disabled
        * (no aim-drag, flick, or grab mid-spin). Double-click / keyboard still spin.

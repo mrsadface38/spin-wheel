@@ -5639,6 +5639,10 @@ function bindLook() {
   if ($("#chk-keyboard-spin")) {
     $("#chk-keyboard-spin").checked = state.look.keyboardSpin !== false;
   }
+  if ($("#chk-double-click-spin")) {
+    $("#chk-double-click-spin").checked =
+      state.look.allowDoubleClickSpin !== false;
+  }
   if ($("#chk-wheel-drag")) {
     $("#chk-wheel-drag").checked = state.look.allowWheelDrag !== false;
   }
