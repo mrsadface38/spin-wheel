@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#171</span>
+        <span class="app-version" id="app-version" title="Update number">#172</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -361,18 +361,6 @@
         <!-- Misc tab (controls, spin behavior, editor prefs) -->
         <div class="tab-panel" id="tab-misc">
           <div class="form-block">
-            <h3>Interface</h3>
-            <label class="toggle-row">
-              <input type="checkbox" id="chk-hide-hints" />
-              <span>Hide help text</span>
-            </label>
-            <small class="hint-setting-help">
-              Hides all grey help lines under settings (this one included) so the panels are shorter.
-              Off by default. Saved on this device only — not part of a shared wheel.
-            </small>
-          </div>
-
-          <div class="form-block">
             <h3>Spin</h3>
             <p class="hint">Double-click the wheel to spin (when not dragging).</p>
             <label class="field" id="spin-duration-field">
@@ -553,6 +541,18 @@
                 <input type="number" id="weight-slider-step" min="0.01" max="100" step="any" value="1" />
               </label>
             </div>
+          </div>
+
+          <div class="form-block">
+            <h3>Interface</h3>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-hide-hints" />
+              <span>Hide help text</span>
+            </label>
+            <small class="hint-setting-help">
+              Hides all grey help lines under settings (this one included) so the panels are shorter.
+              Off by default. Saved on this device only — not part of a shared wheel.
+            </small>
           </div>
         </div>
 
