@@ -10578,11 +10578,47 @@ function initCollapsibleSections(root = document) {
   }
 }
 
+/** Device-only: hide grey help / hint copy under settings (Misc → Hide help text). */
+const HIDE_HINTS_KEY = "spin-wheel-hide-hints-v1";
+
+function isHideHints() {
+  try {
+    return localStorage.getItem(HIDE_HINTS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function applyHideHintsUi() {
+  const on = isHideHints();
+  document.body.classList.toggle("hide-hints", on);
+  const chk = $("#chk-hide-hints");
+  if (chk) chk.checked = on;
+}
+
+function setHideHints(on) {
+  try {
+    localStorage.setItem(HIDE_HINTS_KEY, on ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+  applyHideHintsUi();
+}
+
+$("#chk-hide-hints")?.addEventListener("change", () => {
+  setHideHints($("#chk-hide-hints")?.checked === true);
+});
+
 async function init() {
   const verEl = $("#app-version");
   if (verEl) {
     verEl.textContent = `#${APP_UPDATE}`;
     verEl.title = `Update #${APP_UPDATE}`;
+  }
+  try {
+    applyHideHintsUi();
+  } catch {
+    /* ignore */
   }
   forceUiInteractive();
   try {

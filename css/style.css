@@ -2154,6 +2154,12 @@ label.field[hidden] {
   background: rgba(232, 93, 108, 0.1);
 }
 
+/* Hide help / hint copy when Misc → Hide help text is on */
+body.hide-hints .hint,
+body.hide-hints small {
+  display: none !important;
+}
+
 /* Modal — closed dialogs must never intercept clicks */
 dialog.modal:not([open]) {
   display: none !important;
