@@ -987,6 +987,23 @@ export class Wheel {
   }
 
   /**
+   * Pick a random land angle inside a slice, using a centered landable zone.
+   * @param {{ start: number, span: number }} sl
+   * @param {number} [landZonePct] 1–99 = % of slice the pointer may hit (default 99)
+   * @returns {number} absolute angle on the wheel
+   */
+  _randomLandLocal(sl, landZonePct = 99) {
+    let pct = Number(landZonePct);
+    if (!Number.isFinite(pct)) pct = 99;
+    pct = Math.min(99, Math.max(1, pct));
+    // Remainder is split as equal margin on both sides (avoids borders)
+    const marginFrac = (1 - pct / 100) / 2;
+    const pad = sl.span * marginFrac;
+    const usable = Math.max(0.001, sl.span - pad * 2);
+    return sl.start + pad + Math.random() * usable;
+  }
+
+  /**
    * Base land rotation for a section (not adjusted for current angle).
    * pointer angle a = φ - rotation  ⇒  rotation = φ - landLocal
    * (φ = pointerScreenAngle; default right is 0)
@@ -995,12 +1012,10 @@ export class Wheel {
     const slices = this.getSlices();
     const sl = slices.find((s) => s.section.id === sectionId);
     if (!sl) return null;
-    // ~0.5% pad each side → land in middle ~99% of the slice
-    const pad = sl.span * 0.005;
-    const landLocal =
-      sl.start +
-      pad +
-      Math.random() * Math.max(0.001, sl.span - pad * 2);
+    const landLocal = this._randomLandLocal(
+      sl,
+      this._spinLandZonePct ?? 99
+    );
     return this.pointerScreenAngle() - landLocal;
   }
 
@@ -1324,12 +1339,15 @@ export class Wheel {
       winnerIndex = this._pickNaturalWinnerIndex(slices, forceId);
     }
     const winnerSlice = slices[winnerIndex];
-    // ~0.5% pad each side → land in middle ~99% of the slice
-    const pad = winnerSlice.span * 0.005;
-    const landLocal =
-      winnerSlice.start +
-      pad +
-      Math.random() * Math.max(0.001, winnerSlice.span - pad * 2);
+    {
+      let z = Number(opts.landZonePct);
+      if (!Number.isFinite(z)) z = 99;
+      this._spinLandZonePct = Math.min(99, Math.max(1, Math.round(z)));
+    }
+    const landLocal = this._randomLandLocal(
+      winnerSlice,
+      this._spinLandZonePct
+    );
 
     const current = this.rotation;
     const phi = this.pointerScreenAngle();
@@ -1833,6 +1851,11 @@ export class Wheel {
     }
 
     const forceId = opts.forceSectionId || null;
+    {
+      let z = Number(opts.landZonePct);
+      if (!Number.isFinite(z)) z = 99;
+      this._spinLandZonePct = Math.min(99, Math.max(1, Math.round(z)));
+    }
 
     // Freeze geometry
     this._spinSlices = this._computeSlices();

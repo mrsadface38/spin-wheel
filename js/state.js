@@ -526,6 +526,11 @@ export function defaultState() {
        * (music plays once from the start; fixed Duration is ignored).
        */
       untilBgmEnds: false,
+      /**
+       * How much of each section’s arc the pointer may land in (1–99%).
+       * Centered; edges are margin so borders are avoided. Cannot be 100%.
+       */
+      landZonePct: 99,
     },
     /** Hidden “rig it” controls (unlock via UI gesture) */
     secret: {
@@ -695,6 +700,11 @@ function migrate(data) {
     spin.duration = Math.min(600, Math.max(0.1, d));
   }
   spin.untilBgmEnds = spin.untilBgmEnds === true;
+  {
+    let z = Number(spin.landZonePct);
+    if (!Number.isFinite(z)) z = 99;
+    spin.landZonePct = Math.min(99, Math.max(1, Math.round(z)));
+  }
   const groups =
     Array.isArray(data.groups) && data.groups.length
       ? data.groups.map((g) => normalizeGroup(g))

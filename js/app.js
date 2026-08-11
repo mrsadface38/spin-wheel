@@ -7237,6 +7237,7 @@ function getSpinRigOptions() {
     avoidSectionIds: avoidIds.length ? avoidIds : null,
     /** Expand avoid set on the wheel from live slice group membership */
     avoidGroupId: avoidGroupId || null,
+    landZonePct: getLandZonePct(),
     steerMs: getDivertSteerMs(),
     reverseSteerMs: getReverseSteerMs(),
     comboOrder,
@@ -8002,6 +8003,22 @@ function clampSpinDuration(n) {
   const v = Number(n);
   if (!Number.isFinite(v)) return 9;
   return Math.min(SPIN_DURATION_MAX, Math.max(SPIN_DURATION_MIN, v));
+}
+
+/** Landable % of each section arc (1–99). Centered; edges stay clear of borders. */
+function getLandZonePct() {
+  let n = Number(state.spin?.landZonePct);
+  if (!Number.isFinite(n)) n = 99;
+  return Math.min(99, Math.max(1, Math.round(n)));
+}
+
+function syncLandZoneUI() {
+  const pct = getLandZonePct();
+  state.spin.landZonePct = pct;
+  const slider = $("#spin-land-zone");
+  const label = $("#spin-land-zone-label");
+  if (slider) slider.value = String(pct);
+  if (label) label.textContent = `${pct}%`;
 }
 
 /**
