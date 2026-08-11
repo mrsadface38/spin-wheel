@@ -1735,7 +1735,9 @@ export class Wheel {
     this._dragging = true;
     this._dragPointerId = e.pointerId;
     this._dragLastAngle = this._pointerAngle(e);
-    this._dragSamples = [{ t: performance.now(), rot: this.rotation }];
+    const t0 = performance.now();
+    this._dragSamples = [{ t: t0, rot: this.rotation }];
+    this._dragLastMoveAt = t0;
     this._lastSeg = this._tickIndex();
     this._lastTickAudioAt = 0;
 
@@ -1776,6 +1778,7 @@ export class Wheel {
 
     const now = performance.now();
     this._dragSamples.push({ t: now, rot: this.rotation });
+    this._dragLastMoveAt = now;
     // Keep ~120ms of samples for velocity
     const cutoff = now - 120;
     while (this._dragSamples.length > 2 && this._dragSamples[0].t < cutoff) {
