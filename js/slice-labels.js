@@ -15,7 +15,7 @@ export function measureLabelWidth(ctx, text) {
 }
 
 /**
- * Normalize wheel label style.
+ * Normalize wheel label style (weight / italic).
  * @param {unknown} v
  * @param {string} [fallback="bold"]
  * @returns {"normal"|"bold"|"italic"|"bold-italic"}
@@ -37,19 +37,76 @@ export function normalizeTextStyle(v, fallback = "bold") {
     : "bold";
 }
 
+/** @type {{ id: string, label: string, css: string }[]} */
+export const TEXT_FONT_OPTIONS = [
+  {
+    id: "system",
+    label: "System",
+    css: '"Segoe UI", system-ui, -apple-system, sans-serif',
+  },
+  { id: "arial", label: "Arial", css: "Arial, Helvetica, sans-serif" },
+  { id: "verdana", label: "Verdana", css: "Verdana, Geneva, sans-serif" },
+  {
+    id: "trebuchet",
+    label: "Trebuchet MS",
+    css: '"Trebuchet MS", Helvetica, sans-serif',
+  },
+  { id: "georgia", label: "Georgia", css: "Georgia, serif" },
+  {
+    id: "times",
+    label: "Times New Roman",
+    css: '"Times New Roman", Times, serif',
+  },
+  {
+    id: "courier",
+    label: "Courier New",
+    css: '"Courier New", Courier, monospace',
+  },
+  {
+    id: "comic",
+    label: "Comic Sans",
+    css: '"Comic Sans MS", "Comic Sans", cursive',
+  },
+  { id: "impact", label: "Impact", css: "Impact, Haettenschweiler, sans-serif" },
+];
+
+/**
+ * @param {unknown} v
+ * @param {string} [fallback="system"]
+ */
+export function normalizeTextFont(v, fallback = "system") {
+  if (typeof v === "string" && TEXT_FONT_OPTIONS.some((o) => o.id === v)) {
+    return v;
+  }
+  if (typeof fallback === "string" && TEXT_FONT_OPTIONS.some((o) => o.id === fallback)) {
+    return fallback;
+  }
+  return "system";
+}
+
+/** @param {unknown} fontId */
+export function cssFontFamily(fontId) {
+  const id = normalizeTextFont(fontId, "system");
+  return (
+    TEXT_FONT_OPTIONS.find((o) => o.id === id)?.css ||
+    TEXT_FONT_OPTIONS[0].css
+  );
+}
+
 /**
  * CSS font shorthand for canvas labels.
- * @param {unknown} style
+ * @param {unknown} style weight/italic
  * @param {number} sizePx
+ * @param {unknown} [fontId] family id
  */
-export function fontFromTextStyle(style, sizePx) {
+export function fontFromTextStyle(style, sizePx, fontId = "system") {
   const s = normalizeTextStyle(style);
   const italic = s === "italic" || s === "bold-italic" ? "italic " : "";
   // Bold = 700 (historic default); normal = 400
   const weight = s === "bold" || s === "bold-italic" ? 700 : 400;
   const px = Math.max(1, Number(sizePx) || 16);
-  // Prefer faces that actually render italic/weight clearly on canvas
-  return `${italic}${weight} ${px}px "Segoe UI", system-ui, -apple-system, sans-serif`;
+  const family = cssFontFamily(fontId);
+  return `${italic}${weight} ${px}px ${family}`;
 }
 
 /**
@@ -137,6 +194,7 @@ export function wrapLabelLinesMax(ctx, label, maxWidth, maxLines) {
  * @param {string} opts.label
  * @param {string} [opts.textColor]
  * @param {string} [opts.textStyle] normal | bold | italic | bold-italic
+ * @param {string} [opts.textFont] font family id (system, arial, …)
  * @param {number} [opts.centerSize] hub size fraction 0–1 (Look)
  * @param {number} [opts.dpr]
  * @param {boolean} [opts.showLabels]
@@ -165,6 +223,7 @@ export function drawSliceLabel(ctx, opts = {}) {
     const baseFont = Math.max(16, 48 * dpr);
     const lineGap = 1.12;
     const textStyle = normalizeTextStyle(opts.textStyle, "bold");
+    const textFont = normalizeTextFont(opts.textFont, "system");
 
     ctx.save();
     ctx.fillStyle =
@@ -174,7 +233,7 @@ export function drawSliceLabel(ctx, opts = {}) {
     // stay readable (no hard strokeText, which made glyphs look blocky).
     ctx.shadowColor = "rgba(0,0,0,0.85)";
     ctx.shadowBlur = 4 * dpr;
-    ctx.font = fontFromTextStyle(textStyle, baseFont);
+    ctx.font = fontFromTextStyle(textStyle, baseFont, textFont);
     let th = baseFont * 1.05;
     try {
       const m = ctx.measureText(label);

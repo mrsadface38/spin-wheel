@@ -956,6 +956,7 @@ export class Wheel {
       label: sl?.section?.label,
       textColor: sl?.section?.textColor,
       textStyle: sl?.section?.textStyle || this.look.textStyle || "bold",
+      textFont: sl?.section?.textFont || this.look.textFont || "system",
       fallbackTextColor: this.look.textColor || "#fff",
       centerSize: this.look.centerSize ?? 0.16,
       dpr: this._dpr || 1,

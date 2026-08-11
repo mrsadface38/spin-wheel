@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#164</span>
+        <span class="app-version" id="app-version" title="Update number">#165</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -254,9 +254,9 @@
               <small>Used when a section has no own/group text color. Override forces this color on all labels.</small>
             </label>
             <label class="field">
-              <span>Text format</span>
+              <span>Text style</span>
               <div class="field-with-action">
-                <select id="text-style" title="Default label weight / italic format">
+                <select id="text-style" title="Default label weight / italic">
                   <option value="normal">Normal</option>
                   <option value="bold" selected>Bold</option>
                   <option value="italic">Italic</option>
@@ -266,14 +266,42 @@
                   type="button"
                   id="btn-text-style-override"
                   class="btn small ghost"
-                  title="Force this Look text format on every section label (ignores section/group formats)"
+                  title="Force this Look text style on every section label (ignores section/group styles)"
                 >
                   Override
                 </button>
               </div>
               <small>
-                Changes how section names look (normal / bold / italic). Applies to all labels by default.
-                Sections or groups can set their own; <strong>Override</strong> forces this Look format everywhere.
+                Normal / bold / italic for section names. Default for all labels;
+                <strong>Override</strong> forces this Look style everywhere.
+              </small>
+            </label>
+            <label class="field">
+              <span>Text font</span>
+              <div class="field-with-action">
+                <select id="text-font" title="Default label font family">
+                  <option value="system" selected>System</option>
+                  <option value="arial">Arial</option>
+                  <option value="verdana">Verdana</option>
+                  <option value="trebuchet">Trebuchet MS</option>
+                  <option value="georgia">Georgia</option>
+                  <option value="times">Times New Roman</option>
+                  <option value="courier">Courier New</option>
+                  <option value="comic">Comic Sans</option>
+                  <option value="impact">Impact</option>
+                </select>
+                <button
+                  type="button"
+                  id="btn-text-font-override"
+                  class="btn small ghost"
+                  title="Force this Look font on every section label (ignores section/group fonts)"
+                >
+                  Override
+                </button>
+              </div>
+              <small>
+                Font family for section names. Default for all labels;
+                <strong>Override</strong> forces this Look font everywhere.
               </small>
             </label>
             <label class="toggle-row">
@@ -883,14 +911,30 @@
             </label>
 
             <label class="field">
-              <span>Text format</span>
+              <span>Text style</span>
               <select id="section-text-style" title="Label weight / italic for this section">
                 <option value="normal">Normal</option>
                 <option value="bold" selected>Bold</option>
                 <option value="italic">Italic</option>
                 <option value="bold-italic">Bold italic</option>
               </select>
-              <small>Label format on the wheel (inherits group / Look until you change it)</small>
+              <small>Label style on the wheel (inherits Look until you change it)</small>
+            </label>
+
+            <label class="field">
+              <span>Text font</span>
+              <select id="section-text-font" title="Label font for this section">
+                <option value="system" selected>System</option>
+                <option value="arial">Arial</option>
+                <option value="verdana">Verdana</option>
+                <option value="trebuchet">Trebuchet MS</option>
+                <option value="georgia">Georgia</option>
+                <option value="times">Times New Roman</option>
+                <option value="courier">Courier New</option>
+                <option value="comic">Comic Sans</option>
+                <option value="impact">Impact</option>
+              </select>
+              <small>Label font on the wheel (inherits Look until you change it)</small>
             </label>
 
             <label class="field">
@@ -1218,7 +1262,8 @@
               <div class="profile-parts-row">
                 <label class="chip-check"><input type="checkbox" id="group-override-color" /> Slice color</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-text-color" /> Text color</label>
-                <label class="chip-check"><input type="checkbox" id="group-override-text-style" /> Text format</label>
+                <label class="chip-check"><input type="checkbox" id="group-override-text-style" /> Text style</label>
+                <label class="chip-check"><input type="checkbox" id="group-override-text-font" /> Text font</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-winner-text-color" /> Winner text</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-image" /> Image</label>
                 <label class="chip-check"><input type="checkbox" id="group-override-sfx" /> Land SFX</label>
@@ -1246,14 +1291,29 @@
               <small>Default label color for sections in this group</small>
             </label>
             <label class="field">
-              <span>Profile text format</span>
+              <span>Profile text style</span>
               <select id="group-text-style" title="Label weight / italic for this group">
                 <option value="normal">Normal</option>
                 <option value="bold" selected>Bold</option>
                 <option value="italic">Italic</option>
                 <option value="bold-italic">Bold italic</option>
               </select>
-              <small>Used when this group’s Text format force is on, or when you apply text format to members.</small>
+              <small>Used when this group’s Text style force is on, or when you apply text style to members.</small>
+            </label>
+            <label class="field">
+              <span>Profile text font</span>
+              <select id="group-text-font" title="Label font for this group">
+                <option value="system" selected>System</option>
+                <option value="arial">Arial</option>
+                <option value="verdana">Verdana</option>
+                <option value="trebuchet">Trebuchet MS</option>
+                <option value="georgia">Georgia</option>
+                <option value="times">Times New Roman</option>
+                <option value="courier">Courier New</option>
+                <option value="comic">Comic Sans</option>
+                <option value="impact">Impact</option>
+              </select>
+              <small>Used when this group’s Text font force is on, or when you apply text font to members.</small>
             </label>
             <label class="field">
               <span>Profile winner text color</span>
@@ -1391,7 +1451,8 @@
                 <div class="profile-parts-row">
                   <label class="chip-check"><input type="checkbox" id="group-apply-color" checked /> Slice color</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-text-color" checked /> Text color</label>
-                  <label class="chip-check"><input type="checkbox" id="group-apply-text-style" checked /> Text format</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-text-style" checked /> Text style</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-text-font" checked /> Text font</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-winner-text-color" checked /> Winner text</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-image" checked /> Image</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-sfx" /> Land SFX</label>
