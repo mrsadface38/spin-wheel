@@ -200,7 +200,7 @@ export function wrapLabelLinesMax(ctx, label, maxWidth, maxLines) {
  * @param {boolean} [opts.showLabels]
  * @param {boolean} [opts.asSolidDisc] single full-wheel section
  * @param {boolean} [opts.forceRadial] always hub→rim (skip horizontal full-disc layout)
- * @param {boolean} [opts.spinFrame] skip expensive shadow blur while spinning (keeps FPS stable)
+ * @param {boolean} [opts.spinFrame] unused for shadows (no text shadow — avoids idle/spin flash)
  * @param {string} [opts.fallbackTextColor]
  */
 export function drawSliceLabel(ctx, opts = {}) {
@@ -229,15 +229,10 @@ export function drawSliceLabel(ctx, opts = {}) {
     ctx.fillStyle =
       opts.textColor || opts.fallbackTextColor || "#fff";
     ctx.textBaseline = "middle";
-    // Soft dark halo only when idle — shadowBlur on every spin frame for 20
-    // faces freezes the tab after many spins (blank wheel + unresponsive UI).
-    if (!opts.spinFrame) {
-      ctx.shadowColor = "rgba(0,0,0,0.85)";
-      ctx.shadowBlur = 4 * dpr;
-    } else {
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
-    }
+    // No text shadow — keeps labels identical idle vs spinning (no blink)
+    // and avoids expensive shadowBlur on every spin frame.
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
     ctx.font = fontFromTextStyle(textStyle, baseFont, textFont);
     let th = baseFont * 1.05;
     try {
