@@ -565,9 +565,14 @@ export function defaultState() {
       allowDoubleClickSpin: true,
       /**
        * When false, mouse/touch drag on the wheel is disabled
-       * (no aim-drag, flick, or grab mid-spin). Double-click / keyboard still spin.
+       * (no aim-drag, flick). Double-click / keyboard still spin.
        */
       allowWheelDrag: true,
+      /**
+       * When false, clicking/dragging during a spin cannot interrupt it
+       * (grab-to-stop is disabled). Idle flick still works if allowWheelDrag.
+       */
+      allowGrabStopSpin: true,
       /**
        * When true, a fast enough drag-release starts a normal full-force timed
        * spin (Spin duration) instead of a velocity-matched fling. Still requires

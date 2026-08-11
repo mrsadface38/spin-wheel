@@ -1706,9 +1706,11 @@ export class Wheel {
    *   onDragEndIdle?: () => void,
    *   getFairDragSpin?: () => boolean,
    *   getAllowWheelDrag?: () => boolean,
+   *   getAllowGrabStopSpin?: () => boolean,
    * }} [hooks]
    * getFairDragSpin: fair full-force timed spin on flick.
    * getAllowWheelDrag: when false, pointer drag on the wheel is ignored.
+   * getAllowGrabStopSpin: when false, mid-spin click/drag cannot stop the spin.
    */
   enablePointerDrag(el, hooks = {}) {
     if (!el || this._dragBound) return;

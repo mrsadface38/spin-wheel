@@ -5645,6 +5645,10 @@ function bindLook() {
   if ($("#chk-wheel-drag")) {
     $("#chk-wheel-drag").checked = state.look.allowWheelDrag !== false;
   }
+  if ($("#chk-grab-stop-spin")) {
+    $("#chk-grab-stop-spin").checked =
+      state.look.allowGrabStopSpin !== false;
+  }
   if ($("#chk-fair-drag-spin")) {
     $("#chk-fair-drag-spin").checked = state.look.fairDragSpin === true;
   }
