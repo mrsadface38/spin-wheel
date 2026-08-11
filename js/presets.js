@@ -487,6 +487,8 @@ export function coinFlipState() {
       textColor: "#f5f0d8",
       winnerLabel: "Flip",
       winEffect: "confetti",
+      // Drag-release = full timed spin (not mouse-velocity fling)
+      fairDragSpin: true,
     },
     sound: {
       ...base.sound,
@@ -547,6 +549,8 @@ export function d20State() {
       winnerTextColor: "#ffffff",
       winnerLabel: "Rolled",
       resultStyle: "banner",
+      // Drag-release = full timed spin (not mouse-velocity fling)
+      fairDragSpin: true,
     },
     sound: {
       ...base.sound,

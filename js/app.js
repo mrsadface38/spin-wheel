@@ -5321,6 +5321,9 @@ function bindLook() {
   if ($("#chk-keyboard-spin")) {
     $("#chk-keyboard-spin").checked = state.look.keyboardSpin !== false;
   }
+  if ($("#chk-fair-drag-spin")) {
+    $("#chk-fair-drag-spin").checked = state.look.fairDragSpin === true;
+  }
   if ($("#chk-auto-spin")) {
     $("#chk-auto-spin").checked = state.look.autoSpin === true;
   }
@@ -7724,6 +7727,9 @@ async function onLookChange() {
   if ($("#chk-keyboard-spin")) {
     state.look.keyboardSpin = $("#chk-keyboard-spin").checked;
   }
+  if ($("#chk-fair-drag-spin")) {
+    state.look.fairDragSpin = $("#chk-fair-drag-spin").checked === true;
+  }
   if ($("#chk-auto-spin")) {
     state.look.autoSpin = $("#chk-auto-spin").checked === true;
   }
@@ -7772,7 +7778,7 @@ async function onLookChange() {
   scheduleAutoSpin();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -10219,6 +10225,7 @@ async function init() {
           !wheel._dragging &&
           !pointerDrag.active &&
           getActiveSections(state).length > 0,
+        getFairDragSpin: () => state.look?.fairDragSpin === true,
         onDragStart: ({ interrupted } = {}) => {
           audio.ensure();
           hideResults();
@@ -10230,6 +10237,11 @@ async function init() {
           }
         },
         onFling: (vel) => {
+          // Fair mode: ignore mouse velocity — always a normal full-force timed spin
+          if (state.look?.fairDragSpin === true) {
+            void doSpin();
+            return;
+          }
           doFling(vel);
         },
         onDragEndIdle: () => {

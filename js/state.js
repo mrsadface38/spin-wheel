@@ -473,6 +473,12 @@ export function defaultState() {
       /** Space / Enter to spin when not typing (default on). */
       keyboardSpin: true,
       /**
+       * When true, dragging the wheel then releasing always starts a normal
+       * full-force timed spin (uses Spin duration) instead of a velocity fling.
+       * Makes drag spins fair / consistent. Off by default; d20 & coin on.
+       */
+      fairDragSpin: false,
+      /**
        * Auto-dismiss win screen after N seconds (free-form number).
        * 0 = off (show until Continue), -1 = never show result overlay,
        * positive = auto-close after that many seconds.
@@ -623,6 +629,8 @@ function migrate(data) {
   }
   look.forceTextColor = look.forceTextColor === true;
   look.forceWinnerTextColor = look.forceWinnerTextColor === true;
+  // Fair drag spin: only on when explicitly saved (default off)
+  look.fairDragSpin = look.fairDragSpin === true;
   // Pointer angle 0–360 (0 = top, 90 = right default). Missing → right.
   {
     let pad = Number(look.pointerAngleDeg);

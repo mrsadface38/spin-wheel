@@ -1660,7 +1660,10 @@ export class Wheel {
    *   onDragStart?: () => void,
    *   onFling?: (velocityRadPerSec: number) => void | Promise<void>,
    *   onDragEndIdle?: () => void,
+   *   getFairDragSpin?: () => boolean,
    * }} [hooks]
+   * getFairDragSpin: when true, any intentional drag-release counts as a spin
+   * (not only a fast flick). App then runs a full timed spin instead of fling.
    */
   enablePointerDrag(el, hooks = {}) {
     if (!el || this._dragBound) return;
@@ -1811,8 +1814,26 @@ export class Wheel {
     this._spinSlices = null;
     this._slicesCache = null;
 
+    const fair =
+      typeof this._dragHooks?.getFairDragSpin === "function"
+        ? this._dragHooks.getFairDragSpin() === true
+        : false;
+    // How far the wheel was turned during this drag (rad)
+    let dragSpan = 0;
+    if (samples.length >= 2) {
+      dragSpan = Math.abs(
+        samples[samples.length - 1].rot - samples[0].rot
+      );
+    }
     const FLING_MIN = 2.2; // rad/s — below this, just leave wheel where it is
-    if (Math.abs(velocity) >= FLING_MIN && this.sections.length) {
+    // Fair mode: any intentional drag (not a dead click) starts a spin
+    const FAIR_DRAG_MIN = 0.2; // ~11°
+    const shouldSpin = this.sections.length
+      ? fair
+        ? dragSpan >= FAIR_DRAG_MIN || Math.abs(velocity) >= FLING_MIN * 0.35
+        : Math.abs(velocity) >= FLING_MIN
+      : false;
+    if (shouldSpin) {
       this._dragHooks?.onFling?.(velocity);
     } else {
       if (this.sliceRotatorEl) {

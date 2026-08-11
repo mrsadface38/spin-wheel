@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#148</span>
+        <span class="app-version" id="app-version" title="Update number">#149</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -367,6 +367,15 @@
               <input type="checkbox" id="chk-keyboard-spin" checked />
               <span>Keyboard spin (Space / Enter)</span>
             </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-fair-drag-spin" />
+              <span>Fair drag spin</span>
+            </label>
+            <small>
+              When on, dragging the wheel then releasing always starts a normal full-force spin
+              (uses Spin duration) instead of a flick based on mouse speed — more consistent / fair.
+              Off by default; d20 and coin flip turn this on.
+            </small>
             <label class="toggle-row">
               <input type="checkbox" id="chk-auto-spin" />
               <span>Auto spin</span>
