@@ -50,6 +50,7 @@ import {
   getWheelPreset,
   resolvePresetId,
   buildPresetState,
+  shuffledSolidWheelColors,
 } from "./presets.js";
 import { APP_UPDATE } from "./version.js";
 
@@ -3500,6 +3501,51 @@ $("#group-sfx-preview")?.addEventListener("click", async () => {
   } else {
     playGlobalLandSfx(state.sound.landVolume, true);
   }
+});
+
+/**
+ * Randomize member section colors with the solid d20 palette system
+ * (shuffled; blue next to cyan; no identical neighbors on the wheel).
+ */
+$("#btn-group-randomize-colors")?.addEventListener("click", async () => {
+  // Wheel order = state.sections array order among group members
+  const ordered = state.sections.filter((s) =>
+    pendingGroupMemberIds.has(s.id)
+  );
+  if (!ordered.length) {
+    alert(
+      "Add at least one section to this group first (Sections in this group list)."
+    );
+    return;
+  }
+  if (
+    !confirm(
+      `Randomize solid colors on ${ordered.length} section(s) in this group?\n\n` +
+        `Uses the same palette as d20 (red, blue, green, cyan, yellow, purple).\n` +
+        `Blue stays next to cyan; same colors won’t sit side by side.`
+    )
+  ) {
+    return;
+  }
+  checkpoint();
+  const colors = shuffledSolidWheelColors(ordered.length);
+  for (let i = 0; i < ordered.length; i++) {
+    const s = ordered[i];
+    const c = colors[i] || colors[0];
+    s.customColor = true;
+    s.color = c.color;
+    s.customTextColor = true;
+    s.textColor = c.text;
+  }
+  // Optional: turn on group color override with a random solid for the profile swatch
+  const swatch = colors[0] || { color: "#0000ff" };
+  if ($("#group-color")) $("#group-color").value = swatch.color;
+  if ($("#group-override-color")) $("#group-override-color").checked = false;
+  persist();
+  renderSections();
+  renderGroups();
+  await refreshWheel();
+  scheduleGroupLivePreview();
 });
 
 /** One-time copy of selected profile parts into member sections. */
@@ -8088,6 +8134,7 @@ function updateSpinUntilBgmUI() {
 function bindSpinDuration() {
   syncSpinDurationUI(state.spin.duration ?? 9);
   updateSpinUntilBgmUI();
+  syncLandZoneUI();
 }
 
 $("#chk-sound").addEventListener("change", () => {
@@ -8173,6 +8220,16 @@ $("#chk-spin-until-bgm-ends")?.addEventListener("change", async () => {
     }
   }
 });
+
+$("#spin-land-zone")?.addEventListener("input", () => {
+  checkpointContinuous();
+  let n = Number($("#spin-land-zone")?.value);
+  if (!Number.isFinite(n)) n = 99;
+  state.spin.landZonePct = Math.min(99, Math.max(1, Math.round(n)));
+  syncLandZoneUI();
+  persist();
+});
+$("#spin-land-zone")?.addEventListener("change", () => endContinuous());
 
 function applyDurationFromNumberInput(commit) {
   const raw = $("#spin-duration-input")?.value;

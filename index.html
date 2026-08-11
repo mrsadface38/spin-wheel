@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#143</span>
+        <span class="app-version" id="app-version" title="Update number">#144</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -1142,7 +1142,18 @@
 
             <label class="field">
               <span>Profile slice color</span>
-              <input type="color" id="group-color" value="#4a6cf7" />
+              <div class="slider-with-value">
+                <input type="color" id="group-color" value="#4a6cf7" />
+                <button
+                  type="button"
+                  id="btn-group-randomize-colors"
+                  class="btn small ghost"
+                  title="Assign solid d20-style colors to sections in this group (shuffled; blue next to cyan; no same color neighbors)"
+                >
+                  Randomize
+                </button>
+              </div>
+              <small>Randomize paints member sections with the solid palette (red / blue / green / cyan / yellow / purple), same rules as a new d20.</small>
             </label>
             <label class="field">
               <span>Profile text color</span>
