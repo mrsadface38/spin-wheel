@@ -473,9 +473,9 @@ export function defaultState() {
       /** Space / Enter to spin when not typing (default on). */
       keyboardSpin: true,
       /**
-       * When true, dragging the wheel then releasing always starts a normal
-       * full-force timed spin (uses Spin duration) instead of a velocity fling.
-       * Makes drag spins fair / consistent. Off by default; d20 & coin on.
+       * When true, a fast enough drag-release starts a normal full-force timed
+       * spin (Spin duration) instead of a velocity-matched fling. Still requires
+       * flick speed so slow aiming does not spin. Off by default; d20 & coin on.
        */
       fairDragSpin: false,
       /**

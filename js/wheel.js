@@ -1814,25 +1814,11 @@ export class Wheel {
     this._spinSlices = null;
     this._slicesCache = null;
 
-    const fair =
-      typeof this._dragHooks?.getFairDragSpin === "function"
-        ? this._dragHooks.getFairDragSpin() === true
-        : false;
-    // How far the wheel was turned during this drag (rad)
-    let dragSpan = 0;
-    if (samples.length >= 2) {
-      dragSpan = Math.abs(
-        samples[samples.length - 1].rot - samples[0].rot
-      );
-    }
-    const FLING_MIN = 2.2; // rad/s — below this, just leave wheel where it is
-    // Fair mode: any intentional drag (not a dead click) starts a spin
-    const FAIR_DRAG_MIN = 0.2; // ~11°
-    const shouldSpin = this.sections.length
-      ? fair
-        ? dragSpan >= FAIR_DRAG_MIN || Math.abs(velocity) >= FLING_MIN * 0.35
-        : Math.abs(velocity) >= FLING_MIN
-      : false;
+    // Both modes need a real flick speed; fair mode still uses full timed spin
+    // (app ignores velocity magnitude) but won't start on a slow park / aim drag.
+    const FLING_MIN = 2.2; // rad/s — below this, leave the wheel where it is
+    const shouldSpin =
+      this.sections.length > 0 && Math.abs(velocity) >= FLING_MIN;
     if (shouldSpin) {
       this._dragHooks?.onFling?.(velocity);
     } else {
