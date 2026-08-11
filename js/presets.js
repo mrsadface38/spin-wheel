@@ -11,19 +11,57 @@ import {
 } from "./state.js";
 
 /**
- * Rainbow spectrum for d20 faces (20 hues around the wheel).
- * Darker / saturated fills with readable text (light on deep colors, dark on bright).
+ * HSL → #rrggbb (app only accepts hex colors via normalizeHexColor).
+ * @param {number} h 0–360
+ * @param {number} s 0–100
+ * @param {number} l 0–100
+ */
+function hslToHex(h, s, l) {
+  const hh = ((Number(h) % 360) + 360) % 360;
+  const ss = Math.min(100, Math.max(0, Number(s))) / 100;
+  const ll = Math.min(100, Math.max(0, Number(l))) / 100;
+  const c = (1 - Math.abs(2 * ll - 1)) * ss;
+  const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
+  const m = ll - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hh < 60) {
+    r = c;
+    g = x;
+  } else if (hh < 120) {
+    r = x;
+    g = c;
+  } else if (hh < 180) {
+    g = c;
+    b = x;
+  } else if (hh < 240) {
+    g = x;
+    b = c;
+  } else if (hh < 300) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
+  }
+  const to = (v) => {
+    const n = Math.round((v + m) * 255);
+    return Math.min(255, Math.max(0, n)).toString(16).padStart(2, "0");
+  };
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+/**
+ * Rainbow spectrum for d20 faces (20 hues as hex — required by the color system).
  * @type {{ color: string, text: string }[]}
  */
 const D20_RAINBOW = (() => {
   const out = [];
   for (let i = 0; i < 20; i++) {
-    // Evenly spaced hues; slightly lower lightness for punchy “rainbow dice” look
-    const h = Math.round((i / 20) * 360);
-    const s = 78;
-    const l = 48;
-    const color = `hsl(${h} ${s}% ${l}%)`;
-    // Light text on mid/dark hues; dark text on yellow–lime band
+    const h = (i / 20) * 360;
+    const color = hslToHex(h, 78, 48);
+    // Dark text on yellow–lime band; white elsewhere
     const text = h >= 45 && h <= 75 ? "#1a1408" : "#ffffff";
     out.push({ color, text });
   }
