@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#128</span>
+        <span class="app-version" id="app-version" title="Update number">#129</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -172,7 +172,7 @@
           <div class="form-block">
             <h3>Spin</h3>
             <p class="hint">Double-click the wheel to spin.</p>
-            <label class="field">
+            <label class="field" id="spin-duration-field">
               <span>Duration</span>
               <div class="slider-with-value">
                 <input type="range" id="spin-duration" min="1" max="30" step="0.5" value="9" title="Quick scrub 1–30s" />
@@ -183,6 +183,13 @@
               </div>
               <small>Slider: 1–30s. Click the number to type any length (e.g. 45 or 0.5).</small>
             </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-spin-until-bgm-ends" />
+              <span>Spin until background music ends</span>
+            </label>
+            <p id="spin-until-bgm-hint" class="hint" hidden>
+              Spin length matches the current Sound → Background music track (plays once from the start). Fixed duration above is ignored.
+            </p>
           </div>
 
           <div class="form-block">

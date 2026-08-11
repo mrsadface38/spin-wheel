@@ -224,10 +224,13 @@ export class AudioManager {
   }
 
   /**
-   * Start looping background music from a loaded buffer key (e.g. "bgm").
+   * Start background music from a loaded buffer key (e.g. "bgm").
    * Restarts if already playing.
+   * @param {string} key
+   * @param {number} volume
+   * @param {{ loop?: boolean }} [opts] loop defaults true; false = play once
    */
-  startBgm(key, volume) {
+  startBgm(key, volume, opts = {}) {
     this.stopBgm();
     const buf = key ? this.buffers.get(key) : null;
     if (!buf) return false;
@@ -235,7 +238,7 @@ export class AudioManager {
     const src = ctx.createBufferSource();
     const gain = ctx.createGain();
     src.buffer = buf;
-    src.loop = true;
+    src.loop = opts.loop !== false;
     gain.gain.value = volume;
     src.connect(gain);
     gain.connect(this.master);
@@ -244,6 +247,17 @@ export class AudioManager {
     this.bgmGain = gain;
     this._trackActive(src);
     return true;
+  }
+
+  /**
+   * Duration of a loaded buffer in seconds, or 0 if missing.
+   * @param {string} key
+   * @returns {number}
+   */
+  getBufferDuration(key) {
+    const buf = key ? this.buffers.get(key) : null;
+    const d = buf?.duration;
+    return Number.isFinite(d) && d > 0 ? d : 0;
   }
 
   setBgmVolume(volume) {

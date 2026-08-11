@@ -891,22 +891,30 @@ function syncBgm() {
   }
 }
 
-function startBgmForSpin() {
+/**
+ * @param {{ untilBgmEnds?: boolean }} [opts]
+ */
+function startBgmForSpin(opts = {}) {
   if (!state.sound.enabled) return;
   if (state.sound.bgmMode !== "spin" && state.sound.bgmMode !== "always") return;
   // Next spin always returns to the wheel's own BGM
   const wasOverride = winBgmOverrideActive;
   winBgmOverrideActive = false;
+  const untilEnd =
+    opts.untilBgmEnds === true || state.spin?.untilBgmEnds === true;
   if (!audio.buffers.has("bgm")) {
     ensureBgmBuffer()
       .then((ok) => {
-        if (ok) startBgmForSpin();
+        if (ok) startBgmForSpin(opts);
       })
       .catch(() => {});
     return;
   }
-  if (!audio.isBgmPlaying || wasOverride) {
-    audio.startBgm("bgm", state.sound.bgmVolume ?? 0.4);
+  // Match-song mode: always restart from the start, play once (no loop)
+  if (untilEnd || !audio.isBgmPlaying || wasOverride) {
+    audio.startBgm("bgm", state.sound.bgmVolume ?? 0.4, {
+      loop: !untilEnd,
+    });
   } else {
     audio.setBgmVolume(state.sound.bgmVolume ?? 0.4);
   }
@@ -915,6 +923,20 @@ function startBgmForSpin() {
 function stopBgmAfterSpin() {
   // Keep win-section music through the result screen; only stop idle spin-BGM
   if (winBgmOverrideActive) return;
+  // Song-matched spins: track was one-shot; stop any leftover
+  if (state.spin?.untilBgmEnds === true) {
+    if (state.sound.bgmMode === "spin") {
+      audio.stopBgm();
+    } else if (state.sound.bgmMode === "always") {
+      // Resume looping ambient music after a song-length spin
+      void ensureBgmBuffer().then((ok) => {
+        if (ok && !winBgmOverrideActive) {
+          audio.startBgm("bgm", state.sound.bgmVolume ?? 0.4, { loop: true });
+        }
+      });
+    }
+    return;
+  }
   // Keep music if set to play always; stop if spin-only
   if (state.sound.bgmMode === "spin") {
     audio.stopBgm();
@@ -7982,6 +8004,28 @@ function clampSpinDuration(n) {
   return Math.min(SPIN_DURATION_MAX, Math.max(SPIN_DURATION_MIN, v));
 }
 
+/**
+ * Resolve how long this timed spin should last (seconds).
+ * When “spin until BGM ends” is on, uses the loaded track length.
+ */
+async function resolveSpinDurationSec() {
+  const fallback = clampSpinDuration(state.spin?.duration ?? 9);
+  if (state.spin?.untilBgmEnds !== true) return fallback;
+  if (!state.sound?.enabled || state.sound.bgmMode === "off") {
+    return fallback;
+  }
+  try {
+    const ok = await ensureBgmBuffer();
+    if (!ok) return fallback;
+    const d = audio.getBufferDuration("bgm");
+    if (!(d > 0.25)) return fallback;
+    return clampSpinDuration(d);
+  } catch (err) {
+    console.warn("BGM duration for spin:", err);
+    return fallback;
+  }
+}
+
 /** Sync slider + number field from state (slider clamps to its 1–30 range only). */
 function syncSpinDurationUI(dur = state.spin.duration) {
   const d = clampSpinDuration(dur);
@@ -7994,10 +8038,39 @@ function syncSpinDurationUI(dur = state.spin.duration) {
     const scrub = Math.min(SPIN_SLIDER_MAX, Math.max(SPIN_SLIDER_MIN, d));
     slider.value = String(scrub);
   }
+  updateSpinUntilBgmUI();
+}
+
+function updateSpinUntilBgmUI() {
+  const on = state.spin?.untilBgmEnds === true;
+  const chk = $("#chk-spin-until-bgm-ends");
+  if (chk) chk.checked = on;
+  const field = $("#spin-duration-field");
+  if (field) {
+    field.classList.toggle("is-disabled", on);
+    field.querySelectorAll("input").forEach((el) => {
+      el.disabled = on;
+    });
+  }
+  const hint = $("#spin-until-bgm-hint");
+  if (hint) {
+    hint.hidden = !on;
+    if (on) {
+      const d = audio.getBufferDuration?.("bgm") || 0;
+      if (d > 0.25) {
+        const sec = Math.round(d * 10) / 10;
+        hint.textContent = `Spin length matches the current BGM track (~${sec}s). Music plays once from the start. Fixed duration is ignored.`;
+      } else {
+        hint.textContent =
+          "Spin length matches the current Sound → Background music track (plays once from the start). Fixed duration above is ignored. Load/play music once if length shows later.";
+      }
+    }
+  }
 }
 
 function bindSpinDuration() {
   syncSpinDurationUI(state.spin.duration ?? 9);
+  updateSpinUntilBgmUI();
 }
 
 $("#chk-sound").addEventListener("change", () => {
@@ -8067,6 +8140,22 @@ $("#spin-duration")?.addEventListener("input", () => {
   persist();
 });
 $("#spin-duration")?.addEventListener("change", () => endContinuous());
+
+$("#chk-spin-until-bgm-ends")?.addEventListener("change", async () => {
+  checkpoint();
+  state.spin.untilBgmEnds = $("#chk-spin-until-bgm-ends")?.checked === true;
+  updateSpinUntilBgmUI();
+  persist();
+  // Prefetch track length for the hint
+  if (state.spin.untilBgmEnds) {
+    try {
+      await ensureBgmBuffer();
+      updateSpinUntilBgmUI();
+    } catch {
+      /* ignore */
+    }
+  }
+});
 
 function applyDurationFromNumberInput(commit) {
   const raw = $("#spin-duration-input")?.value;
@@ -9327,7 +9416,10 @@ async function beginSpinSession() {
   spinBusy = true;
   hideResults();
   startSpinLoopIfNeeded();
-  startBgmForSpin();
+  // untilBgmEnds: play once from the start; otherwise normal looping BGM
+  startBgmForSpin({
+    untilBgmEnds: state.spin?.untilBgmEnds === true,
+  });
   return true;
 }
 
@@ -9365,6 +9457,24 @@ function endSpinSession() {
 async function doSpin(opts = {}) {
   if (spinBusy || wheel.spinning || wheel._dragging) return;
   if (!opts.fromLandAction) landActionChainDepth = 0;
+  // Resolve duration before session so BGM-until-end can load the track
+  const untilBgm = state.spin?.untilBgmEnds === true;
+  let durationSec = clampSpinDuration(state.spin?.duration ?? 9);
+  if (untilBgm) {
+    try {
+      durationSec = await resolveSpinDurationSec();
+    } catch {
+      /* keep fallback */
+    }
+  }
+  // Prefetch BGM before session so startBgmForSpin can play once for full length
+  if (untilBgm) {
+    try {
+      await ensureBgmBuffer();
+    } catch {
+      /* ignore */
+    }
+  }
   if (!(await beginSpinSession())) return;
   /** @type {{ id: string, label?: string } | null} */
   let win = null;
@@ -9372,7 +9482,7 @@ async function doSpin(opts = {}) {
   let resultOpts = {};
   try {
     const rig = getSpinRigOptions();
-    win = await wheel.spin(clampSpinDuration(state.spin.duration), rig);
+    win = await wheel.spin(durationSec, rig);
     // null = grab-interrupted mid-spin (user took over with drag)
     if (win) {
       resultOpts = {

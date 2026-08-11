@@ -521,6 +521,11 @@ export function defaultState() {
     },
     spin: {
       duration: 9,
+      /**
+       * When true, timed spins last as long as the current BGM track
+       * (music plays once from the start; fixed Duration is ignored).
+       */
+      untilBgmEnds: false,
     },
     /** Hidden “rig it” controls (unlock via UI gesture) */
     secret: {
@@ -684,6 +689,12 @@ function migrate(data) {
     }
     look.resultStyle = "center";
   }
+  {
+    let d = Number(spin.duration);
+    if (!Number.isFinite(d)) d = base.spin.duration;
+    spin.duration = Math.min(600, Math.max(0.1, d));
+  }
+  spin.untilBgmEnds = spin.untilBgmEnds === true;
   const groups =
     Array.isArray(data.groups) && data.groups.length
       ? data.groups.map((g) => normalizeGroup(g))
