@@ -434,7 +434,7 @@ export function defaultState() {
       autoDismissSec: 0,
       /**
        * Automatically spin on an interval while the page is open.
-       * Interval = autoSpinEvery × unit (minutes | hours | days).
+       * Interval = autoSpinEvery × unit (seconds | minutes | hours | days).
        */
       autoSpin: false,
       autoSpinEvery: 5,
@@ -631,7 +631,8 @@ function migrate(data) {
   }
   {
     const u = look.autoSpinUnit;
-    if (u === "hours" || u === "hr") look.autoSpinUnit = "hours";
+    if (u === "seconds" || u === "sec") look.autoSpinUnit = "seconds";
+    else if (u === "hours" || u === "hr") look.autoSpinUnit = "hours";
     else if (u === "days") look.autoSpinUnit = "days";
     else look.autoSpinUnit = "minutes";
   }

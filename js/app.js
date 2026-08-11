@@ -4967,7 +4967,7 @@ function bindLook() {
     const u = state.look.autoSpinUnit;
     if ($("#auto-spin-unit")) {
       $("#auto-spin-unit").value =
-        u === "hours" || u === "days" ? u : "minutes";
+        u === "seconds" || u === "hours" || u === "days" ? u : "minutes";
     }
   }
   updateAutoSpinUI();
@@ -7328,7 +7328,7 @@ async function onLookChange() {
     }
     const u = $("#auto-spin-unit")?.value;
     state.look.autoSpinUnit =
-      u === "hours" || u === "days" ? u : "minutes";
+      u === "seconds" || u === "hours" || u === "days" ? u : "minutes";
   }
   updateAutoSpinUI();
   if ($("#auto-dismiss-sec")) {
@@ -8618,10 +8618,12 @@ function getAutoSpinIntervalMs() {
   if (!Number.isFinite(n) || n < 1) n = 1;
   n = Math.min(9999, Math.round(n));
   const unit = state.look.autoSpinUnit;
-  let ms = n * 60_000; // minutes
-  if (unit === "hours") ms = n * 3_600_000;
+  let ms = n * 60_000; // minutes default
+  if (unit === "seconds") ms = n * 1_000;
+  else if (unit === "hours") ms = n * 3_600_000;
   else if (unit === "days") ms = n * 86_400_000;
-  return Math.min(AUTO_SPIN_MAX_DELAY_MS, Math.max(60_000, ms));
+  // Min 1s so we never fire in a tight loop; browser max ~24.8d for setTimeout
+  return Math.min(AUTO_SPIN_MAX_DELAY_MS, Math.max(1_000, ms));
 }
 
 function clearAutoSpinTimer() {
