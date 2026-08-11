@@ -8057,7 +8057,7 @@ async function onLookChange() {
   scheduleAutoSpin();
 }
 
-["bg-color", "center-color", "center-size", "border-color", "text-color", "text-style", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "auto-dismiss-sec", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "border-color", "text-color", "text-style", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-fair-drag-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -8066,6 +8066,70 @@ async function onLookChange() {
     });
   }
 );
+
+/**
+ * Parse auto-dismiss seconds from the Look field.
+ * Allows mid-edit empty / "-" without forcing "0" back into the box.
+ * @param {string} raw
+ * @param {{ commitEmpty?: boolean }} [opts]
+ * @returns {number|null} null = leave field alone (incomplete edit)
+ */
+function parseAutoDismissSec(raw, opts = {}) {
+  const s = String(raw ?? "").trim();
+  if (s === "" || s === "-") {
+    return opts.commitEmpty ? 0 : null;
+  }
+  let ad = Number(s);
+  if (!Number.isFinite(ad)) {
+    return opts.commitEmpty ? 0 : null;
+  }
+  if (ad < 0) ad = -1;
+  else ad = Math.min(99999, Math.max(0, Math.round(ad)));
+  return ad;
+}
+
+/** Commit auto-dismiss field → state (clamp + rewrite display). */
+function commitAutoDismissSec() {
+  const el = $("#auto-dismiss-sec");
+  if (!el) return;
+  const ad = parseAutoDismissSec(el.value, { commitEmpty: true });
+  const n = ad == null ? 0 : ad;
+  state.look.autoDismissSec = n;
+  el.value = String(n);
+}
+
+$("#auto-dismiss-sec")?.addEventListener("input", () => {
+  checkpointContinuous();
+  const el = $("#auto-dismiss-sec");
+  if (!el) return;
+  // Free typing: don't rewrite the input (so you can delete 0 / type -1)
+  const ad = parseAutoDismissSec(el.value, { commitEmpty: false });
+  if (ad != null) {
+    state.look.autoDismissSec = ad;
+    persist();
+  }
+});
+$("#auto-dismiss-sec")?.addEventListener("change", () => {
+  checkpoint();
+  commitAutoDismissSec();
+  persist();
+  endContinuous();
+});
+$("#auto-dismiss-sec")?.addEventListener("blur", () => {
+  // Ensure empty/partial is normalized when leaving the field
+  commitAutoDismissSec();
+  persist();
+  endContinuous();
+});
+$("#auto-dismiss-sec")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    commitAutoDismissSec();
+    persist();
+    endContinuous();
+    e.currentTarget?.blur?.();
+  }
+});
 
 function updateLookWinEffectCustomUI() {
   const row = $("#look-win-effect-custom-row");
