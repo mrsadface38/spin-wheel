@@ -1691,9 +1691,10 @@ export class Wheel {
    *   onFling?: (velocityRadPerSec: number) => void | Promise<void>,
    *   onDragEndIdle?: () => void,
    *   getFairDragSpin?: () => boolean,
+   *   getAllowWheelDrag?: () => boolean,
    * }} [hooks]
-   * getFairDragSpin: when true, any intentional drag-release counts as a spin
-   * (not only a fast flick). App then runs a full timed spin instead of fling.
+   * getFairDragSpin: fair full-force timed spin on flick.
+   * getAllowWheelDrag: when false, pointer drag on the wheel is ignored.
    */
   enablePointerDrag(el, hooks = {}) {
     if (!el || this._dragBound) return;

@@ -562,6 +562,11 @@ export function defaultState() {
       /** Space / Enter to spin when not typing (default on). */
       keyboardSpin: true,
       /**
+       * When false, mouse/touch drag on the wheel is disabled
+       * (no aim-drag, flick, or grab mid-spin). Double-click / keyboard still spin.
+       */
+      allowWheelDrag: true,
+      /**
        * When true, a fast enough drag-release starts a normal full-force timed
        * spin (Spin duration) instead of a velocity-matched fling. Still requires
        * flick speed so slow aiming does not spin. Off by default; d20 & coin on.
