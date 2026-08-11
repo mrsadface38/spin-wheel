@@ -16,7 +16,7 @@ const D20_RED = { color: "#ff0000", text: "#ffffff" }; // 255, 0, 0
 const D20_GREEN = { color: "#00ff00", text: "#1a1408" }; // 0, 255, 0
 const D20_CYAN = { color: "#00ffff", text: "#1a1408" }; // 0, 255, 255
 const D20_ORANGE = { color: "#ffff00", text: "#1a1408" }; // 255, 255, 0 (as specified)
-const D20_PURPLE = { color: "#ff00ff", text: "#ffffff" }; // 255, 0, 255
+const D20_PURPLE = { color: "#a600ff", text: "#ffffff" }; // 166, 0, 255
 
 /** @template T @param {T[]} arr */
 function shuffleInPlace(arr) {
