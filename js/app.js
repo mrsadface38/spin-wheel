@@ -8031,14 +8031,7 @@ async function onLookChange() {
       u === "seconds" || u === "hours" || u === "days" ? u : "minutes";
   }
   updateAutoSpinUI();
-  if ($("#auto-dismiss-sec")) {
-    let ad = Number($("#auto-dismiss-sec").value);
-    if (!Number.isFinite(ad)) ad = 0;
-    if (ad < 0) ad = -1;
-    else ad = Math.min(99999, Math.max(0, Math.round(ad)));
-    state.look.autoDismissSec = ad;
-    $("#auto-dismiss-sec").value = String(ad);
-  }
+  // auto-dismiss-sec: committed by commitAutoDismissSec (allow free typing / clear 0)
   {
     let min = Number($("#weight-slider-min")?.value);
     let max = Number($("#weight-slider-max")?.value);
@@ -10560,9 +10553,10 @@ async function init() {
           }
         },
         onFling: (vel) => {
-          // Fair mode: ignore mouse velocity — always a normal full-force timed spin
+          // Fair mode: full-force timed spin, but same direction as the flick
           if (state.look?.fairDragSpin === true) {
-            void doSpin();
+            const dir = Number(vel) < 0 ? -1 : 1;
+            void doSpin({ spinDirection: dir });
             return;
           }
           doFling(vel);
