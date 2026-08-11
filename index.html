@@ -12,7 +12,7 @@
       <div class="brand">
         <span class="brand-icon">🎡</span>
         <h1>The Sad Wheel</h1>
-        <span class="app-version" id="app-version" title="Update number">#122</span>
+        <span class="app-version" id="app-version" title="Update number">#123</span>
       </div>
       <div class="wheel-switcher" title="Saved wheels — switch anytime; each is saved separately">
         <label class="wheel-switcher-label" for="wheel-select">Wheel</label>
@@ -359,18 +359,20 @@
               <small>While this page is open, spin automatically on this interval. Works best with Auto-dismiss or Don’t show results so the win screen doesn’t block the next spin.</small>
             </label>
             <label class="field">
-              <span>Auto-dismiss result</span>
-              <select id="auto-dismiss-sec" title="How long to show the win screen, or skip it entirely">
-                <option value="0">Off (show until Continue)</option>
-                <option value="-1">Don't show results</option>
-                <option value="3">3 seconds</option>
-                <option value="5">5 seconds</option>
-                <option value="8">8 seconds</option>
-                <option value="10">10 seconds</option>
-                <option value="15">15 seconds</option>
-                <option value="30">30 seconds</option>
-              </select>
-              <small>Don't show results skips the win screen (history if tracking is on, confetti, and eliminate-after-win still run). Timed options auto-close Continue for you.</small>
+              <span>Auto-dismiss result (seconds)</span>
+              <div class="slider-with-value">
+                <input
+                  type="number"
+                  id="auto-dismiss-sec"
+                  min="-1"
+                  max="99999"
+                  step="1"
+                  value="0"
+                  title="Seconds to show the win screen (0 = until Continue, -1 = don't show results)"
+                />
+                <span class="slider-value">sec</span>
+              </div>
+              <small><strong>0</strong> = show until Continue. <strong>Positive number</strong> = auto-close after that many seconds. <strong>−1</strong> = don’t show results (history / confetti / eliminate still run).</small>
             </label>
           </div>
 

@@ -4972,10 +4972,11 @@ function bindLook() {
   }
   updateAutoSpinUI();
   if ($("#auto-dismiss-sec")) {
-    const ad = Number(state.look.autoDismissSec);
-    const allowed = ["-1", "0", "3", "5", "8", "10", "15", "30"];
-    const v = String(Number.isFinite(ad) ? ad : 0);
-    $("#auto-dismiss-sec").value = allowed.includes(v) ? v : "0";
+    let ad = Number(state.look.autoDismissSec);
+    if (!Number.isFinite(ad)) ad = 0;
+    if (ad < 0) ad = -1;
+    else ad = Math.min(99999, Math.round(ad));
+    $("#auto-dismiss-sec").value = String(ad);
   }
   {
     const opts = getWeightSliderOpts();
@@ -5520,7 +5521,7 @@ function scheduleAutoDismiss() {
   let sec = Number(state.look?.autoDismissSec);
   // 0 = keep open; -1 = never show overlay (handled in showResult)
   if (!Number.isFinite(sec) || sec <= 0) return;
-  sec = Math.min(120, Math.max(1, Math.round(sec)));
+  sec = Math.min(99999, Math.max(1, Math.round(sec)));
   autoDismissTimer = setTimeout(() => {
     autoDismissTimer = 0;
     try {
@@ -7334,8 +7335,9 @@ async function onLookChange() {
     let ad = Number($("#auto-dismiss-sec").value);
     if (!Number.isFinite(ad)) ad = 0;
     if (ad < 0) ad = -1;
-    else ad = Math.min(120, Math.round(ad));
+    else ad = Math.min(99999, Math.max(0, Math.round(ad)));
     state.look.autoDismissSec = ad;
+    $("#auto-dismiss-sec").value = String(ad);
   }
   {
     let min = Number($("#weight-slider-min")?.value);

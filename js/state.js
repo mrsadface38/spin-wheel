@@ -427,7 +427,7 @@ export function defaultState() {
       /** Space / Enter to spin when not typing (default on). */
       keyboardSpin: true,
       /**
-       * Auto-dismiss win screen after N seconds.
+       * Auto-dismiss win screen after N seconds (free-form number).
        * 0 = off (show until Continue), -1 = never show result overlay,
        * positive = auto-close after that many seconds.
        */
@@ -618,9 +618,9 @@ function migrate(data) {
   {
     let ad = Number(look.autoDismissSec);
     if (!Number.isFinite(ad)) ad = 0;
-    // -1 = don't show results; 0 = manual dismiss; 1–120 = auto-dismiss
+    // -1 = don't show results; 0 = manual dismiss; positive = auto-dismiss seconds
     if (ad < 0) ad = -1;
-    else ad = Math.min(120, Math.round(ad));
+    else ad = Math.min(99999, Math.round(ad));
     look.autoDismissSec = ad;
   }
   look.autoSpin = look.autoSpin === true;
