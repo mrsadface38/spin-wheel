@@ -75,3 +75,28 @@ export function computeFillImageLayout({
 export function normalizeImageLayoutMode(v) {
   return v === "fixed" ? "fixed" : "slice";
 }
+
+/**
+ * Box size for a full-slice fill image: fit the whole image inside a
+ * diameter×diameter frame (contain), preserving aspect ratio.
+ * Wide / tall sources are not cropped to a square.
+ *
+ * @param {number} radius CSS px wheel radius
+ * @param {number} [naturalW]
+ * @param {number} [naturalH]
+ * @returns {{ width: number, height: number }}
+ */
+export function computeFillImageBox(radius, naturalW, naturalH) {
+  const base = Math.max(1, Number(radius) || 1) * 2;
+  const nw = Number(naturalW);
+  const nh = Number(naturalH);
+  if (!Number.isFinite(nw) || !Number.isFinite(nh) || nw < 1 || nh < 1) {
+    // Unknown size — temporary square until the image loads
+    return { width: base, height: base };
+  }
+  const aspect = nw / nh;
+  if (aspect >= 1) {
+    return { width: base, height: base / aspect };
+  }
+  return { width: base * aspect, height: base };
+}

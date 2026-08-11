@@ -4,6 +4,7 @@
  */
 
 import {
+  computeFillImageBox,
   computeFillImageLayout,
   normalizeImageLayoutMode,
 } from "./slice-image-layout.js";
@@ -670,6 +671,7 @@ export class Wheel {
    * Place full-slice image (static <img> or animated canvas proxy).
    * fixed  → top-oriented frame (matches section editor)
    * slice  → rotated to wedge mid so editor framing maps to the real slice
+   * Box keeps the image's aspect ratio (no crop of wide/tall sources).
    */
   _layoutFillImage(wedge, sl, radius) {
     const layoutMode = normalizeImageLayoutMode(this.look.imageLayoutMode);
@@ -689,9 +691,25 @@ export class Wheel {
     const img = wedge.querySelector("img.slice-bg-fill");
     if (!img) return;
 
-    const box = radius * 2;
-    img.style.width = `${box}px`;
-    img.style.height = `${box}px`;
+    // Re-layout once natural size is known (wide images were square-cropped)
+    if (!img.complete || !img.naturalWidth) {
+      if (!img.dataset.fillLayoutBound) {
+        img.dataset.fillLayoutBound = "1";
+        img.addEventListener(
+          "load",
+          () => {
+            if (this.sliceRotatorEl?.contains(img)) {
+              this._layoutFillImage(wedge, sl, radius);
+            }
+          },
+          { once: true }
+        );
+      }
+    }
+
+    const box = computeFillImageBox(radius, img.naturalWidth, img.naturalHeight);
+    img.style.width = `${box.width}px`;
+    img.style.height = `${box.height}px`;
     img.style.left = `${layout.left}px`;
     img.style.top = `${layout.top}px`;
   }

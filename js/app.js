@@ -42,6 +42,7 @@ import {
 import { AudioManager } from "./audio.js";
 import { Wheel } from "./wheel.js";
 import {
+  computeFillImageBox,
   computeFillImageLayout,
   normalizeImageLayoutMode,
 } from "./slice-image-layout.js";
@@ -4466,11 +4467,22 @@ function drawSliceLivePreview({ stage, canvas, media, labelEl, metaEl, draft, me
         offsetYPct: draft.imageFillOffsetY,
       });
       wedge.style.setProperty("--fill-scale", String(layout.fillScale));
-      const box = radiusCss * 2;
-      img.style.width = `${box}px`;
-      img.style.height = `${box}px`;
-      img.style.left = `${layout.left}px`;
-      img.style.top = `${layout.top}px`;
+      // Keep full image aspect ratio (wide sources are not square-cropped)
+      const applyBox = () => {
+        const box = computeFillImageBox(
+          radiusCss,
+          img.naturalWidth,
+          img.naturalHeight
+        );
+        img.style.width = `${box.width}px`;
+        img.style.height = `${box.height}px`;
+        img.style.left = `${layout.left}px`;
+        img.style.top = `${layout.top}px`;
+      };
+      applyBox();
+      if (!img.complete || !img.naturalWidth) {
+        img.addEventListener("load", applyBox, { once: true });
+      }
       wedge.appendChild(img);
     }
 

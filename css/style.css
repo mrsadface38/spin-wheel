@@ -714,10 +714,8 @@ body.focus-mode .stage-panel {
 
 .slice-bg-wedge.mode-fill > img.slice-bg-fill {
   position: absolute;
-  /* left/top set in JS to the middle of the slice (+ offset) */
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  /* left/top + width/height set in JS (aspect-preserving box, no crop) */
+  object-fit: contain;
   object-position: center;
   display: block;
   transform: translate(-50%, -50%) scale(var(--fill-scale, 1))
