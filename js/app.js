@@ -8795,7 +8795,7 @@ async function buildShareCopyUrl(payload) {
       "If paste fails, use Export JSON.\n\n";
   }
 
-  // 4) Last resort: long compact or full mega-link
+  // 4) Last resort: always still a link (never a file download)
   if (!appUrl) {
     const slim = stripSharePayloadMedia(payload);
     let slimB64 = "";
@@ -8804,21 +8804,23 @@ async function buildShareCopyUrl(payload) {
     } catch {
       slimB64 = "";
     }
-    if (slimB64 && slimB64.length <= 100000) {
+    if (slimB64) {
       appUrl = `${base}#wheel=${slimB64}`;
       compact = true;
       mediaStripped = true;
       note =
         "Long compact link (images/sounds removed — hosting was unavailable).\n" +
-        "For full images use Export JSON (permanent).\n\n";
+        "Paste may fail in some apps if it is huge — try Share again later for a short link.\n\n";
     } else if (b64) {
       appUrl = `${base}#wheel=${b64}`;
       inline = true;
       note =
-        "Full mega-link (very long — hosting was unavailable).\n" +
-        "Prefer Export JSON if paste fails — that file does not expire.\n\n";
+        "Long share link (hosting was unavailable).\n" +
+        "If paste fails, try Share again when online.\n\n";
     } else {
-      throw new Error("Could not build any share URL");
+      throw new Error(
+        "Could not build a share link. Check your connection and try again."
+      );
     }
   }
 
@@ -8867,10 +8869,6 @@ async function shareCurrentWheel() {
   syncUiPrefsIntoState();
   library = writeActiveState(library, state);
   const payload = getCurrentWheelSharePayload();
-  const safeName = String(payload.name || "wheel")
-    .replace(/[^\w\-]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40) || "wheel";
 
   const btn = $("#btn-share-wheel");
   const prevLabel = btn?.textContent;
@@ -8879,7 +8877,11 @@ async function shareCurrentWheel() {
     btn.textContent = "Sharing…";
   }
   try {
+    // Always a pasteable link — never download a file from Share
     const built = await buildShareCopyUrl(payload);
+    if (!built?.shareUrl) {
+      throw new Error("No share URL was produced");
+    }
     const kind = built.shortened
       ? "Short link"
       : built.hosted
@@ -8891,22 +8893,20 @@ async function shareCurrentWheel() {
       built.shareUrl,
       `${built.note}${kind} ready.\n\n`
     );
-    return;
   } catch (err) {
     console.warn("Share link failed:", err);
+    alert(
+      "Could not create a share link.\n\n" +
+        (err?.message || err || "Unknown error") +
+        "\n\nCheck your internet connection and try again. " +
+        "Use Export only if you want a file on purpose."
+    );
   } finally {
     if (btn) {
       btn.disabled = false;
       btn.textContent = prevLabel || "Share";
     }
   }
-
-  // Only if nothing else worked
-  downloadJson(`sad-wheel-${safeName}.json`, payload);
-  alert(
-    "Could not create a short share link (hosting may be blocked or full).\n\n" +
-      "Downloaded a JSON file instead — send that file and use Import."
-  );
 }
 
 $("#btn-share-wheel")?.addEventListener("click", () => {
