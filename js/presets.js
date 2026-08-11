@@ -30,46 +30,93 @@ function shuffleInPlace(arr) {
 }
 
 /**
- * True random order of 20 face colors from the solid set.
- * Blue+cyan are always placed as adjacent pairs (never split).
- * Does NOT tile a fixed 6-step pattern (that looked unshuffled).
+ * @param {{ color: string, text: string }[]} colors
+ * @returns {boolean}
+ */
+function d20ColorsOk(colors) {
+  if (!colors || colors.length !== 20) return false;
+  for (let i = 0; i < 20; i++) {
+    // No identical colors as neighbors (including last↔first on the wheel)
+    if (colors[i].color === colors[(i + 1) % 20].color) return false;
+  }
+  // Every blue next to a cyan, every cyan next to a blue
+  for (let i = 0; i < 20; i++) {
+    const c = colors[i].color;
+    if (c !== D20_BLUE.color && c !== D20_CYAN.color) continue;
+    const other = c === D20_BLUE.color ? D20_CYAN.color : D20_BLUE.color;
+    const left = colors[(i - 1 + 20) % 20].color;
+    const right = colors[(i + 1) % 20].color;
+    if (left !== other && right !== other) return false;
+  }
+  return true;
+}
+
+/**
+ * Random 20-face coloring from the solid set.
+ * - Blue+cyan always adjacent (glued pairs)
+ * - Same color never next to itself (including wheel wrap)
  * @returns {{ color: string, text: string }[]}
  */
 function shuffledD20Colors() {
-  /** @type {{ color: string, text: string }[][]} */
-  const units = [];
+  const makePair = () =>
+    Math.random() < 0.5
+      ? [{ ...D20_BLUE }, { ...D20_CYAN }]
+      : [{ ...D20_CYAN }, { ...D20_BLUE }];
 
-  // 3 blue↔cyan pairs (6 faces) — always neighbors on the wheel
-  for (let i = 0; i < 3; i++) {
-    const pair =
-      Math.random() < 0.5
-        ? [{ ...D20_BLUE }, { ...D20_CYAN }]
-        : [{ ...D20_CYAN }, { ...D20_BLUE }];
-    units.push(pair);
+  for (let attempt = 0; attempt < 400; attempt++) {
+    /** @type {{ color: string, text: string }[][]} */
+    const units = [];
+    // 3 blue↔cyan pairs (6 faces)
+    for (let i = 0; i < 3; i++) units.push(makePair());
+    // 14 singles: red×4, green×4, orange×3, purple×3
+    const singles = [
+      D20_RED,
+      D20_RED,
+      D20_RED,
+      D20_RED,
+      D20_GREEN,
+      D20_GREEN,
+      D20_GREEN,
+      D20_GREEN,
+      D20_ORANGE,
+      D20_ORANGE,
+      D20_ORANGE,
+      D20_PURPLE,
+      D20_PURPLE,
+      D20_PURPLE,
+    ].map((c) => [{ ...c }]);
+    for (const s of singles) units.push(s);
+
+    shuffleInPlace(units);
+    // Randomly flip pair orientation a few times while searching
+    for (let fix = 0; fix < 40; fix++) {
+      const flat = units.flat();
+      if (d20ColorsOk(flat)) return flat;
+      // Flip a random pair unit to break cyan-cyan / blue-blue at junctions
+      const pairs = units.filter((u) => u.length === 2);
+      if (pairs.length) {
+        const p = pairs[Math.floor(Math.random() * pairs.length)];
+        p.reverse();
+      }
+      if (fix % 6 === 5) shuffleInPlace(units);
+    }
   }
 
-  // 14 singles from red / green / orange / purple (4+4+3+3)
-  const singles = [
+  // Deterministic fallback: alternate so no same-color neighbors
+  const fallback = [];
+  const seq = [
     D20_RED,
-    D20_RED,
-    D20_RED,
-    D20_RED,
+    D20_BLUE,
     D20_GREEN,
-    D20_GREEN,
-    D20_GREEN,
-    D20_GREEN,
-    D20_ORANGE,
-    D20_ORANGE,
+    D20_CYAN,
     D20_ORANGE,
     D20_PURPLE,
-    D20_PURPLE,
-    D20_PURPLE,
-  ].map((c) => [{ ...c }]);
-  for (const s of singles) units.push(s);
-
-  // Shuffle blocks, then flatten → fully mixed ring, blue always next to cyan
-  shuffleInPlace(units);
-  return units.flat();
+  ];
+  for (let i = 0; i < 20; i++) {
+    fallback.push({ ...seq[i % seq.length] });
+  }
+  // seq length 6: blue next to cyan in positions 1-2, 7-8, …; wrap is purple-red OK
+  return fallback;
 }
 
 /**
