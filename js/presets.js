@@ -445,7 +445,23 @@ export function d20FaceOrder() {
 }
 
 /**
- * Classic coin flip: Heads / Tails, equal weight.
+ * Empty wheel — one group, no sections (start from scratch).
+ * @returns {ReturnType<typeof defaultState>}
+ */
+export function blankWheelState() {
+  const base = defaultState();
+  const g = normalizeGroup({ id: uid("grp"), name: "Main", active: true });
+  return {
+    ...base,
+    presetId: "blank",
+    groups: [g],
+    sections: [],
+    yourOrderIds: [],
+  };
+}
+
+/**
+ * Classic coin flip: Heads or Tails, equal weight.
  * @returns {ReturnType<typeof defaultState>}
  */
 export function coinFlipState() {
@@ -628,6 +644,13 @@ export function buildPresetState(presetId = "default") {
 
 /** @type {WheelPreset[]} */
 export const WHEEL_PRESETS = [
+  {
+    id: "blank",
+    name: "Blank",
+    description: "Empty wheel — add your own sections",
+    defaultName: "New wheel",
+    build: () => blankWheelState(),
+  },
   {
     id: "default",
     name: "Default",
