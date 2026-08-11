@@ -10,13 +10,13 @@ import {
   uid,
 } from "./state.js";
 
-/** Solid d20 palette: green, blue, red, yellow, cyan, purple (hex only). */
-const D20_BLUE = { color: "#1e88e5", text: "#ffffff" };
-const D20_CYAN = { color: "#00acc1", text: "#ffffff" };
-const D20_RED = { color: "#e53935", text: "#ffffff" };
-const D20_GREEN = { color: "#43a047", text: "#ffffff" };
-const D20_YELLOW = { color: "#fdd835", text: "#1a1408" };
-const D20_PURPLE = { color: "#8e24aa", text: "#ffffff" };
+/** Solid d20 palette — pure RGB (hex only for normalizeHexColor). */
+const D20_BLUE = { color: "#0000ff", text: "#ffffff" }; // 0, 0, 255
+const D20_RED = { color: "#ff0000", text: "#ffffff" }; // 255, 0, 0
+const D20_GREEN = { color: "#00ff00", text: "#1a1408" }; // 0, 255, 0
+const D20_CYAN = { color: "#00ffff", text: "#1a1408" }; // 0, 255, 255
+const D20_ORANGE = { color: "#ffff00", text: "#1a1408" }; // 255, 255, 0 (as specified)
+const D20_PURPLE = { color: "#ff00ff", text: "#ffffff" }; // 255, 0, 255
 
 /** @template T @param {T[]} arr */
 function shuffleInPlace(arr) {
@@ -48,7 +48,7 @@ function shuffledD20Colors() {
     units.push(pair);
   }
 
-  // 14 singles from red / green / yellow / purple (4+4+3+3)
+  // 14 singles from red / green / orange / purple (4+4+3+3)
   const singles = [
     D20_RED,
     D20_RED,
@@ -58,9 +58,9 @@ function shuffledD20Colors() {
     D20_GREEN,
     D20_GREEN,
     D20_GREEN,
-    D20_YELLOW,
-    D20_YELLOW,
-    D20_YELLOW,
+    D20_ORANGE,
+    D20_ORANGE,
+    D20_ORANGE,
     D20_PURPLE,
     D20_PURPLE,
     D20_PURPLE,
