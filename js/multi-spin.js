@@ -1665,20 +1665,16 @@ export function createMultiSpinController(deps) {
 
     /**
      * Start/queue spins without awaiting (so Wait off can continue).
+     * First spin starts if idle; the rest always enqueue (avoids racing busy).
      * @returns {{ queued: number, started: number }}
      */
     function fireTimes(targetTile) {
       let queued = 0;
       let started = 0;
       for (let i = 0; i < times; i++) {
-        if (isTileBusy(targetTile)) {
-          enqueueSpin(targetTile, nextOpts);
-          queued += 1;
-        } else if (i === 0) {
-          // First free spin starts immediately (don't await)
+        if (i === 0 && !isTileBusy(targetTile)) {
           void spinTile(targetTile, nextOpts);
-          started += 1;
-          // Further times queue (target will be busy)
+          started = 1;
         } else {
           enqueueSpin(targetTile, nextOpts);
           queued += 1;
