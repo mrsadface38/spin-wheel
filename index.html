@@ -47,6 +47,13 @@
         >Delete</button>
       </div>
       <div class="top-actions">
+        <button
+          type="button"
+          id="btn-multi-spin"
+          class="btn ghost"
+          title="Show several saved wheels on one screen and spin them together"
+          aria-pressed="false"
+        >Multi-spin</button>
         <button type="button" id="btn-focus-mode" class="btn ghost" title="Hide chrome for a big wheel (Esc to exit)">Focus</button>
         <button type="button" id="btn-share-wheel" class="btn ghost" title="Copy a share link for this wheel (prompt also shows the link)">Share</button>
         <button type="button" id="btn-backup-library" class="btn ghost" title="Download a full backup of every saved wheel">Backup</button>
@@ -107,6 +114,28 @@
             <button type="button" class="btn result-act" data-result-act="hide" title="Hide this section from the wheel">Hide</button>
             <button type="button" id="btn-result-remove" class="btn danger result-act" data-result-act="remove" title="Delete this section">Remove</button>
             <button type="button" class="btn ghost result-act" data-result-act="dismiss">Continue</button>
+          </div>
+        </div>
+
+        <!-- Multi-spin: several saved wheels on one screen -->
+        <div id="multi-root" class="multi-root hidden" hidden>
+          <div class="multi-toolbar">
+            <button type="button" id="btn-multi-exit" class="btn small ghost" title="Back to single-wheel editor">Exit multi-spin</button>
+            <button type="button" id="btn-multi-spin-all" class="btn small primary" title="Spin every selected wheel at once (Space)">Spin all</button>
+            <span id="multi-summary" class="multi-summary" aria-live="polite"></span>
+            <span id="multi-warn" class="multi-warn hidden" hidden></span>
+          </div>
+          <div class="multi-body">
+            <aside class="multi-picker" aria-label="Choose wheels to show">
+              <h3 class="multi-picker-title">Wheels on screen</h3>
+              <p class="multi-picker-hint">Pick any saved wheels — no limit. They appear in the grid and can spin together.</p>
+              <div class="multi-picker-actions">
+                <button type="button" id="btn-multi-select-all" class="btn small ghost">Select all</button>
+                <button type="button" id="btn-multi-clear" class="btn small ghost">Clear</button>
+              </div>
+              <div id="multi-picker-list" class="multi-picker-list"></div>
+            </aside>
+            <div id="multi-grid" class="multi-grid" role="list"></div>
           </div>
         </div>
       </section>

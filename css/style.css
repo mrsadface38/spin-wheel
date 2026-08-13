@@ -638,6 +638,231 @@ body.focus-mode .stage-panel {
   box-shadow: var(--shadow);
 }
 
+/* ——— Multi-spin mode (several saved wheels on one screen) ——— */
+.multi-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  height: 100%;
+  min-width: 0;
+}
+
+.multi-root.hidden,
+.multi-root[hidden] {
+  display: none !important;
+}
+
+body.multi-spin-mode #stage {
+  display: none !important;
+}
+
+.multi-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  padding: 0.35rem 0.15rem;
+  flex-shrink: 0;
+}
+
+.multi-summary {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-warn {
+  font-size: 0.78rem;
+  color: #f0c674;
+  max-width: 18rem;
+}
+
+.multi-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0.65rem;
+  overflow: hidden;
+}
+
+.multi-picker {
+  flex: 0 0 min(220px, 32vw);
+  max-width: 260px;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.65rem 0.7rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(18, 22, 38, 0.92);
+  overflow: hidden;
+}
+
+.multi-picker-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.multi-picker-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.multi-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.multi-picker-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.15rem;
+  padding-right: 0.15rem;
+}
+
+.multi-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.84rem;
+  user-select: none;
+}
+
+.multi-picker-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.multi-picker-row input {
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
+.multi-picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-picker-empty,
+.multi-grid-empty {
+  margin: 0.75rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.multi-grid {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+  align-content: start;
+  padding: 0.15rem 0.15rem 0.75rem;
+}
+
+.multi-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(15, 18, 32, 0.95);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.multi-tile.is-spinning {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(90, 140, 255, 0.35);
+}
+
+.multi-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.5rem 0.15rem;
+}
+
+.multi-tile-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-tile-stage.stage--mini {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  aspect-ratio: 1;
+  height: auto;
+  min-height: 180px;
+  border-radius: 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.multi-tile-result {
+  min-height: 1.5rem;
+  padding: 0.25rem 0.55rem 0.45rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.multi-tile-result.has-win {
+  color: var(--accent-2, #7ee0a8);
+  font-weight: 650;
+}
+
+#btn-multi-spin.is-active {
+  border-color: var(--accent);
+  color: var(--accent-2);
+  background: rgba(90, 140, 255, 0.12);
+}
+
+@media (max-width: 720px) {
+  .multi-body {
+    flex-direction: column;
+  }
+  .multi-picker {
+    flex: 0 0 auto;
+    max-width: none;
+    max-height: 28vh;
+  }
+  .multi-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+}
+
 .stage canvas {
   position: absolute;
   inset: 0;

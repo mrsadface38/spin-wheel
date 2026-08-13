@@ -58,11 +58,14 @@ import {
   shuffledSolidWheelColors,
 } from "./presets.js";
 import { APP_UPDATE } from "./version.js";
+import { createMultiSpinController } from "./multi-spin.js";
 
 const audio = new AudioManager();
 /** @type {import("./wheels.js").WheelLibrary | ReturnType<typeof loadLibrary>} */
 let library;
 let state;
+/** @type {ReturnType<typeof createMultiSpinController> | null} */
+let multiSpin = null;
 try {
   library = loadLibrary();
   const slot = getActiveSlot(library);
@@ -547,6 +550,11 @@ function fillWheelSelect() {
   // hold 5s wipes the whole library even when only one remains.
   const del = $("#btn-wheel-delete");
   if (del) del.disabled = false;
+  try {
+    multiSpin?.onLibraryChanged?.();
+  } catch {
+    /* ignore */
+  }
 }
 
 // --- Storage size meter (estimate localStorage pressure) ---
@@ -10598,11 +10606,18 @@ document.addEventListener("keydown", (e) => {
     tag === "SELECT" ||
     (e.target && e.target.isContentEditable);
 
-  // Esc — exit focus mode
-  if (e.key === "Escape" && document.body.classList.contains("focus-mode")) {
-    e.preventDefault();
-    setFocusMode(false);
-    return;
+  // Esc — exit multi-spin first, then focus mode
+  if (e.key === "Escape") {
+    if (multiSpin?.isActive?.()) {
+      e.preventDefault();
+      multiSpin.exit();
+      return;
+    }
+    if (document.body.classList.contains("focus-mode")) {
+      e.preventDefault();
+      setFocusMode(false);
+      return;
+    }
   }
 
   // Space / Enter — spin (Look option, default on)
@@ -10624,6 +10639,12 @@ document.addEventListener("keydown", (e) => {
     ) {
       // Allow Enter on buttons; Space on focused button activates it
       if (e.key === " " && ae.tagName === "BUTTON") return;
+    }
+    // Multi-spin mode: Space/Enter spins every selected wheel
+    if (multiSpin?.isActive?.()) {
+      e.preventDefault();
+      if (!multiSpin.anySpinning()) void multiSpin.spinAll();
+      return;
     }
     if (spinBusy || wheel.spinning || wheel._dragging) return;
     // If result overlay is open, Space dismisses then next press can spin
@@ -10863,6 +10884,27 @@ async function init() {
     /* ignore */
   }
   forceUiInteractive();
+  try {
+    multiSpin = createMultiSpinController({
+      getLibrary: () => library,
+      audio,
+      getSound: () => state?.sound || {},
+      clampSpinDuration,
+      playGlobalLandSfx,
+      getSpinTickPreset,
+      onExit: () => {
+        try {
+          recoverWheelView();
+        } catch {
+          /* ignore */
+        }
+        void refreshWheel().catch(() => {});
+      },
+    });
+    multiSpin.bindUi();
+  } catch (err) {
+    console.warn("multi-spin init:", err);
+  }
   try {
     initCollapsibleSections();
   } catch (err) {
