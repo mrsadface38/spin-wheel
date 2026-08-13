@@ -383,6 +383,7 @@ const SECTION_SORT_KEY = "spin-wheel-section-sort";
 /** @type {Record<string, string>} */
 const SECTION_SORT_LABELS = {
   manual: "Your order",
+  shuffle: "Shuffle",
   "name-asc": "Name A–Z",
   "name-desc": "Name Z–A",
   "weight-desc": "Weight high → low",
@@ -1502,10 +1503,27 @@ function cmpLabel(a, b) {
  * @param {object[]} list
  * @param {string} [mode]
  */
+/**
+ * Fisher–Yates shuffle (new array; does not mutate input).
+ * @param {object[]} list
+ */
+function shuffleSectionsList(list) {
+  const arr = list.slice();
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+}
+
 function sortSectionsList(list, mode = sectionSortMode) {
   const arr = list.slice();
   const m = mode || "manual";
   if (m === "manual") return arr;
+  // New random order each time this mode is applied
+  if (m === "shuffle") return shuffleSectionsList(arr);
 
   arr.sort((a, b) => {
     switch (m) {
@@ -1553,6 +1571,19 @@ function sortSectionsList(list, mode = sectionSortMode) {
     }
   });
   return arr;
+}
+
+/**
+ * Misc → shuffle every spin: re-select the Shuffle sort (new random order).
+ * @param {{ skipRefresh?: boolean }} [opts]
+ */
+async function reselectShuffleSortForSpin(opts = {}) {
+  if (state?.look?.shuffleEverySpin !== true) return false;
+  if (!Array.isArray(state.sections) || state.sections.length < 2) return false;
+  await setSectionSortMode("shuffle", {
+    skipRefresh: opts.skipRefresh === true,
+  });
+  return true;
 }
 
 /** Keep yourOrderIds in sync with live sections (preserve known order). */
@@ -6058,6 +6089,10 @@ function bindLook() {
     $("#chk-replace-on-other-wheel").checked =
       state.look.replaceSourceOnOtherWheel !== false;
   }
+  if ($("#chk-shuffle-every-spin")) {
+    $("#chk-shuffle-every-spin").checked =
+      state.look.shuffleEverySpin === true;
+  }
   if ($("#chk-auto-spin")) {
     $("#chk-auto-spin").checked = state.look.autoSpin === true;
   }
@@ -8650,6 +8685,10 @@ async function onLookChange() {
     state.look.replaceSourceOnOtherWheel =
       $("#chk-replace-on-other-wheel").checked !== false;
   }
+  if ($("#chk-shuffle-every-spin")) {
+    state.look.shuffleEverySpin =
+      $("#chk-shuffle-every-spin").checked === true;
+  }
   if ($("#chk-auto-spin")) {
     state.look.autoSpin = $("#chk-auto-spin").checked === true;
   }
@@ -8691,7 +8730,7 @@ async function onLookChange() {
   scheduleAutoSpin();
 }
 
-["bg-color", "center-color", "center-size", "chk-spin-center-hub", "border-color", "text-color", "text-style", "text-font", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-double-click-spin", "chk-wheel-drag", "chk-grab-stop-spin", "chk-fair-drag-spin", "chk-wait-for-target-wheel", "chk-replace-on-other-wheel", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "chk-spin-center-hub", "border-color", "text-color", "text-style", "text-font", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-double-click-spin", "chk-wheel-drag", "chk-grab-stop-spin", "chk-fair-drag-spin", "chk-wait-for-target-wheel", "chk-replace-on-other-wheel", "chk-shuffle-every-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {
@@ -8700,6 +8739,15 @@ async function onLookChange() {
     });
   }
 );
+
+// Turning on “shuffle every spin” immediately selects the Shuffle sort once
+$("#chk-shuffle-every-spin")?.addEventListener("change", () => {
+  if ($("#chk-shuffle-every-spin")?.checked === true) {
+    void setSectionSortMode("shuffle").catch((err) =>
+      console.warn("select shuffle sort:", err)
+    );
+  }
+});
 
 /**
  * Parse auto-dismiss seconds from the Look field.
@@ -10618,6 +10666,10 @@ function resolveLandAction(winSection) {
     99,
     Math.max(1, Number(eff.landActionTimes) || 1)
   );
+  const timesOther = Math.min(
+    99,
+    Math.max(1, Number(eff.landActionTimesOther) || times)
+  );
 
   if (action === "respin") {
     return { type: "respin", showMs, section: raw, times };
@@ -10655,6 +10707,7 @@ function resolveLandAction(winSection) {
         showMs,
         section: raw,
         times,
+        timesOther,
       };
     }
     // No valid target — fall back to respin only
@@ -10737,14 +10790,19 @@ async function handleSpinWinner(win, resultOpts = {}, spinOpts = {}) {
     }
     if (next.type === "respinAndOther" && next.wheelId) {
       // Single-wheel mode is sequential: respin this wheel, then switch & spin other
+      const respinN = Math.min(99, Math.max(1, Number(next.times) || 1));
+      const otherN = Math.min(
+        99,
+        Math.max(1, Number(next.timesOther) || respinN)
+      );
       await showLandActionResultThenWait(win, resultOpts, next.showMs || 0);
-      for (let i = 0; i < times; i++) {
+      for (let i = 0; i < respinN; i++) {
         landActionChainDepth += 1;
         await doSpin({ fromLandAction: true });
       }
       await switchToWheelId(next.wheelId);
       await sleepMs(200);
-      for (let i = 0; i < times; i++) {
+      for (let i = 0; i < otherN; i++) {
         landActionChainDepth += 1;
         await doSpin({ fromLandAction: true });
       }
@@ -10770,6 +10828,12 @@ async function beginSpinSession() {
     if (n > 0) await refreshWheel();
   } catch (err) {
     console.warn("section returns before spin:", err);
+  }
+  // Misc: shuffle section order every spin → reselect Shuffle sort
+  try {
+    await reselectShuffleSortForSpin();
+  } catch (err) {
+    console.warn("shuffle every spin:", err);
   }
   audio.ensure();
   const active = getActiveSections(state);

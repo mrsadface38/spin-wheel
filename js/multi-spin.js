@@ -2746,6 +2746,55 @@ export function createMultiSpinController(deps) {
   }
 
   /**
+   * Fisher–Yates shuffle of a section array (new array).
+   * @param {object[]} list
+   */
+  function shuffleSectionsArray(list) {
+    const arr = (list || []).slice();
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+    return arr;
+  }
+
+  /**
+   * Misc → shuffle every spin on this multi tile: re-randomize section order
+   * and refresh the mini wheel geometry before the spin starts.
+   */
+  async function maybeShuffleTileSections(tile) {
+    if (!tile?.state) return false;
+    let on = tile.state.look?.shuffleEverySpin === true;
+    try {
+      const slot = librarySlots().find((w) => w.id === tile.slotId);
+      if (slot?.data?.look) {
+        on = slot.data.look.shuffleEverySpin === true;
+        // Keep tile look in sync
+        tile.state.look = {
+          ...(tile.state.look || {}),
+          shuffleEverySpin: on,
+        };
+      }
+    } catch {
+      /* use tile look */
+    }
+    if (!on) return false;
+    const secs = tile.state.sections;
+    if (!Array.isArray(secs) || secs.length < 2) return false;
+    tile.state.sections = shuffleSectionsArray(secs);
+    try {
+      await tile.wheel?.setSections?.(getDisplaySections(tile.state));
+      tile.wheel?.resize?.();
+      tile.wheel?.draw?.();
+    } catch (err) {
+      console.warn("multi-spin shuffle sections:", tile.name, err);
+    }
+    return true;
+  }
+
+  /**
    * Shared post-land path for timed spin and fling.
    */
   async function finishTileLand(tile, win, opts = {}) {
@@ -2863,6 +2912,7 @@ export function createMultiSpinController(deps) {
     let win = null;
     try {
       deps.audio?.ensure?.();
+      await maybeShuffleTileSections(tile);
       const dur = durationFor(tile);
       const spinOpts = {
         maxSpeedScale: maxSpeedScaleForTile(tile),
@@ -2912,6 +2962,7 @@ export function createMultiSpinController(deps) {
     let win = null;
     try {
       deps.audio?.ensure?.();
+      await maybeShuffleTileSections(tile);
       win = await tile.wheel.fling(velocityRadPerSec, {
         maxSpeedScale: maxSpeedScaleForTile(tile),
       });

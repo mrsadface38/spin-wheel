@@ -543,6 +543,7 @@ export function applyProfileToSection(section, profile, parts) {
     section.landShowResultEvery = land.landShowResultEvery;
     section.landShowResultUnit = land.landShowResultUnit;
     section.landActionTimes = land.landActionTimes;
+    section.landActionTimesOther = land.landActionTimesOther;
   }
   return section;
 }
@@ -735,6 +736,11 @@ export function defaultState() {
        */
       replaceSourceOnOtherWheel: true,
       /**
+       * When true, re-apply the Sections “Shuffle” sort before every spin
+       * (new random order each time). Off by default.
+       */
+      shuffleEverySpin: false,
+      /**
        * Auto-dismiss win screen after N seconds (free-form number).
        * 0 = off (show until Continue), -1 = never show result overlay,
        * positive = auto-close after that many seconds.
@@ -904,6 +910,8 @@ function migrate(data) {
   look.waitForTargetWheel = look.waitForTargetWheel !== false;
   // Replace this tile with off-board target: default on (only false when saved off)
   look.replaceSourceOnOtherWheel = look.replaceSourceOnOtherWheel !== false;
+  // Shuffle section order every spin: only when explicitly saved on
+  look.shuffleEverySpin = look.shuffleEverySpin === true;
   // Center hub spins with wheel only when explicitly enabled (default off)
   look.spinCenterHub = look.spinCenterHub === true;
   // Pointer angle 0–360 (0 = top, 90 = right default). Missing → right.

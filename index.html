@@ -236,6 +236,7 @@
               <span class="sort-field-label">Sort</span>
               <select id="section-sort" title="View order on the list and wheel (Your order is saved separately)">
                 <option value="manual">Your order</option>
+                <option value="shuffle">Shuffle</option>
                 <option value="name-asc">Name A–Z</option>
                 <option value="name-desc">Name Z–A</option>
                 <option value="weight-desc">Weight high → low</option>
@@ -575,6 +576,14 @@
               When this wheel spins a different wheel that is <strong>not</strong> on the multi board:
               if on, the target takes this wheel’s place (same slot) and this wheel leaves the board.
               If off, the target is added as an extra wheel (old behavior).
+            </small>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-shuffle-every-spin" />
+              <span>Shuffle section order every spin</span>
+            </label>
+            <small>
+              Before each spin, reselects the Sections sort mode <strong>Shuffle</strong>
+              (new random order on the list and wheel). Your order is not overwritten unless you use Apply to your order.
             </small>
             <label class="toggle-row">
               <input type="checkbox" id="chk-pointer-locked" checked />
