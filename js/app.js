@@ -10486,9 +10486,11 @@ async function tryImportShareHash() {
 
 // --- Spin (double-click / drag-fling the wheel) ---
 
-/** Cap chained respin / switch-wheel actions so loops can't run forever. */
-const MAX_LAND_ACTION_CHAIN = 20;
-/** Depth of the current auto-respin / other-wheel chain (0 = user-started). */
+/**
+ * Depth of the current auto-respin / other-wheel chain (0 = user-started).
+ * Used only for bookkeeping — intentional respin/other loops may run forever.
+ * (Previously capped at 20, which stopped multi-wheel portal loops randomly.)
+ */
 let landActionChainDepth = 0;
 
 // --- Auto spin (Look setting) ---
@@ -10650,12 +10652,8 @@ function resolveLandAction(winSection) {
   const action = normalizeLandAction(eff.landAction);
   if (action === "none") return { type: "show" };
 
-  if (landActionChainDepth >= MAX_LAND_ACTION_CHAIN) {
-    console.warn(
-      "Land action chain limit reached — showing result instead of chaining"
-    );
-    return { type: "show" };
-  }
+  // No hard chain cap — respin / spin-other may loop intentionally forever.
+  // User stops by spinning manually elsewhere or changing the land action.
 
   const showMs = landShowResultMs(
     eff.landShowResultEvery,

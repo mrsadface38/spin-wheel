@@ -22,7 +22,6 @@ const FREE_LAYOUT_KEY = "spin-wheel-multi-free-layout-v1";
 /** Shared custom size for grid mode (null = auto max fit). */
 const GRID_SIZE_KEY = "spin-wheel-multi-grid-size-v1";
 const SOFT_WARN_AT = 12;
-const MAX_LAND_CHAIN = 20;
 /** Min / max tile width (stage is square at this size). */
 const TILE_MIN = 140;
 const TILE_MAX = 960;
@@ -2383,12 +2382,33 @@ export function createMultiSpinController(deps) {
     return !!(tile && (tile.spinning || tile.wheel?.spinning));
   }
 
-  /** Busy or still has spins waiting. */
-  function isTileFullyIdle(tile) {
+  /**
+   * True when this tile has no spin in progress and no queued spins.
+   * Being paused in “wait for other wheel” does NOT count as busy — so A↔B
+   * portal loops with Wait on cannot deadlock each other.
+   */
+  function isTileSpinWorkIdle(tile) {
     if (!tile) return true;
-    if (isTileBusy(tile)) return false;
+    if (tile.spinning || tile.wheel?.spinning) return false;
     if (Array.isArray(tile.queue) && tile.queue.length > 0) return false;
     return true;
+  }
+
+  /** Busy or still has spins waiting (includes wait-for-other pause). */
+  function isTileFullyIdle(tile) {
+    if (!tile) return true;
+    if (!isTileSpinWorkIdle(tile)) return false;
+    if (tile._waitingForSlotId) return false;
+    return true;
+  }
+
+  async function waitUntilTileSpinWorkIdle(tile, timeoutMs = 600000) {
+    if (!tile) return;
+    const start = Date.now();
+    while (!isTileSpinWorkIdle(tile)) {
+      if (Date.now() - start > timeoutMs) break;
+      await sleepMs(40);
+    }
   }
 
   async function waitUntilTileFullyIdle(tile, timeoutMs = 600000) {
@@ -2517,7 +2537,9 @@ export function createMultiSpinController(deps) {
   }
 
   async function handleMultiLandAction(tile, win, chainDepth) {
-    if (!tile || !win || chainDepth >= MAX_LAND_CHAIN) return false;
+    // No max chain depth — multi land actions (respin / other wheel) may loop
+    // intentionally forever; users stop via Clear queues or leaving multi.
+    if (!tile || !win) return false;
 
     // Prefer live library data for land-action fields + look
     let stateForLand = tile.state;
