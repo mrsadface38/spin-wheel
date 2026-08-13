@@ -27,6 +27,8 @@ import {
   normalizeReturnsAt,
   normalizeTextStyle,
   normalizeTextFont,
+  normalizeLandActionFields,
+  getEffectiveLandAction,
 } from "./state.js";
 import {
   loadLibrary,
@@ -1816,11 +1818,19 @@ function renderGroups() {
         g.overrideWinnerTextColor ? "win" : "",
         g.overrideImage ? "img" : "",
         g.overrideSfx ? "sfx" : "",
+        g.overrideLandAction || normalizeLandAction(g.landAction) !== "none"
+          ? "win→"
+          : "",
       ].filter(Boolean);
       const profileBits = [
         ovParts.length ? `override: ${ovParts.join("+")}` : "",
         g.imageData ? "🖼" : "",
         g.landSfxData ? "🔊" : "",
+        normalizeLandAction(g.landAction) === "respin"
+          ? "↻ respin"
+          : normalizeLandAction(g.landAction) === "otherWheel"
+            ? "→ wheel"
+            : "",
       ]
         .filter(Boolean)
         .join(" · ");
@@ -1906,14 +1916,18 @@ function cloneSectionForDuplicate(section) {
   return raw;
 }
 
-/** Section list badge for land actions. */
+/** Section list badge for land actions (includes group inherit / force). */
 function landActionBadge(section) {
-  const action = normalizeLandAction(section?.landAction);
-  if (action === "respin") return "↻ respin";
+  const eff = getEffectiveLandAction(state, section);
+  const action = normalizeLandAction(eff.landAction);
+  if (action === "respin") {
+    return eff.source?.startsWith("group") ? "↻ respin (grp)" : "↻ respin";
+  }
   if (action === "otherWheel") {
-    const tid = section?.landTargetWheelId;
+    const tid = eff.landTargetWheelId;
     const slot = tid && library?.wheels?.find((w) => w.id === tid);
-    return slot ? `→ ${slot.name || "wheel"}` : "→ other wheel";
+    const base = slot ? `→ ${slot.name || "wheel"}` : "→ other wheel";
+    return eff.source?.startsWith("group") ? `${base} (grp)` : base;
   }
   return "";
 }
@@ -2219,8 +2233,9 @@ function updateSectionReturnUI(sec = null) {
 }
 
 /** Fill target-wheel dropdown (other saved wheels). */
-function fillSectionLandTargetWheels(selectedId) {
-  const sel = $("#section-land-target-wheel");
+function fillLandTargetWheels(selectEl, selectedId) {
+  const sel =
+    typeof selectEl === "string" ? $(selectEl) : selectEl || null;
   if (!sel) return;
   const cur = library?.activeId;
   const others = (library?.wheels || []).filter((w) => w.id !== cur);
@@ -2245,17 +2260,88 @@ function fillSectionLandTargetWheels(selectedId) {
   }
 }
 
-function updateSectionLandActionUI() {
-  const action = normalizeLandAction($("#section-land-action")?.value);
-  const field = $("#section-land-target-field");
+/** @deprecated use fillLandTargetWheels */
+function fillSectionLandTargetWheels(selectedId) {
+  fillLandTargetWheels($("#section-land-target-wheel"), selectedId);
+}
+
+function updateLandActionUI(prefix) {
+  const p = prefix === "group" ? "group" : "section";
+  const action = normalizeLandAction($(`#${p}-land-action`)?.value);
+  const field = $(`#${p}-land-target-field`);
   if (field) field.hidden = action !== "otherWheel";
   if (action === "otherWheel") {
-    fillSectionLandTargetWheels($("#section-land-target-wheel")?.value);
+    fillLandTargetWheels(
+      $(`#${p}-land-target-wheel`),
+      $(`#${p}-land-target-wheel`)?.value
+    );
   }
-  const showField = $("#section-land-show-result-field");
+  const showField = $(`#${p}-land-show-result-field`);
   if (showField) {
     showField.hidden = action !== "respin" && action !== "otherWheel";
   }
+}
+
+function updateSectionLandActionUI() {
+  updateLandActionUI("section");
+}
+
+function updateGroupLandActionUI() {
+  updateLandActionUI("group");
+}
+
+/**
+ * Read land-action fields from section or group form.
+ * @param {"section"|"group"} prefix
+ */
+function readLandActionFromForm(prefix = "section") {
+  const p = prefix === "group" ? "group" : "section";
+  let landAction = normalizeLandAction($(`#${p}-land-action`)?.value);
+  let landTargetWheelId = null;
+  if (landAction === "otherWheel") {
+    const tid = $(`#${p}-land-target-wheel`)?.value || "";
+    landTargetWheelId =
+      tid &&
+      library.wheels.some((w) => w.id === tid && w.id !== library.activeId)
+        ? tid
+        : null;
+    if (!landTargetWheelId) landAction = "none";
+  }
+  let landShowResultEvery = 0;
+  let landShowResultUnit = "seconds";
+  if (landAction === "respin" || landAction === "otherWheel") {
+    let n = Number($(`#${p}-land-show-result-value`)?.value);
+    if (!Number.isFinite(n) || n < 0) n = 0;
+    landShowResultEvery = Math.min(99999, Math.round(n));
+    landShowResultUnit = normalizeLandShowResultUnit(
+      $(`#${p}-land-show-result-unit`)?.value
+    );
+  }
+  return normalizeLandActionFields({
+    landAction,
+    landTargetWheelId,
+    landShowResultEvery,
+    landShowResultUnit,
+  });
+}
+
+/**
+ * Fill land-action controls on section or group form.
+ * @param {"section"|"group"} prefix
+ * @param {object|null} src
+ */
+function setLandActionForm(prefix, src) {
+  const p = prefix === "group" ? "group" : "section";
+  const land = normalizeLandActionFields(src || {});
+  if ($(`#${p}-land-action`)) $(`#${p}-land-action`).value = land.landAction;
+  fillLandTargetWheels($(`#${p}-land-target-wheel`), land.landTargetWheelId);
+  if ($(`#${p}-land-show-result-value`)) {
+    $(`#${p}-land-show-result-value`).value = String(land.landShowResultEvery);
+  }
+  if ($(`#${p}-land-show-result-unit`)) {
+    $(`#${p}-land-show-result-unit`).value = land.landShowResultUnit;
+  }
+  updateLandActionUI(p);
 }
 
 /**
@@ -2263,13 +2349,8 @@ function updateSectionLandActionUI() {
  * @returns {{ every: number, unit: string }}
  */
 function readSectionLandShowResultFromForm() {
-  let n = Number($("#section-land-show-result-value")?.value);
-  if (!Number.isFinite(n) || n < 0) n = 0;
-  n = Math.min(99999, Math.round(n));
-  const unit = normalizeLandShowResultUnit(
-    $("#section-land-show-result-unit")?.value
-  );
-  return { every: n, unit };
+  const land = readLandActionFromForm("section");
+  return { every: land.landShowResultEvery, unit: land.landShowResultUnit };
 }
 
 /**
@@ -2277,6 +2358,11 @@ function readSectionLandShowResultFromForm() {
  * @param {{ landShowResultEvery?: number, landShowResultUnit?: string }|null} section
  */
 function setSectionLandShowResultForm(section) {
+  // Prefer full land-action form when available
+  if ($("#section-land-action")) {
+    setLandActionForm("section", section);
+    return;
+  }
   let n = Number(section?.landShowResultEvery);
   if (!Number.isFinite(n) || n < 0) n = 0;
   n = Math.min(99999, Math.round(n));
@@ -2305,6 +2391,7 @@ function cloneGroupForDuplicate(group) {
     overrideImage: group.overrideImage === true,
     overrideSfx: group.overrideSfx === true,
     overrideWinEffect: group.overrideWinEffect === true,
+    overrideLandAction: group.overrideLandAction === true,
     color: group.color,
     textColor: group.textColor,
     textStyle: group.textStyle,
@@ -2324,6 +2411,7 @@ function cloneGroupForDuplicate(group) {
     winEffect: group.winEffect || null,
     winEffectData: group.winEffectData || null,
     winEffectName: group.winEffectName || null,
+    ...normalizeLandActionFields(group),
   });
 }
 
@@ -3349,6 +3437,7 @@ function readOverridePartsFromForm() {
     overrideImage: $("#group-override-image")?.checked === true,
     overrideSfx: $("#group-override-sfx")?.checked === true,
     overrideWinEffect: $("#group-override-win-effect")?.checked === true,
+    overrideLandAction: $("#group-override-land-action")?.checked === true,
   };
 }
 
@@ -3362,6 +3451,7 @@ function readApplyPartsFromForm() {
     image: $("#group-apply-image")?.checked === true,
     sfx: $("#group-apply-sfx")?.checked === true,
     winEffect: $("#group-apply-win-effect")?.checked === true,
+    landAction: $("#group-apply-land-action")?.checked === true,
   };
 }
 
@@ -3392,6 +3482,9 @@ function fillGroupProfileForm(group) {
   if ($("#group-override-win-effect")) {
     $("#group-override-win-effect").checked = g.overrideWinEffect === true;
   }
+  if ($("#group-override-land-action")) {
+    $("#group-override-land-action").checked = g.overrideLandAction === true;
+  }
   // Apply chips: default image+color+text on, SFX off (so you don't wipe audio by accident)
   if ($("#group-apply-color")) $("#group-apply-color").checked = true;
   if ($("#group-apply-text-color")) $("#group-apply-text-color").checked = true;
@@ -3403,6 +3496,10 @@ function fillGroupProfileForm(group) {
   if ($("#group-apply-image")) $("#group-apply-image").checked = true;
   if ($("#group-apply-sfx")) $("#group-apply-sfx").checked = false;
   if ($("#group-apply-win-effect")) $("#group-apply-win-effect").checked = false;
+  if ($("#group-apply-land-action")) {
+    $("#group-apply-land-action").checked = false;
+  }
+  setLandActionForm("group", g);
   if ($("#group-color")) $("#group-color").value = g.color || "#4a6cf7";
   if ($("#group-text-color")) {
     $("#group-text-color").value = g.textColor || "#ffffff";
@@ -3866,21 +3963,29 @@ $("#btn-apply-group-profile")?.addEventListener("click", async () => {
   if (
     !parts.color &&
     !parts.textColor &&
+    !parts.textStyle &&
+    !parts.textFont &&
     !parts.winnerTextColor &&
     !parts.image &&
-    !parts.sfx
+    !parts.sfx &&
+    !parts.winEffect &&
+    !parts.landAction
   ) {
     alert(
-      "Check at least one part to apply: Slice color, Text color, Winner text, Image, or Land SFX."
+      "Check at least one part to apply (color, text, image, SFX, win effect, or if-wins)."
     );
     return;
   }
   const labels = [
     parts.color ? "slice color" : "",
     parts.textColor ? "text color" : "",
+    parts.textStyle ? "text style" : "",
+    parts.textFont ? "text font" : "",
     parts.winnerTextColor ? "winner text" : "",
     parts.image ? "image" : "",
     parts.sfx ? "land SFX" : "",
+    parts.winEffect ? "win effect" : "",
+    parts.landAction ? "if wins" : "",
   ].filter(Boolean);
   if (
     !confirm(
@@ -3889,7 +3994,10 @@ $("#btn-apply-group-profile")?.addEventListener("click", async () => {
   ) {
     return;
   }
-  const profile = readGroupProfileFromForm();
+  const profile = {
+    ...readGroupProfileFromForm(),
+    ...readLandActionFromForm("group"),
+  };
   checkpoint();
   for (const s of members) {
     applyProfileToSection(s, profile, parts);
@@ -3902,7 +4010,12 @@ $("#btn-apply-group-profile")?.addEventListener("click", async () => {
   if (gid) {
     const group = state.groups.find((g) => g.id === gid);
     if (group) {
-      Object.assign(group, profile, readOverridePartsFromForm());
+      Object.assign(
+        group,
+        profile,
+        readOverridePartsFromForm(),
+        readLandActionFromForm("group")
+      );
       if (group.landSfxData) {
         await audio.loadDataUrl(`land_grp_${group.id}`, group.landSfxData);
       }
@@ -3931,6 +4044,7 @@ $("#group-form").addEventListener("submit", async (e) => {
     const active = $("#group-active")?.checked !== false;
     const overrideParts = readOverridePartsFromForm();
     const profile = readGroupProfileFromForm();
+    const landFields = readLandActionFromForm("group");
 
     checkpoint();
     if (id) {
@@ -3944,6 +4058,7 @@ $("#group-form").addEventListener("submit", async (e) => {
             active,
             ...overrideParts,
             ...profile,
+            ...landFields,
           })
         );
       } else {
@@ -3960,6 +4075,7 @@ $("#group-form").addEventListener("submit", async (e) => {
           active,
           ...overrideParts,
           ...profile,
+          ...landFields,
         })
       );
       if ($("#group-edit-id")) $("#group-edit-id").value = id;
@@ -4846,13 +4962,7 @@ function openSectionModal(section) {
       $("#section-sfx-volume-label").textContent = `${Math.round(clamped * 100)}%`;
     }
   }
-  {
-    const action = normalizeLandAction(section?.landAction);
-    if ($("#section-land-action")) $("#section-land-action").value = action;
-    fillSectionLandTargetWheels(section?.landTargetWheelId || null);
-    setSectionLandShowResultForm(section || null);
-    updateSectionLandActionUI();
-  }
+  setLandActionForm("section", section || null);
   setSectionReturnAfterForm(section?.returnAfterMs ?? 0);
   updateSectionReturnUI(section || { enabled: true, returnAfterMs: 0, returnsAt: null });
   updateSectionImageModeUI();
@@ -4879,6 +4989,9 @@ function openSectionModal(section) {
 
 $("#section-land-action")?.addEventListener("change", () => {
   updateSectionLandActionUI();
+});
+$("#group-land-action")?.addEventListener("change", () => {
+  updateGroupLandActionUI();
 });
 
 $("#section-return-after")?.addEventListener("change", () => {
@@ -5476,10 +5589,7 @@ $("#section-form").addEventListener("submit", async (e) => {
     winEffectName: customWinEffect
       ? pendingSectionWinEffectName
       : existing?.winEffectName ?? null,
-    landAction: normalizeLandAction($("#section-land-action")?.value),
-    landTargetWheelId: null,
-    landShowResultEvery: 0,
-    landShowResultUnit: "seconds",
+    ...readLandActionFromForm("section"),
     winBgm: normalizeWinBgm($("#section-win-bgm")?.value),
     winBgmData: null,
     winBgmName: null,
@@ -5493,22 +5603,6 @@ $("#section-form").addEventListener("submit", async (e) => {
     } else {
       payload.winBgm = "inherit";
     }
-  }
-  if (payload.landAction === "otherWheel") {
-    const tid = $("#section-land-target-wheel")?.value || "";
-    payload.landTargetWheelId =
-      tid && library.wheels.some((w) => w.id === tid && w.id !== library.activeId)
-        ? tid
-        : null;
-    if (!payload.landTargetWheelId) {
-      // No valid target — fall back to normal result behavior
-      payload.landAction = "none";
-    }
-  }
-  if (payload.landAction === "respin" || payload.landAction === "otherWheel") {
-    const show = readSectionLandShowResultFromForm();
-    payload.landShowResultEvery = show.every;
-    payload.landShowResultUnit = show.unit;
   }
   // Schedule / preserve return date when saving a hidden section
   if (payload.enabled === false) {
@@ -9959,7 +10053,9 @@ function resolveLandAction(winSection) {
     state.sections.find((s) => s.id === winSection?.id) || winSection;
   if (!raw) return { type: "show" };
 
-  const action = normalizeLandAction(raw.landAction);
+  // Group force / inherit, then section — see getEffectiveLandAction
+  const eff = getEffectiveLandAction(state, raw);
+  const action = normalizeLandAction(eff.landAction);
   if (action === "none") return { type: "show" };
 
   if (landActionChainDepth >= MAX_LAND_ACTION_CHAIN) {
@@ -9970,8 +10066,8 @@ function resolveLandAction(winSection) {
   }
 
   const showMs = landShowResultMs(
-    raw.landShowResultEvery,
-    raw.landShowResultUnit
+    eff.landShowResultEvery,
+    eff.landShowResultUnit
   );
 
   if (action === "respin") {
@@ -9979,7 +10075,7 @@ function resolveLandAction(winSection) {
   }
 
   if (action === "otherWheel") {
-    const tid = raw.landTargetWheelId;
+    const tid = eff.landTargetWheelId;
     if (
       tid &&
       tid !== library.activeId &&

@@ -1238,7 +1238,7 @@
                 <option value="respin">Respin this wheel</option>
                 <option value="otherWheel">Spin a different wheel</option>
               </select>
-              <small>Per-section. Respin keeps spinning until a normal section wins (or a limit). “Different wheel” switches and spins that wheel.</small>
+              <small>Per-section. Groups can also set this (inherit or force). Respin keeps spinning until a normal section wins (or a limit). “Different wheel” switches and spins that wheel.</small>
             </label>
             <label class="field" id="section-land-target-field" hidden>
               <span>Target wheel</span>
@@ -1526,6 +1526,49 @@
               </div>
             </div>
 
+            <div class="form-block compact">
+              <h4 class="group-profile-subhead">If a section in this group wins</h4>
+              <label class="toggle-row">
+                <input type="checkbox" id="group-override-land-action" />
+                <span>Force this on member sections</span>
+              </label>
+              <label class="field">
+                <span>Then…</span>
+                <select id="group-land-action" title="What happens when a member section wins">
+                  <option value="none">Show result (normal)</option>
+                  <option value="respin">Respin this wheel</option>
+                  <option value="otherWheel">Spin a different wheel</option>
+                </select>
+                <small>Members with no own action inherit this. Force overrides each section’s setting. Same options as section edit.</small>
+              </label>
+              <label class="field" id="group-land-target-field" hidden>
+                <span>Target wheel</span>
+                <select id="group-land-target-wheel" title="Wheel to switch to and spin"></select>
+                <small>Create another wheel with + New if the list is empty.</small>
+              </label>
+              <label class="field" id="group-land-show-result-field" hidden>
+                <span>Show result for</span>
+                <div class="slider-with-value">
+                  <input
+                    type="number"
+                    id="group-land-show-result-value"
+                    min="0"
+                    max="99999"
+                    step="1"
+                    value="0"
+                    title="How long to show this win before the next spin"
+                  />
+                  <select id="group-land-show-result-unit" title="Show result duration unit">
+                    <option value="seconds">sec</option>
+                    <option value="minutes">min</option>
+                    <option value="hours">hr</option>
+                    <option value="days">days</option>
+                  </select>
+                </div>
+                <small><strong>0</strong> = skip the win screen and spin next right away.</small>
+              </label>
+            </div>
+
             <div class="group-profile-actions">
               <div class="profile-parts-block">
                 <span class="profile-parts-label">Apply to sections — only copy checked parts</span>
@@ -1538,6 +1581,7 @@
                   <label class="chip-check"><input type="checkbox" id="group-apply-image" checked /> Image</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-sfx" /> Land SFX</label>
                   <label class="chip-check"><input type="checkbox" id="group-apply-win-effect" /> Win effect</label>
+                  <label class="chip-check"><input type="checkbox" id="group-apply-land-action" /> If wins (respin…)</label>
                 </div>
               </div>
               <button type="button" id="btn-apply-group-profile" class="btn small">

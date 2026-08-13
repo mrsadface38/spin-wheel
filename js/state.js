@@ -212,8 +212,15 @@ export const IMAGE_KEYS = [
 ];
 export const SFX_KEYS = ["landSfxData", "landSfxName"];
 export const WIN_EFFECT_KEYS = ["winEffect", "winEffectData", "winEffectName"];
+/** Per-win chain action (respin / other wheel) — groups + sections */
+export const LAND_ACTION_KEYS = [
+  "landAction",
+  "landTargetWheelId",
+  "landShowResultEvery",
+  "landShowResultUnit",
+];
 
-/** @typedef {{ color?: boolean, textColor?: boolean, textStyle?: boolean, textFont?: boolean, winnerTextColor?: boolean, image?: boolean, sfx?: boolean, winEffect?: boolean }} ProfileParts */
+/** @typedef {{ color?: boolean, textColor?: boolean, textStyle?: boolean, textFont?: boolean, winnerTextColor?: boolean, image?: boolean, sfx?: boolean, winEffect?: boolean, landAction?: boolean }} ProfileParts */
 
 /** Normalize after-win effect id. */
 export function normalizeWinEffect(v, fallback = "confetti") {
@@ -223,6 +230,35 @@ export function normalizeWinEffect(v, fallback = "confetti") {
 
 export function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+}
+
+/**
+ * Normalize land-action fields (shared by groups + sections).
+ * @param {object} [src]
+ * @returns {{ landAction: string, landTargetWheelId: string|null, landShowResultEvery: number, landShowResultUnit: string }}
+ */
+export function normalizeLandActionFields(src = {}) {
+  const landAction = normalizeLandAction(src.landAction);
+  let landTargetWheelId = null;
+  if (src.landTargetWheelId != null && String(src.landTargetWheelId).trim()) {
+    landTargetWheelId = String(src.landTargetWheelId).trim();
+  }
+  if (landAction !== "otherWheel") landTargetWheelId = null;
+  let landShowResultEvery = Number(src.landShowResultEvery);
+  if (!Number.isFinite(landShowResultEvery) || landShowResultEvery < 0) {
+    landShowResultEvery = 0;
+  }
+  landShowResultEvery = Math.min(99999, Math.round(landShowResultEvery));
+  if (landAction === "none") {
+    landShowResultEvery = 0;
+  }
+  const landShowResultUnit = normalizeLandShowResultUnit(src.landShowResultUnit);
+  return {
+    landAction,
+    landTargetWheelId,
+    landShowResultEvery,
+    landShowResultUnit,
+  };
 }
 
 export function defaultGroupProfile() {
@@ -235,6 +271,7 @@ export function defaultGroupProfile() {
     overrideImage: false,
     overrideSfx: false,
     overrideWinEffect: false,
+    overrideLandAction: false,
     color: "#4a6cf7",
     textColor: "#ffffff",
     textStyle: "bold",
@@ -255,6 +292,7 @@ export function defaultGroupProfile() {
     winEffect: null,
     winEffectData: null,
     winEffectName: null,
+    ...normalizeLandActionFields({}),
   };
 }
 
@@ -268,7 +306,8 @@ export function groupHasAnyOverride(g) {
       g.overrideWinnerTextColor ||
       g.overrideImage ||
       g.overrideSfx ||
-      g.overrideWinEffect)
+      g.overrideWinEffect ||
+      g.overrideLandAction)
   );
 }
 
@@ -374,10 +413,12 @@ export function normalizeGroup(g = {}) {
     overrideSfx:
       g.overrideSfx === true || (g.overrideSfx == null && legacyAll),
     overrideWinEffect: g.overrideWinEffect === true,
+    overrideLandAction: g.overrideLandAction === true,
     ...profile,
     winEffect,
     winEffectData: profile.winEffectData,
     winEffectName: profile.winEffectName,
+    ...normalizeLandActionFields(g),
   };
 }
 
@@ -409,6 +450,7 @@ export function applyProfileToSection(section, profile, parts) {
           image: parts.image === true,
           sfx: parts.sfx === true,
           winEffect: parts.winEffect === true,
+          landAction: parts.landAction === true,
         }
       : {
           color: true,
@@ -419,6 +461,7 @@ export function applyProfileToSection(section, profile, parts) {
           image: true,
           sfx: true,
           winEffect: true,
+          landAction: true,
         };
   if (want.color) {
     for (const k of COLOR_KEYS) section[k] = p[k];
@@ -454,7 +497,62 @@ export function applyProfileToSection(section, profile, parts) {
     if (!section.winEffect) section.winEffect = "confetti";
     section.customWinEffect = true;
   }
+  if (want.landAction) {
+    const land = normalizeLandActionFields(profile);
+    section.landAction = land.landAction;
+    section.landTargetWheelId = land.landTargetWheelId;
+    section.landShowResultEvery = land.landShowResultEvery;
+    section.landShowResultUnit = land.landShowResultUnit;
+  }
   return section;
+}
+
+/**
+ * Effective land-action fields when a section wins.
+ * 1) Group with overrideLandAction (highest priority)
+ * 2) Section’s own non-"none" land action
+ * 3) Inherit from highest-priority member group with a non-"none" action
+ * 4) Show result (none)
+ *
+ * @param {object} state
+ * @param {object} section
+ * @returns {{ landAction: string, landTargetWheelId: string|null, landShowResultEvery: number, landShowResultUnit: string, source: string, groupId: string|null }}
+ */
+export function getEffectiveLandAction(state, section) {
+  const empty = {
+    ...normalizeLandActionFields({}),
+    source: "none",
+    groupId: null,
+  };
+  if (!section) return empty;
+
+  const force = forceOverrideGroup(state, section, "overrideLandAction");
+  if (force) {
+    return {
+      ...normalizeLandActionFields(force),
+      source: "group-force",
+      groupId: force.id || null,
+    };
+  }
+
+  const own = normalizeLandActionFields(section);
+  if (own.landAction !== "none") {
+    return { ...own, source: "section", groupId: null };
+  }
+
+  const members = memberGroupsByPriority(state, section);
+  for (const g of members) {
+    const fromG = normalizeLandActionFields(g);
+    if (fromG.landAction !== "none") {
+      return {
+        ...fromG,
+        source: "group-inherit",
+        groupId: g.id || null,
+      };
+    }
+  }
+
+  return empty;
 }
 
 export function defaultState() {
@@ -1386,18 +1484,7 @@ function normalizeSection(s, groups, groupIdsSet) {
     winEffect = "custom";
   }
 
-  const landAction = normalizeLandAction(s.landAction);
-  let landTargetWheelId = null;
-  if (s.landTargetWheelId != null && String(s.landTargetWheelId).trim()) {
-    landTargetWheelId = String(s.landTargetWheelId).trim();
-  }
-
-  let landShowResultEvery = Number(s.landShowResultEvery);
-  if (!Number.isFinite(landShowResultEvery) || landShowResultEvery < 0) {
-    landShowResultEvery = 0;
-  }
-  landShowResultEvery = Math.min(99999, Math.round(landShowResultEvery));
-  const landShowResultUnit = normalizeLandShowResultUnit(s.landShowResultUnit);
+  const landFields = normalizeLandActionFields(s);
 
   let winBgm = normalizeWinBgm(s.winBgm);
   let winBgmData = s.winBgmData || null;
@@ -1437,10 +1524,7 @@ function normalizeSection(s, groups, groupIdsSet) {
       s.landSfxVolume,
       0.4
     ),
-    landAction,
-    landTargetWheelId,
-    landShowResultEvery,
-    landShowResultUnit,
+    ...landFields,
     winBgm,
     winBgmData,
     winBgmName,
