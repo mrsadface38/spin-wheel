@@ -348,6 +348,38 @@ export function createMultiSpinController(deps) {
     updateFocusUi();
   }
 
+  /**
+   * Duplicate a library wheel; optional multi-board add for the new copy.
+   * @param {string} [slotId]
+   */
+  async function duplicateSlot(slotId) {
+    const id =
+      slotId ||
+      focusedSlotId ||
+      activeLibraryId() ||
+      selectedIds[0] ||
+      null;
+    if (!id || typeof deps.onDuplicateWheel !== "function") return;
+    try {
+      const newId = await deps.onDuplicateWheel(id);
+      if (newId && typeof newId === "string") {
+        if (!selectedIds.includes(newId)) {
+          selectedIds.push(newId);
+          saveSelection();
+        }
+        focusedSlotId = newId;
+        await syncTilesWithLibrary();
+        updateFocusUi();
+        setSummary(`Duplicated → selected the new wheel`);
+      } else {
+        // Library changed even if no id returned
+        await syncTilesWithLibrary();
+      }
+    } catch (err) {
+      console.warn("multi-spin duplicate:", err);
+    }
+  }
+
   function renderPicker() {
     const list = pickerList();
     if (!list) return;
@@ -971,6 +1003,11 @@ export function createMultiSpinController(deps) {
     document
       .getElementById("btn-multi-clear")
       ?.addEventListener("click", () => clearSelection());
+    document
+      .getElementById("btn-multi-duplicate")
+      ?.addEventListener("click", () => {
+        void duplicateSlot();
+      });
 
     lockChk()?.addEventListener("change", () => {
       dragLocked = lockChk().checked === true;
