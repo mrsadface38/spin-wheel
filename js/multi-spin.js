@@ -75,10 +75,29 @@ export function createMultiSpinController(deps) {
   let spinGen = 0;
   let lastTickAudioAt = 0;
 
-  /** @type {null | { tile: object, pointerId: number, grabX: number, grabY: number, startX: number, startY: number, moved: boolean }} */
+  /** @type {null | { tile: object, pointerId: number, grabX: number, grabY: number, startX: number, startY: number, moved: boolean, mode?: string }} */
   let drag = null;
   /** @type {null | { mode: "tile"|"grid", tile?: object, pointerId: number, grabX: number, grabY: number, startSize: number }} */
   let resize = null;
+  /**
+   * Reorder "Wheels on screen" list (selectedIds order = free-placement stack).
+   * Top of list = lowest z (behind); bottom = highest z (eclipses others).
+   */
+  /** @type {null | {
+   *   pointerId: number,
+   *   slotId: string,
+   *   fromIndex: number,
+   *   insertIndex: number,
+   *   startY: number,
+   *   offsetY: number,
+   *   stride: number,
+   *   row: HTMLElement,
+   *   ghost: HTMLElement | null,
+   *   layout: { el: HTMLElement, id: string, mid: number }[],
+   *   active: boolean,
+   *   moved: boolean,
+   * }} */
+  let pickerDrag = null;
 
   const root = () => document.getElementById("multi-root");
   const grid = () => document.getElementById("multi-grid");
@@ -980,6 +999,61 @@ export function createMultiSpinController(deps) {
       if (sl) sl.hidden = !freeLayout;
     }
     positionGridResizeHandle();
+    applyTileStackOrder();
+  }
+
+  /**
+   * Free placement stack order from selectedIds:
+   * index 0 (top of Wheels list) → lowest z (behind);
+   * last index (bottom of list) → highest z (eclipses others).
+   * Grid mode clears inline z so CSS defaults apply.
+   */
+  function applyTileStackOrder() {
+    if (!freeLayout) {
+      for (const t of tiles.values()) {
+        if (!t.rootEl) continue;
+        if (
+          t.rootEl.classList.contains("is-dragging") ||
+          t.rootEl.classList.contains("is-resizing")
+        ) {
+          continue;
+        }
+        t.rootEl.style.zIndex = "";
+      }
+      return;
+    }
+    selectedIds.forEach((id, i) => {
+      const t = tiles.get(id);
+      if (!t?.rootEl) return;
+      if (
+        t.rootEl.classList.contains("is-dragging") ||
+        t.rootEl.classList.contains("is-resizing")
+      ) {
+        return;
+      }
+      // 10 + index: top of list behind, bottom of list on top
+      t.rootEl.style.zIndex = String(10 + i);
+    });
+  }
+
+  /**
+   * Reorder selectedIds so `slotId` lands at insertIndex among on-screen wheels.
+   * @param {string} slotId
+   * @param {number} insertIndex index in the list *without* the dragged id
+   */
+  function reorderSelectedId(slotId, insertIndex) {
+    const from = selectedIds.indexOf(slotId);
+    if (from < 0) return false;
+    const next = selectedIds.slice();
+    const [item] = next.splice(from, 1);
+    const clamped = Math.max(0, Math.min(insertIndex, next.length));
+    next.splice(clamped, 0, item);
+    const changed = next.some((id, i) => id !== selectedIds[i]);
+    if (!changed) return false;
+    selectedIds = next;
+    saveSelection();
+    applyTileStackOrder();
+    return true;
   }
 
   /**
@@ -1030,7 +1104,7 @@ export function createMultiSpinController(deps) {
     if (!freeLayout) {
       // Snap everything into a clean non-overlapping grid
       applyGridLayout({ redraw: true });
-      setSummary("Grid layout — drag to reorder; tiles won’t overlap");
+      setSummary("Grid layout — drag tiles on the board; list grip reorders on-screen");
     } else {
       // Seed free positions from current grid cells
       for (const id of selectedIds) {
@@ -1042,7 +1116,11 @@ export function createMultiSpinController(deps) {
       saveLayout();
       for (const t of tiles.values()) applyTilePosition(t);
       updateBoardSize();
-      setSummary("Free placement — drag anywhere (can overlap)");
+      applyTileStackOrder();
+      renderPicker();
+      setSummary(
+        "Free placement — drag tiles to move; drag list ⋮⋮ to set stack (bottom of list eclipses top)"
+      );
     }
   }
 
@@ -1201,34 +1279,290 @@ export function createMultiSpinController(deps) {
     }
   }
 
+  function getPickerOnScreenRows() {
+    const list = pickerList();
+    if (!list) return [];
+    return [...list.querySelectorAll(".multi-picker-row.is-on-screen")];
+  }
+
+  function clearPickerDragTransforms() {
+    getPickerOnScreenRows().forEach((row) => {
+      row.style.transform = "";
+      row.style.transition = "";
+      row.classList.remove("is-drag-source", "is-slot-open");
+    });
+    pickerList()?.classList.remove("is-reordering");
+  }
+
+  function applyPickerLiveShifts() {
+    if (!pickerDrag) return;
+    const from = pickerDrag.fromIndex;
+    const insert = pickerDrag.insertIndex;
+    const stride = pickerDrag.stride;
+    getPickerOnScreenRows().forEach((row, i) => {
+      if (i === from) {
+        row.style.transform = "none";
+        return;
+      }
+      const without = i > from ? i - 1 : i;
+      const final = without >= insert ? without + 1 : without;
+      const shift = (final - i) * stride;
+      row.style.transform = shift
+        ? `translate3d(0, ${shift}px, 0)`
+        : "translate3d(0,0,0)";
+    });
+    // Live-update stack badges while dragging
+    const order = selectedIds.slice();
+    const [moved] = order.splice(from, 1);
+    const clamped = Math.max(0, Math.min(insert, order.length));
+    order.splice(clamped, 0, moved);
+    const list = pickerList();
+    order.forEach((id, i) => {
+      const badge = list?.querySelector(
+        `.multi-picker-row[data-slot-id="${CSS.escape(id)}"] .multi-picker-stack`
+      );
+      if (badge) {
+        badge.textContent = freeLayout
+          ? i === order.length - 1
+            ? "top"
+            : i === 0
+              ? "back"
+              : `#${i + 1}`
+          : `#${i + 1}`;
+      }
+    });
+  }
+
+  function pickerInsertIndexFromY(clientY) {
+    if (!pickerDrag) return 0;
+    const from = pickerDrag.fromIndex;
+    let insert = 0;
+    pickerDrag.layout.forEach((l, i) => {
+      if (i === from) return;
+      if (clientY > l.mid) insert += 1;
+    });
+    return insert;
+  }
+
+  function movePickerGhost(clientX, clientY) {
+    if (!pickerDrag?.ghost) return;
+    const x = clientX - (pickerDrag.offsetX || 0);
+    const y = clientY - pickerDrag.offsetY;
+    pickerDrag.ghost.style.transform = `translate3d(${x}px, ${y}px, 0) scale(1.03) rotate(-0.5deg)`;
+  }
+
+  function startPickerDrag(row, e) {
+    const rows = getPickerOnScreenRows();
+    const fromIndex = rows.indexOf(row);
+    if (fromIndex < 0) return;
+    const slotId = row.dataset.slotId;
+    if (!slotId || !selectedIds.includes(slotId)) return;
+
+    const rect = row.getBoundingClientRect();
+    pickerDrag = {
+      pointerId: e.pointerId,
+      slotId,
+      fromIndex,
+      insertIndex: fromIndex,
+      startY: e.clientY,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      stride: rect.height + 4,
+      row,
+      ghost: null,
+      layout: rows.map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          el,
+          id: el.dataset.slotId || "",
+          mid: r.top + r.height / 2,
+        };
+      }),
+      active: true,
+      moved: true,
+    };
+
+    if (rows.length > 1) {
+      const gap = Math.max(
+        0,
+        rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().bottom
+      );
+      pickerDrag.stride = rect.height + gap;
+    }
+
+    const ghost = row.cloneNode(true);
+    ghost.classList.add("multi-picker-drag-ghost");
+    ghost.classList.remove("is-drag-source", "is-focused");
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.style.left = "0";
+    ghost.style.top = "0";
+    document.body.appendChild(ghost);
+    pickerDrag.ghost = ghost;
+    movePickerGhost(e.clientX, e.clientY);
+
+    const list = pickerList();
+    list?.classList.add("is-reordering");
+    row.classList.add("is-drag-source");
+    rows.forEach((r) => {
+      if (r !== row) {
+        r.style.transition =
+          "transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)";
+      }
+    });
+    pickerDrag.insertIndex = pickerInsertIndexFromY(e.clientY);
+    applyPickerLiveShifts();
+
+    try {
+      row.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    document.body.classList.add("multi-picker-drag-cursor");
+  }
+
+  function endPickerDrag(commit) {
+    if (!pickerDrag) return;
+    const { fromIndex, insertIndex, slotId, ghost, active } = pickerDrag;
+    if (ghost) {
+      ghost.classList.add("multi-picker-drag-ghost-exit");
+      const g = ghost;
+      setTimeout(() => g.remove(), 160);
+    }
+    clearPickerDragTransforms();
+    document.body.classList.remove("multi-picker-drag-cursor");
+    const did = active && commit && fromIndex >= 0;
+    pickerDrag = null;
+    if (did) {
+      const changed = reorderSelectedId(slotId, insertIndex);
+      renderPicker();
+      if (changed) {
+        const n = selectedIds.length;
+        const pos = selectedIds.indexOf(slotId) + 1;
+        setSummary(
+          freeLayout
+            ? `Stack order: “${pos === n ? "front" : pos === 1 ? "back" : "#" + pos}” of ${n} (bottom of list = on top)`
+            : `On-screen order updated (#${pos} of ${n})`
+        );
+      }
+    } else {
+      renderPicker();
+    }
+  }
+
+  function onPickerPointerDown(e) {
+    const handle = e.target.closest?.(".multi-picker-drag");
+    if (!handle) return;
+    const row = handle.closest(".multi-picker-row.is-on-screen");
+    if (!row) return;
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // Pending until move threshold — avoids fighting clicks
+    pickerDrag = {
+      pointerId: e.pointerId,
+      slotId: row.dataset.slotId || "",
+      fromIndex: getPickerOnScreenRows().indexOf(row),
+      insertIndex: 0,
+      startY: e.clientY,
+      offsetX: 0,
+      offsetY: 0,
+      stride: 0,
+      row,
+      ghost: null,
+      layout: [],
+      active: false,
+      moved: false,
+    };
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function onPickerPointerMove(e) {
+    if (!pickerDrag || e.pointerId !== pickerDrag.pointerId) return;
+    if (!pickerDrag.active) {
+      const dy = e.clientY - pickerDrag.startY;
+      if (Math.abs(dy) < 6) return;
+      startPickerDrag(pickerDrag.row, e);
+      if (!pickerDrag?.active) return;
+    }
+    pickerDrag.moved = true;
+    movePickerGhost(e.clientX, e.clientY);
+    const nextInsert = pickerInsertIndexFromY(e.clientY);
+    if (nextInsert !== pickerDrag.insertIndex) {
+      pickerDrag.insertIndex = nextInsert;
+      applyPickerLiveShifts();
+    }
+  }
+
+  function onPickerPointerUp(e) {
+    if (!pickerDrag || e.pointerId !== pickerDrag.pointerId) return;
+    if (!pickerDrag.active) {
+      // No drag — treat as no-op (name click handles edit)
+      pickerDrag = null;
+      return;
+    }
+    endPickerDrag(true);
+  }
+
   function renderPicker() {
     const list = pickerList();
     if (!list) return;
+    // Don't rebuild DOM mid-reorder
+    if (pickerDrag?.active) return;
     const slots = librarySlots();
     const idSet = new Set(selectedIds);
     selectedIds = selectedIds.filter((id) => slots.some((w) => w.id === id));
-    const focus =
-      selectionUiVisible
-        ? focusedSlotId || activeLibraryId()
-        : null;
+    const focus = selectionUiVisible
+      ? focusedSlotId || activeLibraryId()
+      : null;
     list.innerHTML = "";
     if (!slots.length) {
       list.innerHTML = `<p class="multi-picker-empty">No saved wheels.</p>`;
       return;
     }
-    for (const w of slots) {
+
+    // On-screen first (stack order), then off-screen library wheels
+    const ordered = [
+      ...selectedIds
+        .map((id) => slots.find((w) => w.id === id))
+        .filter(Boolean),
+      ...slots.filter((w) => !idSet.has(w.id)),
+    ];
+
+    const onScreenCount = selectedIds.length;
+    ordered.forEach((w) => {
+      const onScreen = idSet.has(w.id);
+      const stackIdx = onScreen ? selectedIds.indexOf(w.id) : -1;
       const row = document.createElement("div");
       row.className =
-        "multi-picker-row" + (focus && w.id === focus ? " is-focused" : "");
+        "multi-picker-row" +
+        (onScreen ? " is-on-screen" : " is-off-screen") +
+        (focus && w.id === focus ? " is-focused" : "");
       row.dataset.slotId = w.id;
 
-      // Checkbox alone toggles show-on-board (label only wraps the box)
+      // Drag grip — on-screen only (controls free-placement stack)
+      const grip = document.createElement("button");
+      grip.type = "button";
+      grip.className = "multi-picker-drag";
+      grip.hidden = !onScreen;
+      grip.title = freeLayout
+        ? "Drag to set stack order — top of list sits behind, bottom eclipses others"
+        : "Drag to reorder wheels on screen";
+      grip.setAttribute("aria-label", "Drag to reorder");
+      grip.innerHTML = `<span class="drag-grip" aria-hidden="true"></span>`;
+      grip.addEventListener("pointerdown", onPickerPointerDown);
+
+      // Checkbox alone toggles show-on-board
       const cbWrap = document.createElement("label");
       cbWrap.className = "multi-picker-check";
       cbWrap.title = "Show on multi-spin board";
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = idSet.has(w.id);
+      cb.checked = onScreen;
       cb.addEventListener("click", (e) => e.stopPropagation());
       cb.addEventListener("change", () => {
         if (cb.checked) {
@@ -1258,10 +1592,34 @@ export function createMultiSpinController(deps) {
         if (e.key === "Enter" || e.key === " ") openEdit(e);
       });
 
+      // Stack badge for on-screen rows (free placement meaning)
+      const badge = document.createElement("span");
+      badge.className = "multi-picker-stack";
+      if (onScreen && onScreenCount > 0) {
+        if (freeLayout) {
+          if (stackIdx === onScreenCount - 1) badge.textContent = "top";
+          else if (stackIdx === 0) badge.textContent = "back";
+          else badge.textContent = `#${stackIdx + 1}`;
+          badge.title =
+            stackIdx === onScreenCount - 1
+              ? "Front — overlaps other wheels in free placement"
+              : stackIdx === 0
+                ? "Back — under other wheels in free placement"
+                : `Stack #${stackIdx + 1} of ${onScreenCount}`;
+        } else {
+          badge.textContent = `#${stackIdx + 1}`;
+          badge.title = `On-screen order #${stackIdx + 1}`;
+        }
+      } else {
+        badge.hidden = true;
+      }
+
+      row.appendChild(grip);
       row.appendChild(cbWrap);
       row.appendChild(span);
+      row.appendChild(badge);
       list.appendChild(row);
-    }
+    });
     setWarn();
   }
 
@@ -1390,6 +1748,11 @@ export function createMultiSpinController(deps) {
   }
 
   function onDragPointerMove(e) {
+    // Picker list reorder (stack order) — independent of board drag
+    if (pickerDrag && e.pointerId === pickerDrag.pointerId) {
+      onPickerPointerMove(e);
+      return;
+    }
     if (resize && e.pointerId === resize.pointerId) {
       // Tile resize only (free placement) — grid size uses the picker slider
       if (resize.mode !== "tile" || !resize.tile) return;
@@ -1444,13 +1807,17 @@ export function createMultiSpinController(deps) {
   }
 
   function onDragPointerUp(e) {
+    if (pickerDrag && e.pointerId === pickerDrag.pointerId) {
+      onPickerPointerUp(e);
+      return;
+    }
     if (resize && e.pointerId === resize.pointerId) {
       const t = resize.tile;
       resize = null;
       if (t?.rootEl) {
         t.rootEl.classList.remove("is-resizing");
-        t.rootEl.style.zIndex = "";
       }
+      applyTileStackOrder();
       saveLayout();
       updateBoardSize();
       try {
@@ -1469,9 +1836,10 @@ export function createMultiSpinController(deps) {
     const clientY = e.clientY;
     drag = null;
     t.rootEl?.classList.remove("is-dragging");
-    t.rootEl.style.zIndex = "";
     clearGridDropHighlight();
     hideGridDropOverlay();
+    // Restore free-placement stack z (was temporarily elevated while dragging)
+    applyTileStackOrder();
     if (!didMove) {
       void selectTile(t.slotId, { edit: true });
       return;
@@ -1678,10 +2046,13 @@ export function createMultiSpinController(deps) {
     }
     applyDragLockUi();
     applyLayoutModeUi();
+    applyTileStackOrder();
     updateFocusUi();
     setSummary(
       `${selectedIds.length} wheel${selectedIds.length === 1 ? "" : "s"} ready` +
-        (freeLayout ? " · free placement" : " · grid")
+        (freeLayout
+          ? " · free placement (list order = stack: bottom eclipses top)"
+          : " · grid")
     );
     renderPicker();
   }
@@ -2329,7 +2700,14 @@ export function createMultiSpinController(deps) {
   }
 
   function selectAll() {
-    selectedIds = librarySlots().map((w) => w.id);
+    // Keep existing on-screen order; append any newly selected at the end (front)
+    const slots = librarySlots();
+    const have = new Set(selectedIds);
+    const next = selectedIds.filter((id) => slots.some((w) => w.id === id));
+    for (const w of slots) {
+      if (!have.has(w.id)) next.push(w.id);
+    }
+    selectedIds = next;
     saveSelection();
     void syncTilesWithLibrary();
   }
