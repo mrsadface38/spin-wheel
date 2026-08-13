@@ -407,22 +407,29 @@ body.focus-mode .stage-panel {
 }
 
 
-/* Multi-spin: confetti / custom effect clipped to that wheel's stage */
+/* Multi-spin: confetti / custom effect clipped to that wheel's stage.
+   Must sit ABOVE the big-center dark win overlay (z-index 32), like main wheel. */
 .multi-tile-stage > .confetti-layer,
 .multi-tile-stage > .win-effect-media-layer,
 .confetti-layer--local,
 .win-effect-media-layer--local {
   position: absolute !important;
   inset: 0 !important;
-  z-index: 28;
+  z-index: 40;
   border-radius: inherit;
+  pointer-events: none;
 }
 .confetti-layer--local {
   position: absolute !important;
   inset: 0 !important;
-  z-index: 28;
+  z-index: 40;
   pointer-events: none;
   overflow: hidden;
+}
+/* Custom win media on multi: no extra full-tile dim on top of the result overlay */
+.multi-tile-stage > .win-effect-media-layer:not(.win-fx-transparent),
+.win-effect-media-layer--local:not(.win-fx-transparent) {
+  background: transparent;
 }
 .confetti-layer--local canvas {
   width: 100%;
