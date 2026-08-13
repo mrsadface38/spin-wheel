@@ -2679,7 +2679,14 @@ export function createMultiSpinController(deps) {
           `→ ${tName}${times > 1 ? ` ×${times}` : ""} (waiting…)`
         );
         await sleepMs(0);
-        await waitUntilTileFullyIdle(target);
+        // Wait for target's spin/queue only — not its own wait-for-other
+        // (avoids A↔B deadlock when both have Wait on).
+        tile._waitingForSlotId = target.slotId;
+        try {
+          await waitUntilTileSpinWorkIdle(target);
+        } finally {
+          tile._waitingForSlotId = null;
+        }
         setTileResult(
           tile,
           win,
@@ -2754,7 +2761,12 @@ export function createMultiSpinController(deps) {
           `↻×${respinN} + → ${tName}×${otherN} (waiting…)`
         );
         await sleepMs(0);
-        await waitUntilTileFullyIdle(target);
+        tile._waitingForSlotId = target.slotId;
+        try {
+          await waitUntilTileSpinWorkIdle(target);
+        } finally {
+          tile._waitingForSlotId = null;
+        }
         setTileResult(
           tile,
           win,
@@ -2817,11 +2829,9 @@ export function createMultiSpinController(deps) {
   }
 
   /**
-   * Shared post-land path for timed spin and fling.
+   * History + win effect for a multi land (no land-action wait).
    */
-  async function finishTileLand(tile, win, opts = {}) {
-    const silentLand = opts.silentLand === true;
-    const chainDepth = Number(opts.chainDepth) || 0;
+  async function recordTileWinAndEffect(tile, win, opts = {}) {
     const rigged = opts.rigged === true;
     if (!win) return;
     setTileResult(tile, win);
@@ -2862,15 +2872,30 @@ export function createMultiSpinController(deps) {
     } catch (err) {
       console.warn("multi-spin win effect:", err);
     }
-    await handleMultiLandAction(tile, win, chainDepth);
-    if (!silentLand && chainDepth === 0) {
-      playLandOnce();
-    }
   }
 
-  function endTileSpinSession(tile) {
+  /**
+   * After the physical spin ends: clear busy flag, then land actions / queue.
+   * Clearing busy before wait-for-other lets A↔B loops keep running.
+   */
+  async function afterTileSpin(tile, win, opts = {}) {
+    const silentLand = opts.silentLand === true;
+    const chainDepth = Number(opts.chainDepth) || 0;
+    const rigged = opts.rigged === true;
+
+    // Spin animation finished — free the tile so portals can target it
     tile.spinning = false;
     tile.rootEl?.classList.remove("is-spinning");
+
+    if (win) {
+      await recordTileWinAndEffect(tile, win, { rigged });
+      // Land actions may wait for another wheel (spin-work idle only)
+      await handleMultiLandAction(tile, win, chainDepth);
+      if (!silentLand && chainDepth === 0) {
+        playLandOnce();
+      }
+    }
+
     if (tile._removeAfterSpin) {
       tile.queue = [];
       const sid = tile.slotId;
@@ -2890,6 +2915,7 @@ export function createMultiSpinController(deps) {
       }
       return;
     }
+
     if (tile._pendingLiveState) {
       const pending = tile._pendingLiveState;
       const pendingName = tile._pendingLiveName;
@@ -2897,7 +2923,6 @@ export function createMultiSpinController(deps) {
       tile._pendingLiveName = null;
       void refreshTileFromState(tile, pending, pendingName);
     }
-    // Don't drain while user still has the wheel grabbed after interrupt
     if (tile._holdQueueForDrag || tile.wheel?._dragging) {
       return;
     }
@@ -2943,13 +2968,6 @@ export function createMultiSpinController(deps) {
         spinOpts.spinDirection = opts.spinDirection;
       }
       win = await tile.wheel.spin(dur, spinOpts);
-      if (win) {
-        await finishTileLand(tile, win, {
-          silentLand,
-          chainDepth,
-          rigged: false,
-        });
-      }
     } catch (err) {
       console.error("multi-spin tile failed:", tile.name, err);
       try {
@@ -2957,9 +2975,14 @@ export function createMultiSpinController(deps) {
       } catch {
         /* ignore */
       }
-    } finally {
-      endTileSpinSession(tile);
+      win = null;
     }
+    // Land actions / wait / queue after spinning flag is cleared
+    await afterTileSpin(tile, win, {
+      silentLand,
+      chainDepth,
+      rigged: false,
+    });
     return win;
   }
 
@@ -2988,14 +3011,6 @@ export function createMultiSpinController(deps) {
       win = await tile.wheel.fling(velocityRadPerSec, {
         maxSpeedScale: maxSpeedScaleForTile(tile),
       });
-      if (win) {
-        await finishTileLand(tile, win, {
-          silentLand,
-          chainDepth,
-          // Fling is a player-aimed spin (same badge idea as main wheel)
-          rigged: true,
-        });
-      }
     } catch (err) {
       console.error("multi-spin fling failed:", tile.name, err);
       try {
@@ -3003,9 +3018,13 @@ export function createMultiSpinController(deps) {
       } catch {
         /* ignore */
       }
-    } finally {
-      endTileSpinSession(tile);
+      win = null;
     }
+    await afterTileSpin(tile, win, {
+      silentLand,
+      chainDepth,
+      rigged: true,
+    });
     return win;
   }
 
