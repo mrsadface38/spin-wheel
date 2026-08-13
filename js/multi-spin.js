@@ -406,6 +406,10 @@ export function createMultiSpinController(deps) {
     if (L?.customSize && Number.isFinite(L.size) && L.size > 0) {
       return clampSize(L.size);
     }
+    // After Fit largest, size is stored without customSize — honor it
+    if (Number.isFinite(L?.size) && L.size > 0) {
+      return clampSize(L.size);
+    }
     return maxTileSizeForCount(Math.max(1, selectedIds.length));
   }
 
