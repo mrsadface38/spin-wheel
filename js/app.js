@@ -521,6 +521,19 @@ function persist() {
   fillWheelSelect();
   updateStorageMeter();
   updateShareButtonHint();
+  // Multi-spin tiles hold their own clone — push live edits onto the active tile
+  try {
+    if (multiSpin?.isActive?.() && library?.activeId) {
+      const slot = getActiveSlot(library);
+      void multiSpin.applyLiveState?.(
+        library.activeId,
+        state,
+        slot?.name
+      );
+    }
+  } catch (err) {
+    console.warn("multi-spin live update:", err);
+  }
   return ok;
 }
 
@@ -11080,14 +11093,33 @@ async function init() {
       },
       onEditWheel: async (slotId) => {
         if (!slotId) return;
-        if (slotId !== library?.activeId) {
-          await switchToWheelId(slotId);
+        try {
+          if (slotId !== library?.activeId) {
+            await switchToWheelId(slotId);
+          } else {
+            // Already active — still re-bind UI so forms match current state
+            try {
+              bindAll();
+            } catch {
+              /* ignore */
+            }
+          }
+        } catch (err) {
+          console.warn("multi-spin switch for edit:", err);
+          await safeAlert(
+            "Could not switch to that wheel for editing: " +
+              (err?.message || err)
+          );
+          return;
         }
         // Show editor panels + restore multi-spin selection chrome
         setSidebarCollapsed(false, { persistUi: true });
+        multiSpin?.setSelectionUiVisible?.(true);
         // Focus sections tab for editing
         try {
-          const tabBtn = document.querySelector('.tabs .tab[data-tab="sections"]');
+          const tabBtn = document.querySelector(
+            '.tabs .tab[data-tab="sections"]'
+          );
           tabBtn?.click?.();
         } catch {
           /* ignore */

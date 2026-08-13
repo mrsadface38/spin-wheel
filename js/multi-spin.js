@@ -998,16 +998,19 @@ export function createMultiSpinController(deps) {
       return;
     }
     for (const w of slots) {
-      // <label> so clicking the name toggles the checkbox (not only the tiny box)
-      const row = document.createElement("label");
+      const row = document.createElement("div");
       row.className =
         "multi-picker-row" + (focus && w.id === focus ? " is-focused" : "");
       row.dataset.slotId = w.id;
 
+      // Checkbox alone toggles show-on-board (label only wraps the box)
+      const cbWrap = document.createElement("label");
+      cbWrap.className = "multi-picker-check";
+      cbWrap.title = "Show on multi-spin board";
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.checked = idSet.has(w.id);
-      cb.title = "Show on multi-spin board";
+      cb.addEventListener("click", (e) => e.stopPropagation());
       cb.addEventListener("change", () => {
         if (cb.checked) {
           if (!selectedIds.includes(w.id)) selectedIds.push(w.id);
@@ -1019,20 +1022,25 @@ export function createMultiSpinController(deps) {
         setWarn();
         void syncTilesWithLibrary();
       });
+      cbWrap.appendChild(cb);
 
       const span = document.createElement("span");
       span.className = "multi-picker-name";
       span.textContent = w.name || "Untitled";
-      span.title = "Click to show or hide on the multi-spin board (double-click to edit)";
-
-      row.appendChild(cb);
-      row.appendChild(span);
-      // Double-click opens edit (two label clicks often cancel; resync checkbox)
-      row.addEventListener("dblclick", (e) => {
+      span.title = "Click to select and edit this wheel";
+      span.tabIndex = 0;
+      const openEdit = (e) => {
         e.preventDefault();
-        cb.checked = selectedIds.includes(w.id);
+        e.stopPropagation();
         void selectTile(w.id, { edit: true });
+      };
+      span.addEventListener("click", openEdit);
+      span.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") openEdit(e);
       });
+
+      row.appendChild(cbWrap);
+      row.appendChild(span);
       list.appendChild(row);
     }
     setWarn();
@@ -1090,10 +1098,12 @@ export function createMultiSpinController(deps) {
       void selectTile(tile.slotId, { edit: true });
     });
 
-    // Click tile (not drag handle) to select for editing
+    // Click tile body → select that wheel for sidebar editing
     rootEl.addEventListener("click", (e) => {
       if (e.target.closest("button")) return;
-      void selectTile(tile.slotId, { edit: false });
+      if (e.target.closest(".multi-tile-resize")) return;
+      if (e.target.closest(".multi-tile-drag")) return;
+      void selectTile(tile.slotId, { edit: true });
     });
 
     stage?.addEventListener("dblclick", (e) => {
@@ -1238,7 +1248,7 @@ export function createMultiSpinController(deps) {
     t.rootEl.style.zIndex = "";
     clearGridDropHighlight();
     if (!didMove) {
-      void selectTile(t.slotId, { edit: false });
+      void selectTile(t.slotId, { edit: true });
       return;
     }
     if (mode === "grid" || !freeLayout) {
@@ -1347,13 +1357,21 @@ export function createMultiSpinController(deps) {
     }
   }
 
-  async function refreshTileFromSlot(tile, slot) {
-    if (!tile || !slot || tile.spinning || tile.wheel?.spinning) return;
-    tile.name = slot.name || "Untitled";
-    const nameEl = tile.rootEl?.querySelector(".multi-tile-name");
-    if (nameEl) nameEl.textContent = tile.name;
+  async function refreshTileFromState(tile, rawState, name) {
+    if (!tile || !rawState) return;
+    if (tile.spinning || tile.wheel?.spinning) {
+      // Apply after this spin finishes
+      tile._pendingLiveState = deepClone(rawState);
+      if (name != null) tile._pendingLiveName = name;
+      return;
+    }
+    if (name != null) {
+      tile.name = name || "Untitled";
+      const nameEl = tile.rootEl?.querySelector(".multi-tile-name");
+      if (nameEl) nameEl.textContent = tile.name;
+    }
     try {
-      tile.state = hydrateState(deepClone(slot.data || {}));
+      tile.state = hydrateState(deepClone(rawState));
       await tile.wheel.setLook(tile.state.look || {});
       await tile.wheel.setSections(getDisplaySections(tile.state));
       tile.wheel.resize?.();
@@ -1361,6 +1379,24 @@ export function createMultiSpinController(deps) {
     } catch (err) {
       console.warn("multi-spin tile refresh:", tile.name, err);
     }
+  }
+
+  async function refreshTileFromSlot(tile, slot) {
+    if (!tile || !slot) return;
+    await refreshTileFromState(tile, slot.data || {}, slot.name || "Untitled");
+  }
+
+  /**
+   * Push live editor state into a multi-spin tile (after save / while editing).
+   * @param {string} slotId
+   * @param {object} liveState
+   * @param {string} [name]
+   */
+  async function applyLiveState(slotId, liveState, name) {
+    if (!active || !slotId || !liveState) return;
+    const tile = tiles.get(slotId);
+    if (!tile) return;
+    await refreshTileFromState(tile, liveState, name);
   }
 
   /**
@@ -1806,6 +1842,14 @@ export function createMultiSpinController(deps) {
     } finally {
       tile.spinning = false;
       tile.rootEl?.classList.remove("is-spinning");
+      // Apply editor changes that arrived mid-spin
+      if (tile._pendingLiveState) {
+        const pending = tile._pendingLiveState;
+        const pendingName = tile._pendingLiveName;
+        tile._pendingLiveState = null;
+        tile._pendingLiveName = null;
+        void refreshTileFromState(tile, pending, pendingName);
+      }
       // Start next queued spin (if any)
       void drainQueue(tile);
     }

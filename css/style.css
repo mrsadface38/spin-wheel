@@ -833,15 +833,31 @@ body.multi-spin-mode #stage {
   outline: 1px solid rgba(90, 140, 255, 0.45);
 }
 
+.multi-picker-check {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  cursor: pointer;
+}
+
 .multi-picker-row input {
   flex-shrink: 0;
   accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .multi-picker-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.multi-picker-name:hover {
+  color: var(--accent-2, #7ee0a8);
 }
 
 .multi-picker-empty,
