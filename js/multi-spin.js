@@ -1,6 +1,6 @@
 /**
  * Multi-spin mode: show several saved library wheels on one screen and spin them together.
- * Display-only for results (does not eliminate/hide sections on land).
+ * Free-drag layout (optional lock), select a tile to edit that wheel in the sidebar.
  */
 
 import { Wheel } from "./wheel.js";
@@ -14,18 +14,23 @@ import {
 } from "./state.js";
 
 const SEL_KEY = "spin-wheel-multi-ids-v1";
+const LAYOUT_KEY = "spin-wheel-multi-layout-v1";
+const LOCK_KEY = "spin-wheel-multi-drag-lock-v1";
 const SOFT_WARN_AT = 12;
-/** Cap respin / other-wheel chains in multi view (matches single-wheel safety). */
 const MAX_LAND_CHAIN = 20;
+const TILE_W = 280;
+const TILE_GAP = 16;
 
 /**
  * @param {object} deps
- * @param {() => { wheels: { id: string, name: string, data: object }[] }} deps.getLibrary
+ * @param {() => { activeId?: string, wheels: { id: string, name: string, data: object }[] }} deps.getLibrary
  * @param {{ ensure: Function, playTick: Function, playOneShot: Function, buffers: Map }} deps.audio
  * @param {() => object} deps.getSound
  * @param {(n: number) => number} deps.clampSpinDuration
  * @param {(vol: number) => void} [deps.playGlobalLandSfx]
  * @param {() => string} [deps.getSpinTickPreset]
+ * @param {(slotId: string) => void|Promise<void>} [deps.onSelectWheel]
+ * @param {(slotId: string) => void|Promise<void>} [deps.onEditWheel]
  * @param {() => void} [deps.onEnter]
  * @param {() => void} [deps.onExit]
  */
@@ -33,10 +38,18 @@ export function createMultiSpinController(deps) {
   let active = false;
   /** @type {string[]} */
   let selectedIds = loadSelection();
+  /** @type {Record<string, { x: number, y: number }>} */
+  let layoutMap = loadLayout();
+  let dragLocked = loadDragLock();
+  /** @type {string|null} */
+  let focusedSlotId = null;
   /** @type {Map<string, object>} */
   const tiles = new Map();
   let spinAllBusy = false;
   let lastTickAudioAt = 0;
+
+  /** @type {null | { tile: object, pointerId: number, grabX: number, grabY: number, startX: number, startY: number, moved: boolean }} */
+  let drag = null;
 
   const root = () => document.getElementById("multi-root");
   const grid = () => document.getElementById("multi-grid");
@@ -45,6 +58,7 @@ export function createMultiSpinController(deps) {
   const warnEl = () => document.getElementById("multi-warn");
   const stageEl = () => document.getElementById("stage");
   const btnToggle = () => document.getElementById("btn-multi-spin");
+  const lockChk = () => document.getElementById("chk-multi-drag-lock");
 
   function loadSelection() {
     try {
@@ -60,6 +74,51 @@ export function createMultiSpinController(deps) {
   function saveSelection() {
     try {
       localStorage.setItem(SEL_KEY, JSON.stringify(selectedIds));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function loadLayout() {
+    try {
+      const raw = localStorage.getItem(LAYOUT_KEY);
+      if (!raw) return {};
+      const obj = JSON.parse(raw);
+      if (!obj || typeof obj !== "object") return {};
+      /** @type {Record<string, { x: number, y: number }>} */
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) {
+        const x = Number(v?.x);
+        const y = Number(v?.y);
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          out[k] = { x: Math.max(0, x), y: Math.max(0, y) };
+        }
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  function saveLayout() {
+    try {
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(layoutMap));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function loadDragLock() {
+    try {
+      return localStorage.getItem(LOCK_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  function saveDragLock() {
+    try {
+      localStorage.setItem(LOCK_KEY, dragLocked ? "1" : "0");
     } catch {
       /* ignore */
     }
@@ -84,6 +143,10 @@ export function createMultiSpinController(deps) {
   function librarySlots() {
     const lib = deps.getLibrary?.() || { wheels: [] };
     return Array.isArray(lib.wheels) ? lib.wheels : [];
+  }
+
+  function activeLibraryId() {
+    return deps.getLibrary?.()?.activeId || null;
   }
 
   function onMultiTick(speed) {
@@ -141,40 +204,140 @@ export function createMultiSpinController(deps) {
     if (el) el.textContent = text || "";
   }
 
+  function defaultPosForIndex(i) {
+    const g = grid();
+    const wrapW = Math.max(TILE_W + 40, g?.clientWidth || 600);
+    const cols = Math.max(1, Math.floor((wrapW + TILE_GAP) / (TILE_W + TILE_GAP)));
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    return {
+      x: col * (TILE_W + TILE_GAP),
+      y: row * (TILE_W + 88 + TILE_GAP),
+    };
+  }
+
+  function ensureLayoutFor(slotId, indexHint = 0) {
+    if (layoutMap[slotId] && Number.isFinite(layoutMap[slotId].x)) {
+      return layoutMap[slotId];
+    }
+    const pos = defaultPosForIndex(indexHint);
+    layoutMap[slotId] = pos;
+    return pos;
+  }
+
+  function applyTilePosition(tile) {
+    if (!tile?.rootEl) return;
+    const idx = selectedIds.indexOf(tile.slotId);
+    const pos = ensureLayoutFor(tile.slotId, Math.max(0, idx));
+    tile.rootEl.style.left = `${pos.x}px`;
+    tile.rootEl.style.top = `${pos.y}px`;
+    tile.rootEl.style.width = `${TILE_W}px`;
+  }
+
+  function updateBoardSize() {
+    const g = grid();
+    if (!g) return;
+    let maxR = 200;
+    let maxB = 200;
+    for (const id of selectedIds) {
+      const pos = layoutMap[id] || { x: 0, y: 0 };
+      maxR = Math.max(maxR, pos.x + TILE_W + 24);
+      maxB = Math.max(maxB, pos.y + TILE_W + 100);
+    }
+    g.style.minHeight = `${maxB}px`;
+    g.style.minWidth = `${maxR}px`;
+  }
+
+  function applyDragLockUi() {
+    const g = grid();
+    g?.classList.toggle("is-drag-locked", dragLocked);
+    root()?.classList.toggle("is-drag-locked", dragLocked);
+    const chk = lockChk();
+    if (chk) chk.checked = dragLocked;
+    for (const t of tiles.values()) {
+      t.rootEl?.classList.toggle("drag-locked", dragLocked);
+      const handle = t.rootEl?.querySelector(".multi-tile-drag");
+      if (handle) {
+        handle.title = dragLocked
+          ? "Positions locked — unlock in the toolbar to drag"
+          : "Drag to move this wheel";
+      }
+    }
+  }
+
+  function updateFocusUi() {
+    const focus =
+      focusedSlotId || activeLibraryId() || selectedIds[0] || null;
+    for (const t of tiles.values()) {
+      const on = t.slotId === focus;
+      t.rootEl?.classList.toggle("is-selected", on);
+      t.rootEl?.setAttribute("aria-selected", on ? "true" : "false");
+    }
+  }
+
+  async function selectTile(slotId, { edit = false } = {}) {
+    if (!slotId) return;
+    focusedSlotId = slotId;
+    updateFocusUi();
+    try {
+      if (edit && typeof deps.onEditWheel === "function") {
+        await deps.onEditWheel(slotId);
+      } else if (typeof deps.onSelectWheel === "function") {
+        await deps.onSelectWheel(slotId);
+      }
+    } catch (err) {
+      console.warn("multi-spin select wheel:", err);
+    }
+    updateFocusUi();
+  }
+
   function renderPicker() {
     const list = pickerList();
     if (!list) return;
     const slots = librarySlots();
     const idSet = new Set(selectedIds);
     selectedIds = selectedIds.filter((id) => slots.some((w) => w.id === id));
+    const focus = focusedSlotId || activeLibraryId();
     list.innerHTML = "";
     if (!slots.length) {
       list.innerHTML = `<p class="multi-picker-empty">No saved wheels.</p>`;
       return;
     }
     for (const w of slots) {
-      const label = document.createElement("label");
-      label.className = "multi-picker-row";
+      const row = document.createElement("div");
+      row.className =
+        "multi-picker-row" + (w.id === focus ? " is-focused" : "");
+      row.dataset.slotId = w.id;
+
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.checked = idSet.has(w.id);
-      cb.dataset.slotId = w.id;
+      cb.title = "Show on multi-spin board";
+      cb.addEventListener("click", (e) => e.stopPropagation());
       cb.addEventListener("change", () => {
         if (cb.checked) {
           if (!selectedIds.includes(w.id)) selectedIds.push(w.id);
         } else {
           selectedIds = selectedIds.filter((id) => id !== w.id);
+          if (focusedSlotId === w.id) focusedSlotId = null;
         }
         saveSelection();
         setWarn();
-        void rebuildTiles();
+        void syncTilesWithLibrary();
       });
+
       const span = document.createElement("span");
       span.className = "multi-picker-name";
       span.textContent = w.name || "Untitled";
-      label.appendChild(cb);
-      label.appendChild(span);
-      list.appendChild(label);
+      span.title = "Click to select / edit this wheel";
+
+      row.appendChild(cb);
+      row.appendChild(span);
+      row.addEventListener("click", (e) => {
+        if (e.target === cb) return;
+        void selectTile(w.id, { edit: true });
+      });
+      list.appendChild(row);
     }
     setWarn();
   }
@@ -183,9 +346,15 @@ export function createMultiSpinController(deps) {
     const el = document.createElement("article");
     el.className = "multi-tile";
     el.dataset.slotId = slot.id;
+    el.setAttribute("role", "listitem");
+    el.setAttribute("aria-selected", "false");
     el.innerHTML = `
       <div class="multi-tile-head">
+        <button type="button" class="multi-tile-drag" title="Drag to move this wheel" aria-label="Drag to move">
+          <span class="drag-grip" aria-hidden="true"></span>
+        </button>
         <span class="multi-tile-name"></span>
+        <button type="button" class="btn small ghost multi-tile-edit" title="Edit this wheel in the sidebar">Edit</button>
         <button type="button" class="btn small multi-tile-spin" title="Spin this wheel">Spin</button>
       </div>
       <div class="stage stage--mini multi-tile-stage">
@@ -205,13 +374,94 @@ export function createMultiSpinController(deps) {
     return el;
   }
 
+  function bindTileChrome(tile) {
+    const rootEl = tile.rootEl;
+    const stage = rootEl.querySelector(".multi-tile-stage");
+
+    rootEl.querySelector(".multi-tile-spin")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void spinTile(tile);
+    });
+
+    rootEl.querySelector(".multi-tile-edit")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void selectTile(tile.slotId, { edit: true });
+    });
+
+    // Click tile (not drag handle) to select for editing
+    rootEl.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      void selectTile(tile.slotId, { edit: false });
+    });
+
+    stage?.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      void spinTile(tile);
+    });
+
+    const handle = rootEl.querySelector(".multi-tile-drag");
+    handle?.addEventListener("pointerdown", (e) => {
+      if (dragLocked) return;
+      if (e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const pos = layoutMap[tile.slotId] || { x: 0, y: 0 };
+      drag = {
+        tile,
+        pointerId: e.pointerId,
+        grabX: e.clientX,
+        grabY: e.clientY,
+        startX: pos.x,
+        startY: pos.y,
+        moved: false,
+      };
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      rootEl.classList.add("is-dragging");
+      rootEl.style.zIndex = "20";
+    });
+  }
+
+  function onDragPointerMove(e) {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const dx = e.clientX - drag.grabX;
+    const dy = e.clientY - drag.grabY;
+    if (!drag.moved && dx * dx + dy * dy < 9) return;
+    drag.moved = true;
+    const x = Math.max(0, drag.startX + dx);
+    const y = Math.max(0, drag.startY + dy);
+    layoutMap[drag.tile.slotId] = { x, y };
+    applyTilePosition(drag.tile);
+    updateBoardSize();
+  }
+
+  function onDragPointerUp(e) {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const t = drag.tile;
+    const didMove = drag.moved;
+    drag = null;
+    t.rootEl?.classList.remove("is-dragging");
+    t.rootEl.style.zIndex = "";
+    if (didMove) {
+      saveLayout();
+      updateBoardSize();
+    } else {
+      // Treat as select if barely moved
+      void selectTile(t.slotId, { edit: false });
+    }
+  }
+
   async function buildTile(slot) {
     const g = grid();
     if (!g) return null;
     const rootEl = createTileDom(slot);
     g.appendChild(rootEl);
 
-    const stage = rootEl.querySelector(".multi-tile-stage");
     const wheelCanvas = rootEl.querySelector("canvas.wheel-canvas");
     const bgCanvas = rootEl.querySelector("canvas.bg-canvas");
     const overlayCanvas = rootEl.querySelector("canvas.wheel-overlay");
@@ -252,18 +502,11 @@ export function createMultiSpinController(deps) {
       lastWin: null,
     };
 
-    rootEl.querySelector(".multi-tile-spin")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      void spinTile(tile);
-    });
-
-    stage?.addEventListener("dblclick", (e) => {
-      e.preventDefault();
-      void spinTile(tile);
-    });
-
+    bindTileChrome(tile);
     tiles.set(slot.id, tile);
+    applyTilePosition(tile);
+    applyDragLockUi();
+    updateFocusUi();
 
     requestAnimationFrame(() => {
       try {
@@ -277,47 +520,95 @@ export function createMultiSpinController(deps) {
     return tile;
   }
 
-  function destroyTiles() {
-    for (const t of tiles.values()) {
-      try {
-        t.wheel?.cancelAnimatedSpin?.();
-      } catch {
-        /* ignore */
-      }
-      try {
-        t.wheel?.destroy?.();
-      } catch {
-        /* ignore */
-      }
-      t.rootEl?.remove();
+  function destroyOneTile(tile) {
+    if (!tile) return;
+    try {
+      tile.wheel?.cancelAnimatedSpin?.();
+    } catch {
+      /* ignore */
     }
+    try {
+      tile.wheel?.destroy?.();
+    } catch {
+      /* ignore */
+    }
+    tile.rootEl?.remove();
+    tiles.delete(tile.slotId);
+  }
+
+  function destroyTiles() {
+    for (const t of [...tiles.values()]) destroyOneTile(t);
     tiles.clear();
     const g = grid();
     if (g) g.innerHTML = "";
   }
 
-  async function rebuildTiles() {
-    destroyTiles();
+  async function refreshTileFromSlot(tile, slot) {
+    if (!tile || !slot || tile.spinning || tile.wheel?.spinning) return;
+    tile.name = slot.name || "Untitled";
+    const nameEl = tile.rootEl?.querySelector(".multi-tile-name");
+    if (nameEl) nameEl.textContent = tile.name;
+    try {
+      tile.state = hydrateState(deepClone(slot.data || {}));
+      await tile.wheel.setLook(tile.state.look || {});
+      await tile.wheel.setSections(getDisplaySections(tile.state));
+      tile.wheel.resize?.();
+      tile.wheel.draw();
+    } catch (err) {
+      console.warn("multi-spin tile refresh:", tile.name, err);
+    }
+  }
+
+  /**
+   * Add/remove/refresh tiles without wiping free-drag positions.
+   */
+  async function syncTilesWithLibrary() {
     const g = grid();
     if (!g) return;
     const slots = librarySlots();
-    const ordered = selectedIds
-      .map((id) => slots.find((w) => w.id === id))
-      .filter(Boolean);
+    selectedIds = selectedIds.filter((id) => slots.some((w) => w.id === id));
+    saveSelection();
 
-    if (!ordered.length) {
-      g.innerHTML = `<p class="multi-grid-empty">Select wheels on the left to show them here.</p>`;
+    for (const [id, tile] of [...tiles.entries()]) {
+      if (!selectedIds.includes(id)) destroyOneTile(tile);
+    }
+
+    if (!selectedIds.length) {
+      destroyTiles();
+      g.innerHTML = `<p class="multi-grid-empty">Select wheels on the left to show them here. Drag the grip to place them; lock positions in the toolbar.</p>`;
       setSummary("");
+      updateFocusUi();
       return;
     }
 
-    g.innerHTML = "";
-    for (const slot of ordered) {
-      await buildTile(slot);
+    g.querySelector(".multi-grid-empty")?.remove();
+
+    let i = 0;
+    for (const id of selectedIds) {
+      const slot = slots.find((w) => w.id === id);
+      if (!slot) continue;
+      ensureLayoutFor(id, i);
+      if (tiles.has(id)) {
+        await refreshTileFromSlot(tiles.get(id), slot);
+      } else {
+        await buildTile(slot);
+      }
+      i += 1;
     }
+
+    for (const t of tiles.values()) applyTilePosition(t);
+    updateBoardSize();
+    applyDragLockUi();
+    updateFocusUi();
     setSummary(
-      `${ordered.length} wheel${ordered.length === 1 ? "" : "s"} ready`
+      `${selectedIds.length} wheel${selectedIds.length === 1 ? "" : "s"} ready`
     );
+    renderPicker();
+  }
+
+  async function rebuildTiles() {
+    destroyTiles();
+    await syncTilesWithLibrary();
   }
 
   function setTileResult(tile, win, note = "") {
@@ -347,7 +638,6 @@ export function createMultiSpinController(deps) {
     return new Promise((resolve) => setTimeout(resolve, n));
   }
 
-  /** Wait until a tile is free (e.g. target still finishing Spin all). */
   async function waitUntilIdle(tile, timeoutMs = 120000) {
     if (!tile) return;
     const start = Date.now();
@@ -357,10 +647,6 @@ export function createMultiSpinController(deps) {
     }
   }
 
-  /**
-   * Ensure the library wheel is on the multi grid (add + build if needed).
-   * Used when land action portals to another wheel.
-   */
   async function ensureTileForSlot(slotId) {
     if (!slotId) return null;
     if (tiles.has(slotId)) return tiles.get(slotId);
@@ -369,12 +655,14 @@ export function createMultiSpinController(deps) {
     if (!selectedIds.includes(slotId)) {
       selectedIds.push(slotId);
       saveSelection();
-      renderPicker();
     }
     const g = grid();
-    if (g?.querySelector(".multi-grid-empty")) g.innerHTML = "";
+    g?.querySelector(".multi-grid-empty")?.remove();
+    ensureLayoutFor(slotId, selectedIds.length - 1);
     await buildTile(slot);
+    updateBoardSize();
     setWarn();
+    renderPicker();
     const tile = tiles.get(slotId) || null;
     try {
       tile?.rootEl?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
@@ -384,10 +672,6 @@ export function createMultiSpinController(deps) {
     return tile;
   }
 
-  /**
-   * After a multi-spin land: respin same tile or spin target wheel tile.
-   * @returns {boolean} true if a chain was started
-   */
   async function handleMultiLandAction(tile, win, chainDepth) {
     if (!tile || !win || chainDepth >= MAX_LAND_CHAIN) return false;
 
@@ -406,10 +690,7 @@ export function createMultiSpinController(deps) {
     if (action === "respin") {
       setTileResult(tile, win, "→ respin…");
       await sleepMs(waitMs);
-      await spinTile(tile, {
-        silentLand: true,
-        chainDepth: chainDepth + 1,
-      });
+      await spinTile(tile, { silentLand: true, chainDepth: chainDepth + 1 });
       return true;
     }
 
@@ -420,13 +701,9 @@ export function createMultiSpinController(deps) {
         return false;
       }
       if (tid === tile.slotId) {
-        // Target is self — treat as respin
         setTileResult(tile, win, "→ respin…");
         await sleepMs(waitMs);
-        await spinTile(tile, {
-          silentLand: true,
-          chainDepth: chainDepth + 1,
-        });
+        await spinTile(tile, { silentLand: true, chainDepth: chainDepth + 1 });
         return true;
       }
       const target = await ensureTileForSlot(tid);
@@ -436,26 +713,18 @@ export function createMultiSpinController(deps) {
       }
       setTileResult(tile, win, `→ ${target.name}`);
       await sleepMs(waitMs);
-      await spinTile(target, {
-        silentLand: true,
-        chainDepth: chainDepth + 1,
-      });
+      await spinTile(target, { silentLand: true, chainDepth: chainDepth + 1 });
       return true;
     }
 
     return false;
   }
 
-  /**
-   * @param {object} tile
-   * @param {{ silentLand?: boolean, chainDepth?: number }} [opts]
-   */
   async function spinTile(tile, opts = {}) {
     const silentLand = opts.silentLand === true;
     const chainDepth = Number(opts.chainDepth) || 0;
     if (!tile) return null;
 
-    // Portal / Spin all may hit a tile that is still spinning
     await waitUntilIdle(tile);
     if (tile.spinning || tile.wheel?.spinning) return null;
 
@@ -492,7 +761,6 @@ export function createMultiSpinController(deps) {
       tile.spinning = false;
       tile.rootEl?.classList.remove("is-spinning");
     }
-    // Land cue once for a user-started spin (after full respin/portal chain)
     if (win && !silentLand && chainDepth === 0) playLandOnce();
     return win;
   }
@@ -522,7 +790,6 @@ export function createMultiSpinController(deps) {
       deps.audio?.ensure?.();
       for (const t of list) setTileResult(t, null);
 
-      // Parallel first spins; land actions may chain to other tiles (wait if busy)
       const results = await Promise.all(
         list.map((t) => spinTile(t, { silentLand: true, chainDepth: 0 }))
       );
@@ -554,13 +821,18 @@ export function createMultiSpinController(deps) {
       btn.classList.add("is-active");
       btn.setAttribute("aria-pressed", "true");
     }
-    const layout = document.getElementById("main-layout");
-    if (layout && !layout.classList.contains("sidebar-collapsed")) {
-      layout.classList.add("sidebar-collapsed");
-      layout.dataset.multiCollapsed = "1";
-    }
+    // Keep editor available — do not force-collapse panels
+    focusedSlotId = activeLibraryId();
+    applyDragLockUi();
     renderPicker();
-    void rebuildTiles();
+    void syncTilesWithLibrary().then(() => {
+      // Select active library wheel if on board
+      const aid = activeLibraryId();
+      if (aid && tiles.has(aid)) {
+        focusedSlotId = aid;
+        updateFocusUi();
+      }
+    });
     deps.onEnter?.();
   }
 
@@ -576,6 +848,8 @@ export function createMultiSpinController(deps) {
     destroyTiles();
     active = false;
     spinAllBusy = false;
+    focusedSlotId = null;
+    drag = null;
     document.body.classList.remove("multi-spin-mode");
     const st = stageEl();
     if (st) {
@@ -592,11 +866,6 @@ export function createMultiSpinController(deps) {
       btn.classList.remove("is-active");
       btn.setAttribute("aria-pressed", "false");
     }
-    const layout = document.getElementById("main-layout");
-    if (layout?.dataset.multiCollapsed === "1") {
-      layout.classList.remove("sidebar-collapsed");
-      delete layout.dataset.multiCollapsed;
-    }
     setSummary("");
     deps.onExit?.();
   }
@@ -609,15 +878,14 @@ export function createMultiSpinController(deps) {
   function selectAll() {
     selectedIds = librarySlots().map((w) => w.id);
     saveSelection();
-    renderPicker();
-    void rebuildTiles();
+    void syncTilesWithLibrary();
   }
 
   function clearSelection() {
     selectedIds = [];
+    focusedSlotId = null;
     saveSelection();
-    renderPicker();
-    void rebuildTiles();
+    void syncTilesWithLibrary();
   }
 
   function bindUi() {
@@ -638,12 +906,26 @@ export function createMultiSpinController(deps) {
     document
       .getElementById("btn-multi-clear")
       ?.addEventListener("click", () => clearSelection());
+
+    lockChk()?.addEventListener("change", () => {
+      dragLocked = lockChk().checked === true;
+      saveDragLock();
+      applyDragLockUi();
+    });
+    if (lockChk()) lockChk().checked = dragLocked;
+
+    window.addEventListener("pointermove", onDragPointerMove);
+    window.addEventListener("pointerup", onDragPointerUp);
+    window.addEventListener("pointercancel", onDragPointerUp);
   }
 
   function onLibraryChanged() {
     if (!active) return;
-    renderPicker();
-    void rebuildTiles();
+    // Keep selection highlight in sync with the wheel the sidebar is editing
+    const aid = activeLibraryId();
+    if (aid) focusedSlotId = aid;
+    // Soft sync — keep free-drag positions; refresh wheel data for editing
+    void syncTilesWithLibrary();
   }
 
   return {
@@ -656,5 +938,7 @@ export function createMultiSpinController(deps) {
     bindUi,
     onLibraryChanged,
     rebuildTiles,
+    getFocusedSlotId: () => focusedSlotId,
+    selectTile,
   };
 }

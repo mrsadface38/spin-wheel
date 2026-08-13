@@ -10988,6 +10988,37 @@ async function init() {
       clampSpinDuration,
       playGlobalLandSfx,
       getSpinTickPreset,
+      onSelectWheel: async (slotId) => {
+        // Switch library active wheel so the sidebar edits THIS multi tile
+        if (!slotId) return;
+        if (slotId !== library?.activeId) {
+          await switchToWheelId(slotId);
+        }
+      },
+      onEditWheel: async (slotId) => {
+        if (!slotId) return;
+        if (slotId !== library?.activeId) {
+          await switchToWheelId(slotId);
+        }
+        // Show editor panels while staying in multi-spin
+        const layout = $("#main-layout");
+        if (layout?.classList.contains("sidebar-collapsed")) {
+          layout.classList.remove("sidebar-collapsed");
+          delete layout.dataset.multiCollapsed;
+          try {
+            syncUiPrefsIntoState();
+          } catch {
+            /* ignore */
+          }
+        }
+        // Focus sections tab for editing
+        try {
+          const tabBtn = document.querySelector('.tabs .tab[data-tab="sections"]');
+          tabBtn?.click?.();
+        } catch {
+          /* ignore */
+        }
+      },
       onExit: () => {
         try {
           recoverWheelView();

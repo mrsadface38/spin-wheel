@@ -751,6 +751,11 @@ body.multi-spin-mode #stage {
   background: rgba(255, 255, 255, 0.05);
 }
 
+.multi-picker-row.is-focused {
+  background: rgba(90, 140, 255, 0.14);
+  outline: 1px solid rgba(90, 140, 255, 0.45);
+}
+
 .multi-picker-row input {
   flex-shrink: 0;
   accent-color: var(--accent);
@@ -768,31 +773,51 @@ body.multi-spin-mode #stage {
   color: var(--muted);
   font-size: 0.88rem;
   line-height: 1.4;
+  position: relative;
+  z-index: 0;
+  max-width: 22rem;
 }
 
-.multi-grid {
+.multi-lock-row {
+  margin: 0;
+  font-size: 0.82rem;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+/* Free-position board (drag tiles anywhere) */
+.multi-grid.multi-board {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 0.75rem;
-  align-content: start;
-  padding: 0.15rem 0.15rem 0.75rem;
+  overflow: auto;
+  position: relative;
+  display: block;
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 0);
+  background-size: 18px 18px;
+  background-color: rgba(10, 12, 22, 0.55);
 }
 
 .multi-tile {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  min-width: 0;
+  width: 280px;
+  min-width: 280px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: rgba(15, 18, 32, 0.95);
+  background: rgba(15, 18, 32, 0.97);
   box-shadow: var(--shadow);
   overflow: hidden;
+  z-index: 1;
+  touch-action: none;
 }
 
 .multi-tile.is-spinning {
@@ -800,11 +825,57 @@ body.multi-spin-mode #stage {
   box-shadow: 0 0 0 1px rgba(90, 140, 255, 0.35);
 }
 
+.multi-tile.is-selected {
+  border-color: var(--accent-2, #7ee0a8);
+  box-shadow:
+    0 0 0 2px rgba(126, 224, 168, 0.45),
+    var(--shadow);
+  z-index: 5;
+}
+
+.multi-tile.is-dragging {
+  opacity: 0.96;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  z-index: 30 !important;
+  cursor: grabbing;
+}
+
 .multi-tile-head {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.5rem 0.15rem;
+  gap: 0.3rem;
+  padding: 0.35rem 0.4rem 0.15rem;
+}
+
+.multi-tile-drag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.multi-tile-drag:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.multi-tile-drag:active {
+  cursor: grabbing;
+}
+
+.multi-root.is-drag-locked .multi-tile-drag,
+.multi-tile.drag-locked .multi-tile-drag {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .multi-tile-name {
@@ -815,6 +886,7 @@ body.multi-spin-mode #stage {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .multi-tile-stage.stage--mini {
@@ -858,8 +930,9 @@ body.multi-spin-mode #stage {
     max-width: none;
     max-height: 28vh;
   }
-  .multi-grid {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  .multi-tile {
+    width: min(280px, 86vw);
+    min-width: min(280px, 86vw);
   }
 }
 

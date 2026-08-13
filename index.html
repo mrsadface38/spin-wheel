@@ -122,20 +122,24 @@
           <div class="multi-toolbar">
             <button type="button" id="btn-multi-exit" class="btn small ghost" title="Back to single-wheel editor">Exit multi-spin</button>
             <button type="button" id="btn-multi-spin-all" class="btn small primary" title="Spin every selected wheel at once (Space)">Spin all</button>
+            <label class="toggle-row multi-lock-row" title="When locked, multi-spin wheels cannot be dragged">
+              <input type="checkbox" id="chk-multi-drag-lock" />
+              <span>Lock positions</span>
+            </label>
             <span id="multi-summary" class="multi-summary" aria-live="polite"></span>
             <span id="multi-warn" class="multi-warn hidden" hidden></span>
           </div>
           <div class="multi-body">
             <aside class="multi-picker" aria-label="Choose wheels to show">
               <h3 class="multi-picker-title">Wheels on screen</h3>
-              <p class="multi-picker-hint">Pick any saved wheels — no limit. They appear in the grid and can spin together.</p>
+              <p class="multi-picker-hint">Check wheels to show. Click a name or tile to select it for editing. Drag the ⋮⋮ grip to place tiles anywhere.</p>
               <div class="multi-picker-actions">
                 <button type="button" id="btn-multi-select-all" class="btn small ghost">Select all</button>
                 <button type="button" id="btn-multi-clear" class="btn small ghost">Clear</button>
               </div>
               <div id="multi-picker-list" class="multi-picker-list"></div>
             </aside>
-            <div id="multi-grid" class="multi-grid" role="list"></div>
+            <div id="multi-grid" class="multi-grid multi-board" role="list"></div>
           </div>
         </div>
       </section>
