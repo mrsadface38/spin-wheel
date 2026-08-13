@@ -338,28 +338,54 @@ export function createMultiSpinController(deps) {
 
   function boardViewport() {
     const g = grid();
-    // client size of the scrollport (visible board)
-    const w = Math.max(200, g?.clientWidth || 800);
-    const h = Math.max(200, g?.clientHeight || 600);
-    return { w: Math.max(160, w - 12), h: Math.max(160, h - 12) };
+    // Prefer the multi-body content area so a huge minWidth on the board
+    // cannot make "available" space look bigger than the real panel.
+    const body = document.getElementById("multi-body");
+    const picker = document.getElementById("multi-picker");
+    let w = 0;
+    let h = 0;
+    if (body) {
+      const pickerW =
+        picker &&
+        !body.classList.contains("picker-collapsed") &&
+        picker.offsetParent !== null
+          ? picker.getBoundingClientRect().width
+          : 0;
+      w = Math.max(0, body.clientWidth - pickerW - 12);
+      h = Math.max(0, body.clientHeight - 8);
+    }
+    if (g) {
+      // Visible scrollport (not scrollWidth of oversized content)
+      w = Math.max(w, g.clientWidth || 0);
+      h = Math.max(h, g.clientHeight || 0);
+    }
+    if (w < 160) w = 600;
+    if (h < 160) h = 400;
+    return { w: Math.max(160, w - 8), h: Math.max(160, h - 8) };
   }
 
   /**
    * Largest square stage size so `n` tiles pack into the board viewport.
+   * Tries every column count; prefers one-screen fit (w+h), allows vertical
+   * scroll only when necessary.
    */
   function maxTileSizeForCount(n) {
     const count = Math.max(1, Number(n) || 1);
     const { w, h } = boardViewport();
-    let best = TILE_MIN;
+    let bestFit = TILE_MIN; // fits both width and height
+    let bestWidth = TILE_MIN; // fits width only (scroll vertically)
     for (let cols = 1; cols <= count; cols++) {
       const rows = Math.ceil(count / cols);
       const cellW = (w - (cols - 1) * TILE_GAP) / cols;
       const cellH = (h - (rows - 1) * TILE_GAP) / rows;
-      const s = Math.floor(Math.min(cellW, cellH - TILE_CHROME_H));
-      if (s > best) best = s;
+      const sW = Math.floor(cellW);
+      const sBoth = Math.floor(Math.min(cellW, cellH - TILE_CHROME_H));
+      if (sBoth > bestFit) bestFit = sBoth;
+      if (sW > bestWidth) bestWidth = sW;
     }
-    // Never wider than the board (keeps tiles reachable when window shrinks)
-    return clampSize(Math.min(best, w - 4));
+    // Prefer full on-screen pack; if nothing fits height, pack by width + scroll
+    const pick = bestFit >= TILE_MIN + 20 ? bestFit : bestWidth;
+    return clampSize(Math.min(pick, w - 4));
   }
 
   function effectiveGridSize() {
@@ -575,43 +601,108 @@ export function createMultiSpinController(deps) {
   }
 
   /**
-   * Pack every on-board wheel as large as possible (clears custom sizes).
+   * Hard reset: clear custom sizes, scroll to origin, remeasure board, pack
+   * every wheel into a non-overlapping grid at the largest size that fits.
+   * Works even when tiles were oversized / off-screen.
    */
   function fitAllLargest() {
-    sharedGridSize = null;
-    saveSharedGridSize();
-    if (!freeLayout) {
-      applyGridLayout({ redraw: true });
-      setSummary(
-        `Fitted ${selectedIds.length} wheel${selectedIds.length === 1 ? "" : "s"} at ${effectiveGridSize()}px (grid)`
-      );
+    if (!selectedIds.length) {
+      setSummary("Select wheels first, then Fit largest");
       return;
     }
-    const n = Math.max(1, selectedIds.length);
-    const size = maxTileSizeForCount(n);
-    const { cols, cellW, cellH } = gridMetrics(size);
-    selectedIds.forEach((id, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      layoutMap[id] = {
-        x: col * cellW,
-        y: row * cellH,
-        size,
-        customSize: false,
-      };
-    });
-    saveLayout();
-    for (const t of tiles.values()) {
-      applyTilePosition(t);
+
+    // Drop shared + per-tile custom sizes
+    sharedGridSize = null;
+    saveSharedGridSize();
+    for (const id of Object.keys(layoutMap)) {
+      const L = layoutMap[id];
+      if (!L) continue;
+      L.customSize = false;
+      delete L.size;
+    }
+
+    const g = grid();
+    if (g) {
+      // Clear oversized board constraints so viewport measure is real
+      g.style.minWidth = "0";
+      g.style.width = "100%";
+      g.style.minHeight = "0";
       try {
-        t.wheel?.resize?.();
-        t.wheel?.draw?.();
+        g.scrollLeft = 0;
+        g.scrollTop = 0;
       } catch {
         /* ignore */
       }
     }
-    updateBoardSize();
-    setSummary(`Fitted ${selectedIds.length} wheel${selectedIds.length === 1 ? "" : "s"} at ${size}px`);
+
+    const packNow = () => {
+      const n = Math.max(1, selectedIds.length);
+      // Fresh measure after style clear
+      const size = maxTileSizeForCount(n);
+      const { cols, cellW, cellH } = gridMetrics(size);
+
+      selectedIds.forEach((id, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        layoutMap[id] = {
+          x: col * cellW,
+          y: row * cellH,
+          size,
+          customSize: false,
+        };
+      });
+      saveLayout();
+
+      // Apply pixel geometry directly (don't re-derive a different size)
+      for (const t of tiles.values()) {
+        if (!t.rootEl) continue;
+        const pos = layoutMap[t.slotId];
+        if (!pos) continue;
+        t.rootEl.style.left = `${pos.x}px`;
+        t.rootEl.style.top = `${pos.y}px`;
+        t.rootEl.style.width = `${size}px`;
+        t.rootEl.style.minWidth = `${size}px`;
+        const sizeLabel = t.rootEl.querySelector(".multi-tile-size-label");
+        if (sizeLabel) sizeLabel.textContent = `${size}px`;
+        try {
+          t.wheel?.resize?.();
+          t.wheel?.draw?.();
+        } catch {
+          /* ignore */
+        }
+      }
+
+      // Board scroll size from packed grid
+      if (g) {
+        const rows = Math.ceil(n / cols);
+        const contentH = rows * cellH + 8;
+        const contentW = Math.min(cols, n) * cellW + 8;
+        g.style.minHeight = `${contentH}px`;
+        if (freeLayout) {
+          g.style.minWidth = `${contentW}px`;
+          g.style.width = "";
+        } else {
+          g.style.minWidth = "";
+          g.style.width = "100%";
+        }
+        try {
+          g.scrollLeft = 0;
+          g.scrollTop = 0;
+        } catch {
+          /* ignore */
+        }
+      }
+
+      setSummary(
+        `Reset layout: ${n} wheel${n === 1 ? "" : "s"} at ${size}px` +
+          (freeLayout ? " (packed)" : " (grid)")
+      );
+    };
+
+    // Two frames so clientWidth/Height update after clearing huge minWidth
+    requestAnimationFrame(() => {
+      requestAnimationFrame(packNow);
+    });
   }
 
   function applyLayoutModeUi() {
