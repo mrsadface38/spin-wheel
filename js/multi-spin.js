@@ -16,6 +16,7 @@ import {
 const SEL_KEY = "spin-wheel-multi-ids-v1";
 const LAYOUT_KEY = "spin-wheel-multi-layout-v1";
 const LOCK_KEY = "spin-wheel-multi-drag-lock-v1";
+const PICKER_COLLAPSE_KEY = "spin-wheel-multi-picker-collapsed-v1";
 const SOFT_WARN_AT = 12;
 const MAX_LAND_CHAIN = 20;
 const TILE_W = 280;
@@ -41,6 +42,7 @@ export function createMultiSpinController(deps) {
   /** @type {Record<string, { x: number, y: number }>} */
   let layoutMap = loadLayout();
   let dragLocked = loadDragLock();
+  let pickerCollapsed = loadPickerCollapsed();
   /** @type {string|null} */
   let focusedSlotId = null;
   /** @type {Map<string, object>} */
@@ -122,6 +124,60 @@ export function createMultiSpinController(deps) {
     } catch {
       /* ignore */
     }
+  }
+
+  function loadPickerCollapsed() {
+    try {
+      return localStorage.getItem(PICKER_COLLAPSE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  function savePickerCollapsed() {
+    try {
+      localStorage.setItem(PICKER_COLLAPSE_KEY, pickerCollapsed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function applyPickerCollapsedUi() {
+    const body = document.getElementById("multi-body");
+    const expandBtn = document.getElementById("btn-multi-picker-expand");
+    const collapseBtn = document.getElementById("btn-multi-picker-collapse");
+    body?.classList.toggle("picker-collapsed", pickerCollapsed);
+    if (expandBtn) {
+      expandBtn.hidden = !pickerCollapsed;
+      expandBtn.setAttribute("aria-expanded", pickerCollapsed ? "false" : "true");
+    }
+    if (collapseBtn) {
+      collapseBtn.setAttribute(
+        "aria-expanded",
+        pickerCollapsed ? "false" : "true"
+      );
+      collapseBtn.title = pickerCollapsed
+        ? "Show wheel list"
+        : "Collapse wheel list to the left";
+    }
+  }
+
+  function setPickerCollapsed(on) {
+    pickerCollapsed = !!on;
+    savePickerCollapsed();
+    applyPickerCollapsedUi();
+    // Board width changed — remeasure tile canvases after layout
+    requestAnimationFrame(() => {
+      for (const t of tiles.values()) {
+        try {
+          t.wheel?.resize?.();
+          t.wheel?.draw?.();
+        } catch {
+          /* ignore */
+        }
+      }
+      updateBoardSize();
+    });
   }
 
   function isActive() {

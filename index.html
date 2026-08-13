@@ -129,9 +129,19 @@
             <span id="multi-summary" class="multi-summary" aria-live="polite"></span>
             <span id="multi-warn" class="multi-warn hidden" hidden></span>
           </div>
-          <div class="multi-body">
-            <aside class="multi-picker" aria-label="Choose wheels to show">
-              <h3 class="multi-picker-title">Wheels on screen</h3>
+          <div class="multi-body" id="multi-body">
+            <aside class="multi-picker" id="multi-picker" aria-label="Choose wheels to show">
+              <div class="multi-picker-head">
+                <h3 class="multi-picker-title">Wheels on screen</h3>
+                <button
+                  type="button"
+                  id="btn-multi-picker-collapse"
+                  class="btn small ghost multi-picker-collapse-btn"
+                  title="Collapse wheel list to the left"
+                  aria-expanded="true"
+                  aria-controls="multi-picker"
+                >‹</button>
+              </div>
               <p class="multi-picker-hint">Check wheels to show. Click a name or tile to select it for editing. Drag the ⋮⋮ grip to place tiles anywhere.</p>
               <div class="multi-picker-actions">
                 <button type="button" id="btn-multi-select-all" class="btn small ghost">Select all</button>
@@ -139,6 +149,18 @@
               </div>
               <div id="multi-picker-list" class="multi-picker-list"></div>
             </aside>
+            <button
+              type="button"
+              id="btn-multi-picker-expand"
+              class="btn-multi-picker-expand"
+              title="Show wheel list"
+              aria-expanded="false"
+              aria-controls="multi-picker"
+              hidden
+            >
+              <span class="multi-picker-expand-icon" aria-hidden="true">›</span>
+              <span class="multi-picker-expand-label">Wheels</span>
+            </button>
             <div id="multi-grid" class="multi-grid multi-board" role="list"></div>
           </div>
         </div>
