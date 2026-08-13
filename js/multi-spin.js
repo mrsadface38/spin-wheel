@@ -461,6 +461,7 @@ export function createMultiSpinController(deps) {
         <div class="pointer" aria-hidden="true"></div>
       </div>
       <div class="multi-tile-result" aria-live="polite"></div>
+      <div class="multi-tile-queue" hidden title="Spins waiting to run after this wheel finishes"></div>
     `;
     el.querySelector(".multi-tile-name").textContent = slot.name || "Untitled";
     return el;
@@ -473,8 +474,8 @@ export function createMultiSpinController(deps) {
     rootEl.querySelector(".multi-tile-spin")?.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // Restart this tile even if it is still spinning
-      void spinTile(tile, { force: true });
+      // If busy, queue another spin (count shown on tile)
+      void requestSpin(tile, { silentLand: false, chainDepth: 0 });
     });
 
     rootEl.querySelector(".multi-tile-edit")?.addEventListener("click", (e) => {
@@ -497,7 +498,7 @@ export function createMultiSpinController(deps) {
 
     stage?.addEventListener("dblclick", (e) => {
       e.preventDefault();
-      void spinTile(tile, { force: true });
+      void requestSpin(tile, { silentLand: false, chainDepth: 0 });
     });
 
     const handle = rootEl.querySelector(".multi-tile-drag");
@@ -599,6 +600,8 @@ export function createMultiSpinController(deps) {
       wheel,
       spinning: false,
       lastWin: null,
+      /** @type {object[]} pending spins after current finishes */
+      queue: [],
     };
 
     bindTileChrome(tile);

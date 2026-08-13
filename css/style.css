@@ -979,7 +979,7 @@ body.multi-spin-mode #stage {
 
 .multi-tile-result {
   min-height: 1.5rem;
-  padding: 0.25rem 0.55rem 0.45rem;
+  padding: 0.25rem 0.55rem 0.15rem;
   font-size: 0.82rem;
   color: var(--muted);
 }
@@ -987,6 +987,22 @@ body.multi-spin-mode #stage {
 .multi-tile-result.has-win {
   color: var(--accent-2, #7ee0a8);
   font-weight: 650;
+}
+
+.multi-tile-queue {
+  padding: 0 0.55rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #f0c674;
+  letter-spacing: 0.02em;
+}
+
+.multi-tile.has-queue {
+  border-color: color-mix(in srgb, #f0c674 55%, var(--border));
+}
+
+.multi-tile-queue[hidden] {
+  display: none !important;
 }
 
 #btn-multi-spin.is-active {
