@@ -1623,6 +1623,67 @@ export function createMultiSpinController(deps) {
     }
   }
 
+  /**
+   * Interval ms from a wheel look (0 = auto-spin off).
+   * @param {object|null|undefined} look
+   */
+  function intervalMsFromLook(look) {
+    if (look?.autoSpin !== true) return 0;
+    let n = Number(look.autoSpinEvery);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    n = Math.min(9999, Math.round(n));
+    const unit = look.autoSpinUnit;
+    let ms = n * 60_000;
+    if (unit === "seconds") ms = n * 1_000;
+    else if (unit === "hours") ms = n * 3_600_000;
+    else if (unit === "days") ms = n * 86_400_000;
+    return Math.min(2_147_000_000, Math.max(1_000, ms));
+  }
+
+  /**
+   * Shortest auto-spin interval among on-board wheels that have auto spin on.
+   * @returns {number} 0 if none
+   */
+  function getAutoSpinIntervalMs() {
+    if (!active) return 0;
+    let best = 0;
+    for (const t of tiles.values()) {
+      const ms = intervalMsFromLook(t.state?.look);
+      if (ms > 0 && (best === 0 || ms < best)) best = ms;
+    }
+    return best;
+  }
+
+  /**
+   * Auto-spin tick for multi view: spin every idle on-board wheel that has
+   * Misc → Auto spin enabled on that wheel.
+   */
+  async function autoSpinTick() {
+    if (!active) return;
+    const targets = [...tiles.values()].filter(
+      (t) => t.state?.look?.autoSpin === true && !isTileBusy(t)
+    );
+    if (!targets.length) {
+      // All auto-spin wheels busy, or none have auto spin — no-op
+      return;
+    }
+    spinAllBusy = true;
+    try {
+      deps.audio?.ensure?.();
+      for (const t of targets) setTileResult(t, null);
+      const results = await Promise.all(
+        targets.map((t) =>
+          spinTile(t, { silentLand: true, chainDepth: 0 })
+        )
+      );
+      const lines = buildSummaryLines();
+      if (lines.length) setSummary(`Auto: ${lines.join(" · ")}`);
+      if (results.some(Boolean)) playLandOnce();
+    } finally {
+      spinAllBusy = false;
+    }
+  }
+
   function enter() {
     if (active) return;
     active = true;
@@ -1808,6 +1869,8 @@ export function createMultiSpinController(deps) {
     exit,
     toggle,
     spinAll,
+    autoSpinTick,
+    getAutoSpinIntervalMs,
     clearAllQueues,
     bindUi,
     onLibraryChanged,

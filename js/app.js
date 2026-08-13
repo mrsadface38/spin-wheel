@@ -9989,21 +9989,38 @@ function updateAutoSpinUI() {
 }
 
 /**
- * Interval in ms from Look auto-spin settings (0 = off).
+ * Interval in ms from a look.autoSpin settings (0 = off).
+ * @param {object|null|undefined} look
  * @returns {number}
  */
-function getAutoSpinIntervalMs() {
-  if (state.look?.autoSpin !== true) return 0;
-  let n = Number(state.look.autoSpinEvery);
+function intervalMsFromLook(look) {
+  if (look?.autoSpin !== true) return 0;
+  let n = Number(look.autoSpinEvery);
   if (!Number.isFinite(n) || n < 1) n = 1;
   n = Math.min(9999, Math.round(n));
-  const unit = state.look.autoSpinUnit;
+  const unit = look.autoSpinUnit;
   let ms = n * 60_000; // minutes default
   if (unit === "seconds") ms = n * 1_000;
   else if (unit === "hours") ms = n * 3_600_000;
   else if (unit === "days") ms = n * 86_400_000;
   // Min 1s so we never fire in a tight loop; browser max ~24.8d for setTimeout
   return Math.min(AUTO_SPIN_MAX_DELAY_MS, Math.max(1_000, ms));
+}
+
+/**
+ * Interval in ms for auto-spin (0 = off).
+ * Multi-spin: shortest interval among on-board wheels with Auto spin on.
+ * @returns {number}
+ */
+function getAutoSpinIntervalMs() {
+  if (multiSpin?.isActive?.()) {
+    const multiMs = multiSpin.getAutoSpinIntervalMs?.() || 0;
+    // Also consider active wheel (may be selected on the board)
+    const activeMs = intervalMsFromLook(state.look);
+    if (multiMs > 0 && activeMs > 0) return Math.min(multiMs, activeMs);
+    return multiMs || activeMs || 0;
+  }
+  return intervalMsFromLook(state.look);
 }
 
 function clearAutoSpinTimer() {
@@ -10043,10 +10060,18 @@ function scheduleAutoSpin() {
 
 async function runAutoSpinTick() {
   try {
-    if (state.look?.autoSpin !== true) return;
     if (typeof document !== "undefined" && document.visibilityState === "hidden") {
       return;
     }
+
+    // Multi-spin board: spin idle on-board wheels that have Auto spin on
+    if (multiSpin?.isActive?.()) {
+      if (getAutoSpinIntervalMs() <= 0) return;
+      await multiSpin.autoSpinTick?.();
+      return;
+    }
+
+    if (state.look?.autoSpin !== true) return;
     // Wait out an in-progress spin / drag, then try again soon
     if (spinBusy || wheel?.spinning || wheel?._dragging) {
       autoSpinTimer = setTimeout(() => {
@@ -11072,6 +11097,13 @@ async function init() {
         const newId = await duplicateWheelById(slotId);
         return newId || null;
       },
+      onEnter: () => {
+        try {
+          scheduleAutoSpin();
+        } catch {
+          /* ignore */
+        }
+      },
       onExit: () => {
         try {
           recoverWheelView();
@@ -11079,6 +11111,11 @@ async function init() {
           /* ignore */
         }
         void refreshWheel().catch(() => {});
+        try {
+          scheduleAutoSpin();
+        } catch {
+          /* ignore */
+        }
       },
     });
     multiSpin.bindUi();
