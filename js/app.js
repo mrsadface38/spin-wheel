@@ -10781,7 +10781,8 @@ document.addEventListener("keydown", (e) => {
     // Multi-spin mode: Space/Enter spins every selected wheel
     if (multiSpin?.isActive?.()) {
       e.preventDefault();
-      if (!multiSpin.anySpinning()) void multiSpin.spinAll();
+      // Spin all even if wheels are still spinning (restarts the batch)
+      void multiSpin.spinAll();
       return;
     }
     if (spinBusy || wheel.spinning || wheel._dragging) return;
