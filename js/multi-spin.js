@@ -8,10 +8,15 @@ import {
   hydrateState,
   getDisplaySections,
   getActiveSections,
+  getEffectiveLandAction,
+  landShowResultMs,
+  normalizeLandAction,
 } from "./state.js";
 
 const SEL_KEY = "spin-wheel-multi-ids-v1";
 const SOFT_WARN_AT = 12;
+/** Cap respin / other-wheel chains in multi view (matches single-wheel safety). */
+const MAX_LAND_CHAIN = 20;
 
 /**
  * @param {object} deps
@@ -315,16 +320,16 @@ export function createMultiSpinController(deps) {
     );
   }
 
-  function setTileResult(tile, win) {
+  function setTileResult(tile, win, note = "") {
     const el = tile.rootEl?.querySelector(".multi-tile-result");
     if (!el) return;
     if (!win) {
-      el.textContent = "";
+      el.textContent = note || "";
       el.classList.remove("has-win");
       return;
     }
     const label = win.label || win.name || "—";
-    el.textContent = `Winner: ${label}`;
+    el.textContent = note ? `Winner: ${label} ${note}` : `Winner: ${label}`;
     el.classList.add("has-win");
     tile.lastWin = win;
   }
@@ -336,8 +341,124 @@ export function createMultiSpinController(deps) {
       : Math.max(1, Number(d) || 9);
   }
 
-  async function spinTile(tile, { silentLand = false } = {}) {
-    if (!tile || tile.spinning || tile.wheel?.spinning) return null;
+  function sleepMs(ms) {
+    const n = Number(ms);
+    if (!Number.isFinite(n) || n <= 0) return Promise.resolve();
+    return new Promise((resolve) => setTimeout(resolve, n));
+  }
+
+  /** Wait until a tile is free (e.g. target still finishing Spin all). */
+  async function waitUntilIdle(tile, timeoutMs = 120000) {
+    if (!tile) return;
+    const start = Date.now();
+    while (tile.spinning || tile.wheel?.spinning) {
+      if (Date.now() - start > timeoutMs) break;
+      await sleepMs(40);
+    }
+  }
+
+  /**
+   * Ensure the library wheel is on the multi grid (add + build if needed).
+   * Used when land action portals to another wheel.
+   */
+  async function ensureTileForSlot(slotId) {
+    if (!slotId) return null;
+    if (tiles.has(slotId)) return tiles.get(slotId);
+    const slot = librarySlots().find((w) => w.id === slotId);
+    if (!slot) return null;
+    if (!selectedIds.includes(slotId)) {
+      selectedIds.push(slotId);
+      saveSelection();
+      renderPicker();
+    }
+    const g = grid();
+    if (g?.querySelector(".multi-grid-empty")) g.innerHTML = "";
+    await buildTile(slot);
+    setWarn();
+    const tile = tiles.get(slotId) || null;
+    try {
+      tile?.rootEl?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    } catch {
+      /* ignore */
+    }
+    return tile;
+  }
+
+  /**
+   * After a multi-spin land: respin same tile or spin target wheel tile.
+   * @returns {boolean} true if a chain was started
+   */
+  async function handleMultiLandAction(tile, win, chainDepth) {
+    if (!tile || !win || chainDepth >= MAX_LAND_CHAIN) return false;
+
+    const raw =
+      (tile.state?.sections || []).find((s) => s.id === win.id) || win;
+    const eff = getEffectiveLandAction(tile.state, raw);
+    const action = normalizeLandAction(eff.landAction);
+    if (action === "none") return false;
+
+    const showMs = landShowResultMs(
+      eff.landShowResultEvery,
+      eff.landShowResultUnit
+    );
+    const waitMs = showMs > 0 ? showMs : 400;
+
+    if (action === "respin") {
+      setTileResult(tile, win, "→ respin…");
+      await sleepMs(waitMs);
+      await spinTile(tile, {
+        silentLand: true,
+        chainDepth: chainDepth + 1,
+      });
+      return true;
+    }
+
+    if (action === "otherWheel") {
+      const tid = eff.landTargetWheelId;
+      if (!tid) {
+        setTileResult(tile, win, "→ (no target wheel)");
+        return false;
+      }
+      if (tid === tile.slotId) {
+        // Target is self — treat as respin
+        setTileResult(tile, win, "→ respin…");
+        await sleepMs(waitMs);
+        await spinTile(tile, {
+          silentLand: true,
+          chainDepth: chainDepth + 1,
+        });
+        return true;
+      }
+      const target = await ensureTileForSlot(tid);
+      if (!target) {
+        setTileResult(tile, win, "→ (wheel not found)");
+        return false;
+      }
+      setTileResult(tile, win, `→ ${target.name}`);
+      await sleepMs(waitMs);
+      await spinTile(target, {
+        silentLand: true,
+        chainDepth: chainDepth + 1,
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * @param {object} tile
+   * @param {{ silentLand?: boolean, chainDepth?: number }} [opts]
+   */
+  async function spinTile(tile, opts = {}) {
+    const silentLand = opts.silentLand === true;
+    const chainDepth = Number(opts.chainDepth) || 0;
+    if (!tile) return null;
+
+    // Portal / Spin all may hit a tile that is still spinning
+    await waitUntilIdle(tile);
+    if (tile.spinning || tile.wheel?.spinning) return null;
+
     const activeSecs = getActiveSections(tile.state);
     if (!activeSecs.length) {
       const el = tile.rootEl?.querySelector(".multi-tile-result");
@@ -350,13 +471,16 @@ export function createMultiSpinController(deps) {
 
     tile.spinning = true;
     tile.rootEl?.classList.add("is-spinning");
-    setTileResult(tile, null);
+    if (chainDepth === 0) setTileResult(tile, null);
     let win = null;
     try {
       deps.audio?.ensure?.();
       const dur = durationFor(tile);
       win = await tile.wheel.spin(dur, {});
-      if (win) setTileResult(tile, win);
+      if (win) {
+        setTileResult(tile, win);
+        await handleMultiLandAction(tile, win, chainDepth);
+      }
     } catch (err) {
       console.error("multi-spin tile failed:", tile.name, err);
       try {
@@ -368,8 +492,21 @@ export function createMultiSpinController(deps) {
       tile.spinning = false;
       tile.rootEl?.classList.remove("is-spinning");
     }
-    if (win && !silentLand) playLandOnce();
+    // Land cue once for a user-started spin (after full respin/portal chain)
+    if (win && !silentLand && chainDepth === 0) playLandOnce();
     return win;
+  }
+
+  function buildSummaryLines() {
+    const lines = [];
+    for (const t of tiles.values()) {
+      if (t.lastWin) {
+        lines.push(`${t.name}: ${t.lastWin.label || "—"}`);
+      } else if (!getActiveSections(t.state).length) {
+        lines.push(`${t.name}: (no sections)`);
+      }
+    }
+    return lines;
   }
 
   async function spinAll() {
@@ -385,22 +522,14 @@ export function createMultiSpinController(deps) {
       deps.audio?.ensure?.();
       for (const t of list) setTileResult(t, null);
 
+      // Parallel first spins; land actions may chain to other tiles (wait if busy)
       const results = await Promise.all(
-        list.map((t) => spinTile(t, { silentLand: true }))
+        list.map((t) => spinTile(t, { silentLand: true, chainDepth: 0 }))
       );
 
-      const lines = [];
-      list.forEach((t, i) => {
-        const win = results[i];
-        if (win) lines.push(`${t.name}: ${win.label || "—"}`);
-        else if (!getActiveSections(t.state).length) {
-          lines.push(`${t.name}: (no sections)`);
-        } else {
-          lines.push(`${t.name}: —`);
-        }
-      });
-      setSummary(lines.join(" · "));
-      if (results.some(Boolean)) playLandOnce();
+      const lines = buildSummaryLines();
+      setSummary(lines.length ? lines.join(" · ") : "Done");
+      if (results.some(Boolean) || lines.length) playLandOnce();
     } finally {
       spinAllBusy = false;
     }
