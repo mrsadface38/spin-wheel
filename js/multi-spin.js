@@ -46,6 +46,13 @@ export function createMultiSpinController(deps) {
   let pickerCollapsed = loadPickerCollapsed();
   /** @type {string|null} */
   let focusedSlotId = null;
+  /**
+   * When false (Hide panels), no tile/picker shows as selected — flush look.
+   * rememberedFocusId is restored when panels show again.
+   */
+  let selectionUiVisible = true;
+  /** @type {string|null} */
+  let rememberedFocusId = null;
   /** @type {Map<string, object>} */
   const tiles = new Map();
   let spinAllBusy = false;
@@ -325,6 +332,20 @@ export function createMultiSpinController(deps) {
   }
 
   function updateFocusUi() {
+    // Flush look while editor panels are hidden — no selection chrome
+    if (!selectionUiVisible) {
+      for (const t of tiles.values()) {
+        t.rootEl?.classList.remove("is-selected");
+        t.rootEl?.setAttribute("aria-selected", "false");
+      }
+      const list = pickerList();
+      if (list) {
+        list.querySelectorAll(".multi-picker-row.is-focused").forEach((row) => {
+          row.classList.remove("is-focused");
+        });
+      }
+      return;
+    }
     const focus =
       focusedSlotId || activeLibraryId() || selectedIds[0] || null;
     for (const t of tiles.values()) {
@@ -332,11 +353,45 @@ export function createMultiSpinController(deps) {
       t.rootEl?.classList.toggle("is-selected", on);
       t.rootEl?.setAttribute("aria-selected", on ? "true" : "false");
     }
+    const list = pickerList();
+    if (list) {
+      list.querySelectorAll(".multi-picker-row").forEach((row) => {
+        row.classList.toggle(
+          "is-focused",
+          !!focus && row.dataset.slotId === focus
+        );
+      });
+    }
+  }
+
+  /**
+   * Hide or restore multi-spin selection highlight with the editor panels.
+   * @param {boolean} visible
+   */
+  function setSelectionUiVisible(visible) {
+    if (visible) {
+      selectionUiVisible = true;
+      if (rememberedFocusId) {
+        focusedSlotId = rememberedFocusId;
+        rememberedFocusId = null;
+      } else if (!focusedSlotId) {
+        focusedSlotId = activeLibraryId() || selectedIds[0] || null;
+      }
+    } else {
+      if (selectionUiVisible) {
+        rememberedFocusId =
+          focusedSlotId || activeLibraryId() || selectedIds[0] || null;
+      }
+      selectionUiVisible = false;
+    }
+    updateFocusUi();
   }
 
   async function selectTile(slotId, { edit = false } = {}) {
     if (!slotId) return;
     focusedSlotId = slotId;
+    // Selecting for edit should bring selection chrome back with the panels
+    if (edit) selectionUiVisible = true;
     updateFocusUi();
     try {
       if (edit && typeof deps.onEditWheel === "function") {
@@ -388,7 +443,10 @@ export function createMultiSpinController(deps) {
     const slots = librarySlots();
     const idSet = new Set(selectedIds);
     selectedIds = selectedIds.filter((id) => slots.some((w) => w.id === id));
-    const focus = focusedSlotId || activeLibraryId();
+    const focus =
+      selectionUiVisible
+        ? focusedSlotId || activeLibraryId()
+        : null;
     list.innerHTML = "";
     if (!slots.length) {
       list.innerHTML = `<p class="multi-picker-empty">No saved wheels.</p>`;
@@ -397,7 +455,7 @@ export function createMultiSpinController(deps) {
     for (const w of slots) {
       const row = document.createElement("div");
       row.className =
-        "multi-picker-row" + (w.id === focus ? " is-focused" : "");
+        "multi-picker-row" + (focus && w.id === focus ? " is-focused" : "");
       row.dataset.slotId = w.id;
 
       const cb = document.createElement("input");

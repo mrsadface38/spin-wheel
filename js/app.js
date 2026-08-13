@@ -9256,6 +9256,15 @@ function setSidebarCollapsed(collapsed, { persistUi = false } = {}) {
   if (label) label.textContent = on ? "Show panels" : "Hide panels";
   if (state?.look) state.look.hidePanels = on;
   if (persistUi) persist();
+  // Multi-spin: hide selection highlight when panels are hidden (flush look),
+  // restore the same wheel when panels come back.
+  try {
+    if (multiSpin?.isActive?.()) {
+      multiSpin.setSelectionUiVisible?.(!on);
+    }
+  } catch {
+    /* ignore */
+  }
   // Let layout settle, then redraw wheel to new size
   requestAnimationFrame(() => {
     wheel.resize();
@@ -11043,17 +11052,8 @@ async function init() {
         if (slotId !== library?.activeId) {
           await switchToWheelId(slotId);
         }
-        // Show editor panels while staying in multi-spin
-        const layout = $("#main-layout");
-        if (layout?.classList.contains("sidebar-collapsed")) {
-          layout.classList.remove("sidebar-collapsed");
-          delete layout.dataset.multiCollapsed;
-          try {
-            syncUiPrefsIntoState();
-          } catch {
-            /* ignore */
-          }
-        }
+        // Show editor panels + restore multi-spin selection chrome
+        setSidebarCollapsed(false, { persistUi: true });
         // Focus sections tab for editing
         try {
           const tabBtn = document.querySelector('.tabs .tab[data-tab="sections"]');
