@@ -1313,6 +1313,7 @@ export function createMultiSpinController(deps) {
     t.rootEl?.classList.remove("is-dragging");
     t.rootEl.style.zIndex = "";
     clearGridDropHighlight();
+    hideGridDropOverlay();
     if (!didMove) {
       void selectTile(t.slotId, { edit: true });
       return;
@@ -1416,10 +1417,13 @@ export function createMultiSpinController(deps) {
     tiles.clear();
     const g = grid();
     if (g) {
-      // Keep #multi-grid-resize; only remove tiles / empty state
-      g.querySelectorAll(".multi-tile, .multi-grid-empty").forEach((el) => {
+      // Keep board chrome; only remove tiles / empty / drop overlay
+      g.querySelectorAll(
+        ".multi-tile, .multi-grid-empty, #multi-grid-drop-layer"
+      ).forEach((el) => {
         el.remove();
       });
+      g.classList.remove("is-showing-drop-grid");
     }
   }
 
