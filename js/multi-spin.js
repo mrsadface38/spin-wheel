@@ -77,7 +77,7 @@ export function createMultiSpinController(deps) {
 
   /** @type {null | { tile: object, pointerId: number, grabX: number, grabY: number, startX: number, startY: number, moved: boolean }} */
   let drag = null;
-  /** @type {null | { tile: object, pointerId: number, grabX: number, grabY: number, startSize: number }} */
+  /** @type {null | { mode: "tile"|"grid", tile?: object, pointerId: number, grabX: number, grabY: number, startSize: number }} */
   let resize = null;
 
   const root = () => document.getElementById("multi-root");
@@ -490,6 +490,7 @@ export function createMultiSpinController(deps) {
       }
     }
     updateBoardSize();
+    positionGridResizeHandle();
   }
 
   function ensureLayoutFor(slotId, indexHint = 0) {
@@ -701,6 +702,7 @@ export function createMultiSpinController(deps) {
         `Reset layout: ${n} wheel${n === 1 ? "" : "s"} at ${size}px` +
           (freeLayout ? " (packed)" : " (grid)")
       );
+      positionGridResizeHandle();
     };
 
     // Two frames so clientWidth/Height update after clearing huge minWidth
@@ -714,8 +716,81 @@ export function createMultiSpinController(deps) {
     g?.classList.toggle("is-free-layout", freeLayout);
     g?.classList.toggle("is-grid-layout", !freeLayout);
     root()?.classList.toggle("is-free-layout", freeLayout);
+    root()?.classList.toggle("is-grid-layout", !freeLayout);
     const chk = freeLayoutChk();
     if (chk) chk.checked = freeLayout;
+    // Per-tile handles only in free mode; grid uses the board corner handle
+    for (const t of tiles.values()) {
+      const rh = t.rootEl?.querySelector(".multi-tile-resize");
+      if (rh) rh.hidden = !freeLayout;
+      const sl = t.rootEl?.querySelector(".multi-tile-size-label");
+      if (sl) sl.hidden = !freeLayout;
+    }
+    positionGridResizeHandle();
+  }
+
+  /** Single resize control at bottom-right of the packed grid (grid mode only). */
+  function ensureGridResizeHandle() {
+    const g = grid();
+    if (!g) return null;
+    let el = document.getElementById("multi-grid-resize");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "multi-grid-resize";
+      el.className = "multi-grid-resize";
+      el.title = "Drag to resize the grid (all wheels)";
+      el.setAttribute("role", "slider");
+      el.setAttribute("aria-label", "Resize grid");
+      el.innerHTML =
+        '<span class="multi-grid-resize-grip" aria-hidden="true"></span>' +
+        '<span class="multi-grid-resize-label" aria-hidden="true"></span>';
+      el.addEventListener("pointerdown", (e) => {
+        if (freeLayout || dragLocked) return;
+        if (e.button != null && e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        resize = {
+          mode: "grid",
+          pointerId: e.pointerId,
+          grabX: e.clientX,
+          grabY: e.clientY,
+          startSize: effectiveGridSize(),
+        };
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+        el.classList.add("is-active");
+        g.classList.add("is-grid-resizing");
+      });
+      g.appendChild(el);
+    }
+    return el;
+  }
+
+  function positionGridResizeHandle() {
+    const el = ensureGridResizeHandle();
+    if (!el) return;
+    if (freeLayout || !selectedIds.length || dragLocked) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    let maxR = 0;
+    let maxB = 0;
+    for (const id of selectedIds) {
+      const pos = layoutMap[id];
+      if (!pos) continue;
+      const size = Number(pos.size) || tileSize(id);
+      maxR = Math.max(maxR, (pos.x || 0) + size);
+      maxB = Math.max(maxB, (pos.y || 0) + size + TILE_CHROME_H);
+    }
+    // Sit on the bottom-right corner of the wheel block
+    el.style.left = `${Math.max(0, maxR - 2)}px`;
+    el.style.top = `${Math.max(0, maxB - 2)}px`;
+    const label = el.querySelector(".multi-grid-resize-label");
+    if (label) label.textContent = `${effectiveGridSize()}px`;
   }
 
   function setFreeLayout(on) {
@@ -774,16 +849,20 @@ export function createMultiSpinController(deps) {
       if (handle) {
         handle.title = dragLocked
           ? "Positions locked — unlock in the toolbar to drag"
-          : "Drag to move this wheel";
+          : freeLayout
+            ? "Drag to move this wheel"
+            : "Drag to reorder on the grid";
       }
       const rh = t.rootEl?.querySelector(".multi-tile-resize");
       if (rh) {
+        rh.hidden = !freeLayout;
         rh.title = dragLocked
           ? "Positions locked — unlock to resize"
           : "Drag to resize this wheel";
         rh.style.pointerEvents = dragLocked ? "none" : "";
       }
     }
+    positionGridResizeHandle();
   }
 
   function updateFocusUi() {
@@ -974,8 +1053,8 @@ export function createMultiSpinController(deps) {
       </div>
       <div class="multi-tile-result" aria-live="polite"></div>
       <div class="multi-tile-queue" hidden title="Spins waiting to run after this wheel finishes"></div>
-      <div class="multi-tile-resize" title="Drag to resize this wheel" aria-label="Resize wheel"></div>
-      <span class="multi-tile-size-label" aria-hidden="true"></span>
+      <div class="multi-tile-resize" title="Drag to resize this wheel" aria-label="Resize wheel" hidden></div>
+      <span class="multi-tile-size-label" aria-hidden="true" hidden></span>
     `;
     el.querySelector(".multi-tile-name").textContent = slot.name || "Untitled";
     return el;
@@ -1038,27 +1117,34 @@ export function createMultiSpinController(deps) {
       rootEl.style.zIndex = "20";
     });
 
+    // Per-tile resize only in free placement mode
     const resizeHandle = rootEl.querySelector(".multi-tile-resize");
-    resizeHandle?.addEventListener("pointerdown", (e) => {
-      if (dragLocked) return;
-      if (e.button != null && e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      resize = {
-        tile,
-        pointerId: e.pointerId,
-        grabX: e.clientX,
-        grabY: e.clientY,
-        startSize: tileSize(tile.slotId),
-      };
-      try {
-        resizeHandle.setPointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
-      rootEl.classList.add("is-resizing");
-      rootEl.style.zIndex = "25";
-    });
+    if (resizeHandle) {
+      resizeHandle.hidden = !freeLayout;
+      resizeHandle.addEventListener("pointerdown", (e) => {
+        if (!freeLayout || dragLocked) return;
+        if (e.button != null && e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        resize = {
+          mode: "tile",
+          tile,
+          pointerId: e.pointerId,
+          grabX: e.clientX,
+          grabY: e.clientY,
+          startSize: tileSize(tile.slotId),
+        };
+        try {
+          resizeHandle.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+        rootEl.classList.add("is-resizing");
+        rootEl.style.zIndex = "25";
+      });
+    }
+    const sizeLabel = rootEl.querySelector(".multi-tile-size-label");
+    if (sizeLabel) sizeLabel.hidden = !freeLayout;
   }
 
   function onDragPointerMove(e) {
@@ -1068,24 +1154,16 @@ export function createMultiSpinController(deps) {
       // Grow with the larger axis so the square stage stays natural
       const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
       let next = clampSize(resize.startSize + delta);
-      if (!freeLayout) {
-        // Keep at least one full column on screen
+      if (resize.mode === "grid" || !freeLayout) {
+        // Resize the whole grid (shared size for every wheel)
         next = clampSize(Math.min(next, boardViewport().w - 4));
-      }
-      if (!freeLayout) {
         sharedGridSize = next;
-        // live preview all tiles at new shared size
-        const prev = layoutMap[resize.tile.slotId] || { x: 0, y: 0 };
-        layoutMap[resize.tile.slotId] = {
-          ...prev,
-          size: next,
-          customSize: true,
-        };
-        // Don't save shared yet — on pointerup
         applyGridLayout({ redraw: false });
-        resize.tile.rootEl?.querySelector(".multi-tile-size-label") &&
-          (resize.tile.rootEl.querySelector(".multi-tile-size-label").textContent = `${next}px`);
-      } else {
+        positionGridResizeHandle();
+        const grip = document.getElementById("multi-grid-resize");
+        const label = grip?.querySelector(".multi-grid-resize-label");
+        if (label) label.textContent = `${next}px`;
+      } else if (resize.tile) {
         const prev = layoutMap[resize.tile.slotId] || { x: 0, y: 0 };
         layoutMap[resize.tile.slotId] = {
           x: prev.x || 0,
@@ -1121,21 +1199,33 @@ export function createMultiSpinController(deps) {
 
   function onDragPointerUp(e) {
     if (resize && e.pointerId === resize.pointerId) {
+      const mode = resize.mode || (freeLayout ? "tile" : "grid");
       const t = resize.tile;
-      const finalSize = tileSize(t.slotId);
+      const finalSize =
+        mode === "grid"
+          ? effectiveGridSize()
+          : t
+            ? tileSize(t.slotId)
+            : TILE_MIN;
       resize = null;
-      t.rootEl?.classList.remove("is-resizing");
-      t.rootEl.style.zIndex = "";
-      if (!freeLayout) {
+      const grip = document.getElementById("multi-grid-resize");
+      grip?.classList.remove("is-active");
+      grid()?.classList.remove("is-grid-resizing");
+      if (t?.rootEl) {
+        t.rootEl.classList.remove("is-resizing");
+        t.rootEl.style.zIndex = "";
+      }
+      if (mode === "grid" || !freeLayout) {
         sharedGridSize = finalSize;
         saveSharedGridSize();
         applyGridLayout({ redraw: true });
+        positionGridResizeHandle();
       } else {
         saveLayout();
         updateBoardSize();
         try {
-          t.wheel?.resize?.();
-          t.wheel?.draw?.();
+          t?.wheel?.resize?.();
+          t?.wheel?.draw?.();
         } catch {
           /* ignore */
         }
@@ -1253,7 +1343,12 @@ export function createMultiSpinController(deps) {
     for (const t of [...tiles.values()]) destroyOneTile(t);
     tiles.clear();
     const g = grid();
-    if (g) g.innerHTML = "";
+    if (g) {
+      // Keep #multi-grid-resize; only remove tiles / empty state
+      g.querySelectorAll(".multi-tile, .multi-grid-empty").forEach((el) => {
+        el.remove();
+      });
+    }
   }
 
   async function refreshTileFromSlot(tile, slot) {
