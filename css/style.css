@@ -883,13 +883,13 @@ body.multi-spin-mode #stage {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  width: 280px;
-  min-width: 280px;
+  width: 360px;
+  min-width: 140px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: rgba(15, 18, 32, 0.97);
   box-shadow: var(--shadow);
-  overflow: hidden;
+  overflow: visible;
   z-index: 1;
   touch-action: none;
 }
@@ -969,12 +969,63 @@ body.multi-spin-mode #stage {
   width: 100%;
   aspect-ratio: 1;
   height: auto;
-  min-height: 180px;
+  min-height: 0;
   border-radius: 0;
   border: none;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   box-shadow: none;
+  overflow: hidden;
+}
+
+.multi-tile-resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 8;
+  border-radius: 3px;
+  background:
+    linear-gradient(
+      135deg,
+      transparent 0 42%,
+      rgba(255, 255, 255, 0.35) 42% 50%,
+      transparent 50% 62%,
+      rgba(255, 255, 255, 0.35) 62% 70%,
+      transparent 70%
+    );
+  touch-action: none;
+}
+
+.multi-tile-resize:hover {
+  background-color: rgba(90, 140, 255, 0.25);
+}
+
+.multi-tile.is-resizing {
+  z-index: 30 !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+.multi-tile-size-label {
+  position: absolute;
+  right: 20px;
+  bottom: 2px;
+  font-size: 0.65rem;
+  color: var(--muted);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+
+.multi-tile.is-resizing .multi-tile-size-label,
+.multi-tile:hover .multi-tile-size-label {
+  opacity: 0.85;
+}
+
+.multi-root.is-drag-locked .multi-tile-resize {
+  display: none;
 }
 
 .multi-tile-result {
@@ -1021,8 +1072,7 @@ body.multi-spin-mode #stage {
     max-height: 28vh;
   }
   .multi-tile {
-    width: min(280px, 86vw);
-    min-width: min(280px, 86vw);
+    min-width: 140px;
   }
 }
 

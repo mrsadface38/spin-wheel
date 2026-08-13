@@ -122,10 +122,16 @@
           <div class="multi-toolbar">
             <button type="button" id="btn-multi-exit" class="btn small ghost" title="Back to single-wheel editor">Exit multi-spin</button>
             <button type="button" id="btn-multi-spin-all" class="btn small primary" title="Spin idle wheels only (Space). Already-spinning wheels are left alone — nothing is queued.">Spin all</button>
-            <label class="toggle-row multi-lock-row" title="When locked, multi-spin wheels cannot be dragged">
+            <label class="toggle-row multi-lock-row" title="When locked, multi-spin wheels cannot be dragged or resized">
               <input type="checkbox" id="chk-multi-drag-lock" />
               <span>Lock positions</span>
             </label>
+            <button
+              type="button"
+              id="btn-multi-fit-size"
+              class="btn small ghost"
+              title="Make every on-board wheel as large as will fit, and pack them"
+            >Fit largest</button>
             <span id="multi-summary" class="multi-summary" aria-live="polite"></span>
             <span id="multi-warn" class="multi-warn hidden" hidden></span>
           </div>

@@ -19,8 +19,12 @@ const LOCK_KEY = "spin-wheel-multi-drag-lock-v1";
 const PICKER_COLLAPSE_KEY = "spin-wheel-multi-picker-collapsed-v1";
 const SOFT_WARN_AT = 12;
 const MAX_LAND_CHAIN = 20;
-const TILE_W = 280;
+/** Min / max tile width (stage is square at this size). */
+const TILE_MIN = 140;
+const TILE_MAX = 960;
 const TILE_GAP = 16;
+/** Approx chrome under/above the square stage (head + result + queue). */
+const TILE_CHROME_H = 92;
 
 /**
  * @param {object} deps
@@ -40,7 +44,7 @@ export function createMultiSpinController(deps) {
   let active = false;
   /** @type {string[]} */
   let selectedIds = loadSelection();
-  /** @type {Record<string, { x: number, y: number }>} */
+  /** @type {Record<string, { x: number, y: number, size?: number, customSize?: boolean }>} */
   let layoutMap = loadLayout();
   let dragLocked = loadDragLock();
   let pickerCollapsed = loadPickerCollapsed();
@@ -62,6 +66,8 @@ export function createMultiSpinController(deps) {
 
   /** @type {null | { tile: object, pointerId: number, grabX: number, grabY: number, startX: number, startY: number, moved: boolean }} */
   let drag = null;
+  /** @type {null | { tile: object, pointerId: number, grabX: number, grabY: number, startSize: number }} */
+  let resize = null;
 
   const root = () => document.getElementById("multi-root");
   const grid = () => document.getElementById("multi-grid");
