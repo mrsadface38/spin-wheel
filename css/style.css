@@ -1063,15 +1063,28 @@ body.multi-spin-mode #stage {
   display: none !important;
 }
 
-/* Grid size control in Wheels on screen panel */
-.multi-picker-grid-size {
+/* Layout + grid size controls in Wheels on screen panel */
+.multi-picker-layout-controls {
   flex-shrink: 0;
   margin-top: 0.35rem;
   padding-top: 0.55rem;
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  gap: 0.4rem;
+}
+
+.multi-picker-layout-controls > .multi-lock-row {
+  font-size: 0.8rem;
+}
+
+.multi-picker-grid-size {
+  display: flex;
+  flex-direction: column;
   gap: 0.3rem;
+  margin-top: 0.15rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .multi-picker-grid-size[hidden] {
@@ -1087,6 +1100,17 @@ body.multi-spin-mode #stage {
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--text);
+}
+
+.multi-picker-grid-size-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.multi-picker-grid-size-head .btn {
+  flex-shrink: 0;
 }
 
 .multi-picker-grid-size-row {

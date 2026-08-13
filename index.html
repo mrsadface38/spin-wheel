@@ -122,23 +122,6 @@
           <div class="multi-toolbar">
             <button type="button" id="btn-multi-exit" class="btn small ghost" title="Back to single-wheel editor">Exit multi-spin</button>
             <button type="button" id="btn-multi-spin-all" class="btn small primary" title="Spin idle wheels only (Space). Already-spinning wheels are left alone — nothing is queued.">Spin all</button>
-            <label class="toggle-row multi-lock-row" title="When locked, multi-spin wheels cannot be dragged or resized">
-              <input type="checkbox" id="chk-multi-drag-lock" />
-              <span>Lock positions</span>
-            </label>
-            <label
-              class="toggle-row multi-lock-row"
-              title="Off (default): tiles sit on a grid with no overlap; drag to reorder. On: free placement anywhere (can overlap)."
-            >
-              <input type="checkbox" id="chk-multi-free-layout" />
-              <span>Free placement</span>
-            </label>
-            <button
-              type="button"
-              id="btn-multi-fit-size"
-              class="btn small ghost"
-              title="Reset placement and size: pack every wheel on a grid at the largest size that fits the board"
-            >Fit largest</button>
             <button
               type="button"
               id="btn-multi-clear-queues"
@@ -167,21 +150,43 @@
                 <button type="button" id="btn-multi-clear" class="btn small ghost">Clear</button>
               </div>
               <div id="multi-picker-list" class="multi-picker-list"></div>
-              <div class="multi-picker-grid-size" id="multi-picker-grid-size">
-                <span class="multi-picker-grid-size-title">Grid size</span>
-                <div class="multi-picker-grid-size-row">
-                  <input
-                    type="range"
-                    id="multi-grid-size-slider"
-                    min="140"
-                    max="960"
-                    step="4"
-                    value="280"
-                    title="Resize the multi-spin grid (all wheels)"
-                  />
-                  <span id="multi-grid-size-value" class="slider-value">280px</span>
+              <div class="multi-picker-layout-controls" id="multi-picker-layout-controls">
+                <span class="multi-picker-grid-size-title">Layout</span>
+                <label class="toggle-row multi-lock-row" title="When locked, multi-spin wheels cannot be dragged or resized">
+                  <input type="checkbox" id="chk-multi-drag-lock" />
+                  <span>Lock positions</span>
+                </label>
+                <label
+                  class="toggle-row multi-lock-row"
+                  title="Off (default): tiles sit on a grid with no overlap; drag to reorder. On: free placement anywhere (can overlap)."
+                >
+                  <input type="checkbox" id="chk-multi-free-layout" />
+                  <span>Free placement</span>
+                </label>
+                <div class="multi-picker-grid-size" id="multi-picker-grid-size">
+                  <div class="multi-picker-grid-size-head">
+                    <span class="multi-picker-grid-size-title">Grid size</span>
+                    <button
+                      type="button"
+                      id="btn-multi-fit-size"
+                      class="btn small ghost"
+                      title="Reset placement and size: pack every wheel on a grid at the largest size that fits the board"
+                    >Fit largest</button>
+                  </div>
+                  <div class="multi-picker-grid-size-row">
+                    <input
+                      type="range"
+                      id="multi-grid-size-slider"
+                      min="140"
+                      max="960"
+                      step="4"
+                      value="280"
+                      title="Resize the multi-spin grid (all wheels)"
+                    />
+                    <span id="multi-grid-size-value" class="slider-value">280px</span>
+                  </div>
+                  <small>Grid mode only — scales every on-board wheel and reflows the layout.</small>
                 </div>
-                <small>Grid mode only — scales every on-board wheel and reflows the layout.</small>
               </div>
             </aside>
             <button
