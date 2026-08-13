@@ -11,6 +11,7 @@ import {
   getEffectiveLandAction,
   landShowResultMs,
   normalizeLandAction,
+  resolveSectionForDisplay,
 } from "./state.js";
 
 const SEL_KEY = "spin-wheel-multi-ids-v1";
@@ -1707,6 +1708,15 @@ export function createMultiSpinController(deps) {
         <canvas class="wheel-overlay"></canvas>
         <div class="center-media" aria-hidden="true"></div>
         <div class="pointer" aria-hidden="true"></div>
+        <div class="multi-tile-result-center hidden" aria-live="polite">
+          <div class="multi-tile-result-center-bg" aria-hidden="true"></div>
+          <div class="multi-tile-result-center-scrim" aria-hidden="true"></div>
+          <div class="multi-tile-result-center-inner">
+            <span class="multi-tile-result-center-label">Winner</span>
+            <span class="multi-tile-result-center-text"></span>
+            <span class="multi-tile-result-center-note" hidden></span>
+          </div>
+        </div>
       </div>
       <div class="multi-tile-result" aria-live="polite"></div>
       <div class="multi-tile-queue" hidden title="Spins waiting to run after this wheel finishes"></div>
@@ -2199,18 +2209,166 @@ export function createMultiSpinController(deps) {
     await syncTilesWithLibrary();
   }
 
+  function clearTileResultCenter(tile) {
+    if (!tile?.rootEl) return;
+    if (tile._resultDismissTimer) {
+      clearTimeout(tile._resultDismissTimer);
+      tile._resultDismissTimer = 0;
+    }
+    const overlay = tile.rootEl.querySelector(".multi-tile-result-center");
+    if (!overlay) return;
+    overlay.classList.add("hidden");
+    const bg = overlay.querySelector(".multi-tile-result-center-bg");
+    if (bg) {
+      bg.classList.remove("has-image");
+      bg.style.backgroundImage = "";
+      bg.innerHTML = "";
+    }
+    const noteEl = overlay.querySelector(".multi-tile-result-center-note");
+    if (noteEl) {
+      noteEl.hidden = true;
+      noteEl.textContent = "";
+    }
+  }
+
+  /**
+   * Big-center winner overlay inside this multi tile (Look → result style).
+   */
+  function showTileResultCenter(tile, win, note = "") {
+    if (!tile?.rootEl || !win) return;
+    const overlay = tile.rootEl.querySelector(".multi-tile-result-center");
+    if (!overlay) return;
+
+    if (tile._resultDismissTimer) {
+      clearTimeout(tile._resultDismissTimer);
+      tile._resultDismissTimer = 0;
+    }
+
+    let look = tile.state?.look || {};
+    try {
+      const slot = librarySlots().find((w) => w.id === tile.slotId);
+      if (slot?.data?.look) look = { ...look, ...slot.data.look };
+    } catch {
+      /* tile look */
+    }
+
+    // autoDismissSec === -1 → don't show overlay (same as main wheel)
+    const autoSec = Number(look.autoDismissSec);
+    if (Number.isFinite(autoSec) && autoSec === -1) {
+      clearTileResultCenter(tile);
+      return;
+    }
+
+    const st = tile.state || {};
+    const raw =
+      (st.sections || []).find((s) => s.id === win.id) || win;
+    let disp = raw;
+    try {
+      disp = resolveSectionForDisplay(st, raw) || raw;
+    } catch {
+      disp = raw;
+    }
+
+    const label = win.label || win.name || disp?.label || "Winner";
+    const winnerLabel =
+      look.winnerLabel != null && String(look.winnerLabel).trim() !== ""
+        ? String(look.winnerLabel)
+        : "Winner";
+    const winTextColor =
+      look.forceWinnerTextColor === true
+        ? look.winnerTextColor || look.textColor || "#ffffff"
+        : disp?.winnerTextColor ||
+          look.winnerTextColor ||
+          look.textColor ||
+          "#ffffff";
+    const imageData = disp?.imageData || null;
+
+    const titleEl = overlay.querySelector(".multi-tile-result-center-label");
+    const textEl = overlay.querySelector(".multi-tile-result-center-text");
+    const noteEl = overlay.querySelector(".multi-tile-result-center-note");
+    const bg = overlay.querySelector(".multi-tile-result-center-bg");
+    const inner = overlay.querySelector(".multi-tile-result-center-inner");
+
+    if (titleEl) titleEl.textContent = winnerLabel;
+    if (textEl) {
+      textEl.textContent = label;
+      textEl.style.color = winTextColor;
+    }
+    if (noteEl) {
+      if (note) {
+        noteEl.hidden = false;
+        noteEl.textContent = note;
+      } else {
+        noteEl.hidden = true;
+        noteEl.textContent = "";
+      }
+    }
+    if (bg) {
+      bg.innerHTML = "";
+      bg.style.backgroundImage = "";
+      if (imageData) {
+        bg.classList.add("has-image");
+        const img = document.createElement("img");
+        img.src = imageData;
+        img.alt = "";
+        img.decoding = "async";
+        bg.appendChild(img);
+      } else {
+        bg.classList.remove("has-image");
+      }
+    }
+    if (inner) {
+      inner.style.animation = "none";
+      void inner.offsetWidth;
+      inner.style.animation = "";
+    }
+    overlay.classList.remove("hidden");
+
+    // Auto-dismiss (Look → Auto-dismiss seconds); 0 = stay until next spin
+    if (Number.isFinite(autoSec) && autoSec > 0) {
+      const ms = Math.min(99999, Math.max(1, Math.round(autoSec))) * 1000;
+      tile._resultDismissTimer = setTimeout(() => {
+        tile._resultDismissTimer = 0;
+        clearTileResultCenter(tile);
+      }, ms);
+    }
+  }
+
   function setTileResult(tile, win, note = "") {
     const el = tile.rootEl?.querySelector(".multi-tile-result");
     if (!el) return;
+
     if (!win) {
       el.textContent = note || "";
       el.classList.remove("has-win");
+      clearTileResultCenter(tile);
       return;
     }
+
     const label = win.label || win.name || "—";
-    el.textContent = note ? `Winner: ${label} ${note}` : `Winner: ${label}`;
-    el.classList.add("has-win");
     tile.lastWin = win;
+
+    // Prefer live library look for result style
+    let look = tile.state?.look || {};
+    try {
+      const slot = librarySlots().find((w) => w.id === tile.slotId);
+      if (slot?.data?.look) look = { ...look, ...slot.data.look };
+    } catch {
+      /* tile look */
+    }
+    const style = look.resultStyle === "banner" ? "banner" : "center";
+
+    if (style === "center") {
+      // Big center overlay on this tile's stage (main-wheel style)
+      showTileResultCenter(tile, win, note);
+      // Compact line under the stage for land-action notes / accessibility
+      el.textContent = note ? `${label} ${note}` : label;
+      el.classList.add("has-win");
+    } else {
+      clearTileResultCenter(tile);
+      el.textContent = note ? `Winner: ${label} ${note}` : `Winner: ${label}`;
+      el.classList.add("has-win");
+    }
   }
 
   function durationFor(tile) {
