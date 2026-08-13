@@ -42,6 +42,7 @@ const TILE_CHROME_H = 92;
  * @param {(slotId: string) => void|Promise<string|null|void>} [deps.onDuplicateWheel]
  * @param {(section: object, opts?: object) => void} [deps.onSpinHistory] record History tab entry for a multi-tile land
  * @param {(section: object, opts?: { container?: HTMLElement, state?: object }) => void} [deps.playWinEffect] after-win confetti/custom in tile stage
+ * @param {(slotId: string) => void} [deps.onBeforeTileSpin] flush sidebar edits (section order) before a multi tile spins
  * @param {() => void} [deps.onEnter]
  * @param {() => void} [deps.onExit]
  */
@@ -2951,6 +2952,13 @@ export function createMultiSpinController(deps) {
         el.classList.remove("has-win");
       }
       return null;
+    }
+
+    // Push sidebar edits (section order, etc.) if this is the wheel being edited
+    try {
+      deps.onBeforeTileSpin?.(tile.slotId);
+    } catch {
+      /* ignore */
     }
 
     tile.spinning = true;

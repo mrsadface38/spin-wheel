@@ -510,6 +510,35 @@ function warnStorageFullOnce() {
   );
 }
 
+/**
+ * Push the active wheel’s saved state onto its multi-spin tile.
+ * Used when you stop editing that wheel (switch tile / leave multi), so
+ * section order and other edits apply as one snapshot — not mid-edit.
+ * @param {string} [slotId] defaults to current active library wheel
+ * @param {object} [liveState] defaults to current editor state
+ * @param {string} [name]
+ */
+function flushWheelToMultiSpin(slotId, liveState, name) {
+  if (!multiSpin?.isActive?.()) return;
+  const id = slotId || library?.activeId;
+  if (!id) return;
+  try {
+    const slot = library?.wheels?.find((w) => w.id === id);
+    const data =
+      liveState ||
+      (id === library?.activeId ? state : slot?.data) ||
+      null;
+    if (!data) return;
+    void multiSpin.applyLiveState?.(
+      id,
+      data,
+      name != null ? name : slot?.name
+    );
+  } catch (err) {
+    console.warn("multi-spin flush:", err);
+  }
+}
+
 function persist() {
   syncUiPrefsIntoState();
   library = writeActiveState(library, state);
@@ -522,19 +551,9 @@ function persist() {
   fillWheelSelect();
   updateStorageMeter();
   updateShareButtonHint();
-  // Multi-spin tiles hold their own clone — push live edits onto the active tile
-  try {
-    if (multiSpin?.isActive?.() && library?.activeId) {
-      const slot = getActiveSlot(library);
-      void multiSpin.applyLiveState?.(
-        library.activeId,
-        state,
-        slot?.name
-      );
-    }
-  } catch (err) {
-    console.warn("multi-spin live update:", err);
-  }
+  // Multi-spin: do NOT live-push every keystroke/reorder onto the mini wheel.
+  // The tile updates when you stop editing that wheel (select another tile,
+  // switch library wheel, or exit multi) — see flushWheelToMultiSpin.
   return ok;
 }
 
@@ -706,8 +725,17 @@ async function applyLoadedWheel(nextLib, nextState) {
 
 async function switchToWheelId(id) {
   if (!id || id === library.activeId) return;
-  // Save current wheel first
+  // Save current wheel first, then push that snapshot onto multi (stop editing)
+  syncUiPrefsIntoState();
   library = writeActiveState(library, state);
+  const leftId = library.activeId;
+  const leftSlot = getActiveSlot(library);
+  flushWheelToMultiSpin(leftId, leftSlot?.data, leftSlot?.name);
+  try {
+    saveLibrary(library);
+  } catch {
+    /* ignore */
+  }
   const result = switchActive(library, id);
   if (!result) return;
   await applyLoadedWheel(result.lib, result.state);
@@ -11777,10 +11805,23 @@ async function init() {
           console.warn("multi-spin → win effect:", err);
         }
       },
+      /** Before multi tile spins: if this is the wheel open in the sidebar, push latest section order */
+      onBeforeTileSpin: (slotId) => {
+        try {
+          if (!slotId || slotId !== library?.activeId) return;
+          syncUiPrefsIntoState();
+          library = writeActiveState(library, state);
+          saveLibrary(library);
+          flushWheelToMultiSpin(slotId, state);
+        } catch (err) {
+          console.warn("multi-spin flush before spin:", err);
+        }
+      },
       onSelectWheel: async (slotId) => {
         // Switch library active wheel so the sidebar edits THIS multi tile
         if (!slotId) return;
         if (slotId !== library?.activeId) {
+          // switchToWheelId flushes the previous wheel onto multi (new order, etc.)
           await switchToWheelId(slotId);
         }
       },
@@ -11844,6 +11885,14 @@ async function init() {
         }
       },
       onExit: () => {
+        // Leaving multi = stop editing — save final section order into the library
+        try {
+          syncUiPrefsIntoState();
+          library = writeActiveState(library, state);
+          saveLibrary(library);
+        } catch {
+          /* ignore */
+        }
         try {
           recoverWheelView();
         } catch {
