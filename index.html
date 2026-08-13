@@ -1324,8 +1324,9 @@
                 <option value="none">Show result (normal)</option>
                 <option value="respin">Respin this wheel</option>
                 <option value="otherWheel">Spin a different wheel</option>
+                <option value="respinAndOther">Respin this wheel and spin a different wheel</option>
               </select>
-              <small>Per-section. Groups can also set this (inherit or force). Respin keeps spinning until a normal section wins (or a limit). “Different wheel” switches and spins that wheel.</small>
+              <small>Per-section. Groups can also set this (inherit or force). Respin keeps spinning this wheel. “Different wheel” spins another (multi: can replace this tile if off board). “Respin + different” does both and keeps this wheel on the multi board.</small>
             </label>
             <label class="field" id="section-land-target-field" hidden>
               <span>Target wheel</span>
@@ -1638,6 +1639,7 @@
                   <option value="none">Show result (normal)</option>
                   <option value="respin">Respin this wheel</option>
                   <option value="otherWheel">Spin a different wheel</option>
+                  <option value="respinAndOther">Respin this wheel and spin a different wheel</option>
                 </select>
                 <small>Members with no own action inherit this. Force overrides each section’s setting. Same options as section edit.</small>
               </label>

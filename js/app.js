@@ -1975,6 +1975,13 @@ function landActionBadge(section) {
     const base = slot ? `→ ${slot.name || "wheel"}` : "→ other wheel";
     return eff.source?.startsWith("group") ? `${base} (grp)` : base;
   }
+  if (action === "respinAndOther") {
+    const tid = eff.landTargetWheelId;
+    const slot = tid && library?.wheels?.find((w) => w.id === tid);
+    const other = slot ? slot.name || "wheel" : "other";
+    const base = `↻+→ ${other}`;
+    return eff.source?.startsWith("group") ? `${base} (grp)` : base;
+  }
   return "";
 }
 
@@ -2314,15 +2321,20 @@ function fillSectionLandTargetWheels(selectedId) {
 function updateLandActionUI(prefix) {
   const p = prefix === "group" ? "group" : "section";
   const action = normalizeLandAction($(`#${p}-land-action`)?.value);
+  const needsTarget =
+    action === "otherWheel" || action === "respinAndOther";
   const field = $(`#${p}-land-target-field`);
-  if (field) field.hidden = action !== "otherWheel";
-  if (action === "otherWheel") {
+  if (field) field.hidden = !needsTarget;
+  if (needsTarget) {
     fillLandTargetWheels(
       $(`#${p}-land-target-wheel`),
       $(`#${p}-land-target-wheel`)?.value
     );
   }
-  const chain = action === "respin" || action === "otherWheel";
+  const chain =
+    action === "respin" ||
+    action === "otherWheel" ||
+    action === "respinAndOther";
   const showField = $(`#${p}-land-show-result-field`);
   if (showField) showField.hidden = !chain;
   const timesField = $(`#${p}-land-times-field`);
@@ -2345,7 +2357,7 @@ function readLandActionFromForm(prefix = "section") {
   const p = prefix === "group" ? "group" : "section";
   let landAction = normalizeLandAction($(`#${p}-land-action`)?.value);
   let landTargetWheelId = null;
-  if (landAction === "otherWheel") {
+  if (landAction === "otherWheel" || landAction === "respinAndOther") {
     const tid = $(`#${p}-land-target-wheel`)?.value || "";
     landTargetWheelId =
       tid &&
@@ -2357,7 +2369,11 @@ function readLandActionFromForm(prefix = "section") {
   let landShowResultEvery = 0;
   let landShowResultUnit = "seconds";
   let landActionTimes = 1;
-  if (landAction === "respin" || landAction === "otherWheel") {
+  if (
+    landAction === "respin" ||
+    landAction === "otherWheel" ||
+    landAction === "respinAndOther"
+  ) {
     let n = Number($(`#${p}-land-show-result-value`)?.value);
     if (!Number.isFinite(n) || n < 0) n = 0;
     landShowResultEvery = Math.min(99999, Math.round(n));

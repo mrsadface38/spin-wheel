@@ -37,7 +37,7 @@
  *   landSfxData: string|null,
  *   landSfxName: string|null,
  *   landSfxVolume: number,
- *   landAction: 'none'|'respin'|'otherWheel',
+ *   landAction: 'none'|'respin'|'otherWheel'|'respinAndOther',
  *   landTargetWheelId: string|null,
  *   landShowResultEvery: number,
  *   landShowResultUnit: 'seconds'|'minutes'|'hours'|'days',
@@ -51,7 +51,7 @@
 
 /** Per-section action when this slice wins a spin. */
 export function normalizeLandAction(v) {
-  if (v === "respin" || v === "otherWheel") return v;
+  if (v === "respin" || v === "otherWheel" || v === "respinAndOther") return v;
   return "none";
 }
 
@@ -256,7 +256,9 @@ export function normalizeLandActionFields(src = {}) {
   if (src.landTargetWheelId != null && String(src.landTargetWheelId).trim()) {
     landTargetWheelId = String(src.landTargetWheelId).trim();
   }
-  if (landAction !== "otherWheel") landTargetWheelId = null;
+  if (landAction !== "otherWheel" && landAction !== "respinAndOther") {
+    landTargetWheelId = null;
+  }
   let landShowResultEvery = Number(src.landShowResultEvery);
   if (!Number.isFinite(landShowResultEvery) || landShowResultEvery < 0) {
     landShowResultEvery = 0;

@@ -2585,6 +2585,70 @@ export function createMultiSpinController(deps) {
       return true;
     }
 
+    // Respin this wheel AND spin a different wheel (this wheel stays on the board)
+    if (action === "respinAndOther") {
+      const tid = eff.landTargetWheelId;
+      if (!tid) {
+        // No target → plain respin
+        setTileResult(
+          tile,
+          win,
+          times > 1 ? `→ respin ×${times}…` : "→ respin…"
+        );
+        await sleepMs(waitMs);
+        fireTimes(tile);
+        return true;
+      }
+      if (tid === tile.slotId) {
+        setTileResult(
+          tile,
+          win,
+          times > 1 ? `→ respin ×${times}…` : "→ respin…"
+        );
+        await sleepMs(waitMs);
+        fireTimes(tile);
+        return true;
+      }
+      await sleepMs(waitMs);
+      // Always keep this wheel: add target if missing (never replace source away)
+      let target = tiles.has(tid) ? tiles.get(tid) : null;
+      if (!target) {
+        target = await ensureTileForSlot(tid);
+      }
+      if (!target) {
+        setTileResult(tile, win, "→ (wheel not found) · respin only");
+        fireTimes(tile);
+        return true;
+      }
+      const tName = target.name || "wheel";
+      setTileResult(
+        tile,
+        win,
+        times > 1
+          ? `↻ + → ${tName} ×${times}`
+          : `↻ + → ${tName}`
+      );
+      // Start/queue both (this wheel is still busy → respin goes to its queue)
+      fireTimes(target);
+      fireTimes(tile);
+      const waitOther = tileWaitsForOtherWheel(tile);
+      if (waitOther) {
+        setTileResult(
+          tile,
+          win,
+          `↻ + → ${tName}${times > 1 ? ` ×${times}` : ""} (waiting…)`
+        );
+        await sleepMs(0);
+        await waitUntilTileFullyIdle(target);
+        setTileResult(
+          tile,
+          win,
+          `↻ + → ${tName}${times > 1 ? ` ×${times}` : ""} · respin queued`
+        );
+      }
+      return true;
+    }
+
     return false;
   }
 
