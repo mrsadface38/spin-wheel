@@ -651,6 +651,19 @@ function updateStorageMeter() {
 function updateShareButtonHint() {
   const btn = $("#btn-share-wheel");
   if (!btn) return;
+  if (multiSpin?.isActive?.()) {
+    const snap = multiSpin.getShareSnapshot?.();
+    const n = snap?.wheels?.length || 0;
+    const hasMedia = snap
+      ? payloadHasImages({ format: "sad-wheel-multi-v1", wheels: snap.wheels })
+      : false;
+    btn.title = hasMedia
+      ? `Copy a share link for this multi-spin board (${n} wheel${n === 1 ? "" : "s"}; hosted link may expire ~24h)`
+      : n
+        ? `Copy a share link for this multi-spin board (${n} wheel${n === 1 ? "" : "s"}) — opens multi view`
+        : "Select wheels on the multi board, then Share";
+    return;
+  }
   const hasMedia = payloadHasImages({ data: state });
   btn.title = hasMedia
     ? "Copy a share link (includes images; hosted link may expire ~24h — use Export JSON to keep forever)"
@@ -9410,14 +9423,63 @@ function getCurrentWheelSharePayload() {
   };
 }
 
+/** True when payload is a multi-spin board share. */
+function isMultiSharePayload(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  if (payload.format === "sad-wheel-multi-v1") return true;
+  // Hosted body without format tag but multi shape
+  if (
+    Array.isArray(payload.wheels) &&
+    payload.wheels.length &&
+    payload.wheels[0]?.data?.sections
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Build share payload for everything currently visible in multi-spin.
+ * @returns {object|null}
+ */
+function getMultiSpinSharePayload() {
+  if (!multiSpin?.isActive?.()) return null;
+  syncUiPrefsIntoState();
+  library = writeActiveState(library, state);
+  try {
+    if (library?.activeId) {
+      const slot = getActiveSlot(library);
+      void multiSpin.applyLiveState?.(library.activeId, state, slot?.name);
+    }
+  } catch {
+    /* ignore */
+  }
+  const snap = multiSpin.getShareSnapshot?.();
+  if (!snap?.wheels?.length) return null;
+  const names = snap.wheels.map((w) => w.name || "Wheel");
+  let name =
+    names.length <= 3
+      ? `Multi: ${names.join(" · ")}`
+      : `Multi: ${names.slice(0, 2).join(" · ")} +${names.length - 2} more`;
+  if (name.length > 80) name = `Multi-spin (${snap.wheels.length} wheels)`;
+  return {
+    format: "sad-wheel-multi-v1",
+    name,
+    exportedAt: new Date().toISOString(),
+    freeLayout: snap.freeLayout === true,
+    dragLocked: snap.dragLocked === true,
+    sharedGridSize: snap.sharedGridSize,
+    wheels: snap.wheels,
+  };
+}
+
 /**
  * Large / image wheels are hosted (#b= / #j=) instead of embedding multi‑MB
  * data in the URL. No third-party TinyURL / is.gd — the hosted app link is enough.
  */
 const SHARE_INLINE_MAX_B64 = 8000;
 
-function payloadHasImages(payload) {
-  const d = payload?.data || payload;
+function wheelDataHasImages(d) {
   if (!d || typeof d !== "object") return false;
   if (d.look?.backgroundImage || d.look?.centerImage || d.look?.winEffectData)
     return true;
@@ -9430,10 +9492,20 @@ function payloadHasImages(payload) {
   return false;
 }
 
-/** Strip bulky media so a compact share stays pasteable if full host fails. */
-function stripSharePayloadMedia(payload) {
-  const p = JSON.parse(JSON.stringify(payload));
-  const d = p.data || p;
+function payloadHasImages(payload) {
+  if (isMultiSharePayload(payload)) {
+    for (const w of payload.wheels || []) {
+      if (wheelDataHasImages(w?.data)) return true;
+    }
+    return false;
+  }
+  const d = payload?.data || payload;
+  return wheelDataHasImages(d);
+}
+
+/** Strip bulky media from one wheel project state (mutates). */
+function stripWheelDataMedia(d) {
+  if (!d || typeof d !== "object") return;
   if (d.look) {
     d.look.backgroundImage = null;
     d.look.centerImage = null;
@@ -9464,6 +9536,19 @@ function stripSharePayloadMedia(payload) {
     d.sound.landSfxData = null;
     d.sound.bgmData = null;
   }
+}
+
+/** Strip bulky media so a compact share stays pasteable if full host fails. */
+function stripSharePayloadMedia(payload) {
+  const p = JSON.parse(JSON.stringify(payload));
+  if (isMultiSharePayload(p)) {
+    for (const w of p.wheels || []) {
+      stripWheelDataMedia(w.data);
+    }
+    return p;
+  }
+  const d = p.data || p;
+  stripWheelDataMedia(d);
   return p;
 }
 
@@ -9789,7 +9874,21 @@ async function offerShareCopyPaste(shareUrl, titleLines) {
 async function shareCurrentWheel() {
   syncUiPrefsIntoState();
   library = writeActiveState(library, state);
-  const payload = getCurrentWheelSharePayload();
+
+  const isMulti = !!multiSpin?.isActive?.();
+  let payload;
+  if (isMulti) {
+    payload = getMultiSpinSharePayload();
+    if (!payload?.wheels?.length) {
+      alert(
+        "Multi-spin share needs at least one wheel on the board.\n\n" +
+          "Check wheels under “Wheels on screen”, then try Share again."
+      );
+      return;
+    }
+  } else {
+    payload = getCurrentWheelSharePayload();
+  }
 
   const btn = $("#btn-share-wheel");
   const prevLabel = btn?.textContent;
@@ -9810,9 +9909,14 @@ async function shareCurrentWheel() {
         : built.compact
           ? "Compact share link"
           : "Share link";
+    const multiNote = isMulti
+      ? `Multi-spin board (${payload.wheels.length} wheel${
+          payload.wheels.length === 1 ? "" : "s"
+        }) — opens multi view for the recipient.\n\n`
+      : "";
     await offerShareCopyPaste(
       built.shareUrl,
-      `${built.note}${kind} ready.\n\n`
+      `${built.note}${multiNote}${kind} ready.\n\n`
     );
   } catch (err) {
     console.warn("Share link failed:", err);
@@ -9896,6 +10000,80 @@ async function fetchSharePayloadFromBytebin(key) {
   return res.json();
 }
 
+/**
+ * Import a multi-spin share: add every wheel, restore layout/stack, open multi view.
+ * @param {object} payload
+ */
+async function importMultiSharePayload(payload) {
+  if (!multiSpin) {
+    throw new Error("Multi-spin is not available yet — try again after the page finishes loading.");
+  }
+  const list = Array.isArray(payload?.wheels) ? payload.wheels : [];
+  if (!list.length) {
+    throw new Error("Multi share has no wheels");
+  }
+  for (const w of list) {
+    const data = w?.data;
+    if (!data?.sections || !Array.isArray(data.sections)) {
+      throw new Error("Multi share contains an invalid wheel (missing sections)");
+    }
+    if (!data?.groups || !Array.isArray(data.groups)) {
+      throw new Error("Multi share contains an invalid wheel (missing groups)");
+    }
+  }
+
+  const boardName =
+    (payload.name && String(payload.name)) ||
+    `Multi-spin (${list.length} wheels)`;
+  const mode = payload.freeLayout === true ? "free placement" : "grid";
+  if (
+    !confirm(
+      `Import multi-spin board “${boardName}”?\n\n` +
+        `• ${list.length} wheel${list.length === 1 ? "" : "s"} will be added to your library\n` +
+        `• Opens multi-spin view (${mode})\n\n` +
+        `OK = import & open multi view\nCancel = ignore link`
+    )
+  ) {
+    history.replaceState(null, "", location.pathname + location.search);
+    return;
+  }
+
+  library = writeActiveState(library, state);
+
+  const newIds = [];
+  const layout = {};
+  let lastResult = null;
+  for (const w of list) {
+    const name = (w.name && String(w.name).trim()) || "Shared wheel";
+    const result = addWheel(library, name, w.data);
+    library = result.lib;
+    lastResult = result;
+    newIds.push(result.id);
+    if (w.layout && typeof w.layout === "object") {
+      layout[result.id] = { ...w.layout };
+    }
+  }
+
+  // Load last wheel into main editor so library/state stay consistent
+  if (lastResult) {
+    await applyLoadedWheel(lastResult.lib, lastResult.state);
+  } else {
+    saveLibrary(library);
+  }
+
+  multiSpin.applyShareImport({
+    selectedIds: newIds,
+    layout,
+    freeLayout: payload.freeLayout === true,
+    dragLocked: payload.dragLocked === true,
+    sharedGridSize:
+      payload.sharedGridSize != null ? payload.sharedGridSize : null,
+  });
+
+  history.replaceState(null, "", location.pathname + location.search);
+  updateShareButtonHint();
+}
+
 /** Import wheel from #wheel=… or hosted #b= / #j= share link (once on boot). */
 async function tryImportShareHash() {
   const hash = location.hash || "";
@@ -9936,6 +10114,12 @@ async function tryImportShareHash() {
           throw e;
         }
       }
+    }
+
+    // Multi-spin board share → import all wheels + open multi view
+    if (isMultiSharePayload(payload)) {
+      await importMultiSharePayload(payload);
+      return;
     }
 
     const data = payload?.data || payload;
@@ -11135,6 +11319,11 @@ async function init() {
         } catch {
           /* ignore */
         }
+        try {
+          updateShareButtonHint();
+        } catch {
+          /* ignore */
+        }
       },
       onExit: () => {
         try {
@@ -11145,6 +11334,11 @@ async function init() {
         void refreshWheel().catch(() => {});
         try {
           scheduleAutoSpin();
+        } catch {
+          /* ignore */
+        }
+        try {
+          updateShareButtonHint();
         } catch {
           /* ignore */
         }

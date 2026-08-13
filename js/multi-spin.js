@@ -2789,6 +2789,114 @@ export function createMultiSpinController(deps) {
     void syncTilesWithLibrary();
   }
 
+  /**
+   * Snapshot of everything currently visible on the multi board (for Share).
+   * Wheels are listed in stack/on-screen order with per-wheel layout.
+   * @returns {null | {
+   *   freeLayout: boolean,
+   *   dragLocked: boolean,
+   *   sharedGridSize: number|null,
+   *   wheels: { name: string, data: object, layout: object }[]
+   * }}
+   */
+  function getShareSnapshot() {
+    if (!active) return null;
+    const slots = librarySlots();
+    const wheels = [];
+    for (const id of selectedIds) {
+      const slot = slots.find((w) => w.id === id);
+      if (!slot) continue;
+      const tile = tiles.get(id);
+      let data = tile?.state || slot.data;
+      try {
+        data = JSON.parse(JSON.stringify(data));
+      } catch {
+        data = slot.data;
+      }
+      const L = layoutMap[id] || {};
+      const layout = {};
+      if (Number.isFinite(L.x)) layout.x = L.x;
+      if (Number.isFinite(L.y)) layout.y = L.y;
+      if (Number.isFinite(L.col)) layout.col = L.col;
+      if (Number.isFinite(L.row)) layout.row = L.row;
+      if (Number.isFinite(L.size)) layout.size = L.size;
+      if (L.customSize === true) layout.customSize = true;
+      wheels.push({
+        name: (tile?.name || slot.name || "Wheel").trim() || "Wheel",
+        data,
+        layout,
+      });
+    }
+    if (!wheels.length) return null;
+    return {
+      freeLayout: !!freeLayout,
+      dragLocked: !!dragLocked,
+      sharedGridSize:
+        sharedGridSize != null && Number.isFinite(sharedGridSize)
+          ? sharedGridSize
+          : null,
+      wheels,
+    };
+  }
+
+  /**
+   * Apply a shared multi board: set selection/layout/mode then open multi view.
+   * Caller must have already added the wheels to the library and pass new ids
+   * in stack order with layout keyed by those new ids.
+   * @param {{
+   *   selectedIds: string[],
+   *   layout: Record<string, object>,
+   *   freeLayout?: boolean,
+   *   dragLocked?: boolean,
+   *   sharedGridSize?: number|null,
+   * }} cfg
+   */
+  function applyShareImport(cfg) {
+    const ids = Array.isArray(cfg?.selectedIds)
+      ? cfg.selectedIds.map(String).filter(Boolean)
+      : [];
+    if (!ids.length) {
+      throw new Error("Multi share has no wheels to show");
+    }
+    selectedIds = ids;
+    saveSelection();
+
+    const nextLayout = {};
+    const src = cfg?.layout && typeof cfg.layout === "object" ? cfg.layout : {};
+    for (const id of ids) {
+      const L = src[id];
+      if (L && typeof L === "object") {
+        nextLayout[id] = { ...L };
+      }
+    }
+    layoutMap = { ...layoutMap, ...nextLayout };
+    saveLayout();
+
+    freeLayout = cfg?.freeLayout === true;
+    saveFreeLayout();
+    dragLocked = cfg?.dragLocked === true;
+    saveDragLock();
+    if (
+      cfg?.sharedGridSize != null &&
+      Number.isFinite(Number(cfg.sharedGridSize))
+    ) {
+      sharedGridSize = clampSize(Number(cfg.sharedGridSize));
+    } else {
+      sharedGridSize = null;
+    }
+    saveSharedGridSize();
+
+    if (lockChk()) lockChk().checked = dragLocked;
+    if (freeLayoutChk()) freeLayoutChk().checked = freeLayout;
+
+    if (!active) enter();
+    else {
+      applyDragLockUi();
+      applyLayoutModeUi();
+      void syncTilesWithLibrary();
+    }
+  }
+
   return {
     isActive,
     anySpinning,
@@ -2806,5 +2914,7 @@ export function createMultiSpinController(deps) {
     selectTile,
     setSelectionUiVisible,
     applyLiveState,
+    getShareSnapshot,
+    applyShareImport,
   };
 }
