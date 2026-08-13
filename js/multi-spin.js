@@ -1236,5 +1236,6 @@ export function createMultiSpinController(deps) {
     rebuildTiles,
     getFocusedSlotId: () => focusedSlotId,
     selectTile,
+    setSelectionUiVisible,
   };
 }
