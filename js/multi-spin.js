@@ -631,12 +631,72 @@ export function createMultiSpinController(deps) {
     for (const t of tiles.values()) {
       t.rootEl?.classList.remove("is-drop-target");
     }
+    const layer = document.getElementById("multi-grid-drop-layer");
+    layer
+      ?.querySelectorAll(".multi-grid-drop-cell.is-active")
+      .forEach((c) => c.classList.remove("is-active"));
   }
 
   function setGridDropHighlight(slotId) {
     for (const t of tiles.values()) {
       t.rootEl?.classList.toggle("is-drop-target", t.slotId === slotId);
     }
+  }
+
+  function highlightDropCell(index) {
+    const layer = document.getElementById("multi-grid-drop-layer");
+    if (!layer) return;
+    layer.querySelectorAll(".multi-grid-drop-cell").forEach((c) => {
+      c.classList.toggle("is-active", Number(c.dataset.slotIndex) === index);
+    });
+  }
+
+  /**
+   * Visible placement grid while dragging in grid mode.
+   */
+  function showGridDropOverlay() {
+    if (freeLayout) return;
+    const g = grid();
+    if (!g || !selectedIds.length) return;
+    hideGridDropOverlay();
+
+    const size = effectiveGridSize();
+    const { cols, cellW, cellH } = gridMetrics(size);
+    const n = selectedIds.length;
+    const layer = document.createElement("div");
+    layer.id = "multi-grid-drop-layer";
+    layer.className = "multi-grid-drop-layer";
+    layer.setAttribute("aria-hidden", "true");
+
+    for (let i = 0; i < n; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const cell = document.createElement("div");
+      cell.className = "multi-grid-drop-cell";
+      cell.dataset.slotIndex = String(i);
+      cell.style.left = `${col * cellW}px`;
+      cell.style.top = `${row * cellH}px`;
+      cell.style.width = `${size}px`;
+      cell.style.height = `${size + TILE_CHROME_H}px`;
+      const num = document.createElement("span");
+      num.className = "multi-grid-drop-cell-num";
+      num.textContent = String(i + 1);
+      cell.appendChild(num);
+      // Occupied by current order (except dragged tile shown empty-ish)
+      const id = selectedIds[i];
+      if (drag?.tile?.slotId && id === drag.tile.slotId) {
+        cell.classList.add("is-source");
+      }
+      layer.appendChild(cell);
+    }
+
+    g.appendChild(layer);
+    g.classList.add("is-showing-drop-grid");
+  }
+
+  function hideGridDropOverlay() {
+    document.getElementById("multi-grid-drop-layer")?.remove();
+    grid()?.classList.remove("is-showing-drop-grid");
   }
 
   /**
@@ -1192,6 +1252,7 @@ export function createMultiSpinController(deps) {
     const dx = e.clientX - drag.grabX;
     const dy = e.clientY - drag.grabY;
     if (!drag.moved && dx * dx + dy * dy < 9) return;
+    const firstMove = !drag.moved;
     drag.moved = true;
     const x = Math.max(0, drag.startX + dx);
     const y = Math.max(0, drag.startY + dy);
@@ -1208,13 +1269,18 @@ export function createMultiSpinController(deps) {
       };
       updateBoardSize();
     } else {
+      // Show placement grid once drag actually starts
+      if (firstMove) showGridDropOverlay();
       // Highlight the slot under the cursor (swap target)
       const toIndex = gridIndexFromPoint(e.clientX, e.clientY);
+      highlightDropCell(toIndex);
       const targetId = selectedIds[toIndex];
       if (targetId && targetId !== drag.tile.slotId) {
         setGridDropHighlight(targetId);
       } else {
-        clearGridDropHighlight();
+        for (const t of tiles.values()) {
+          t.rootEl?.classList.remove("is-drop-target");
+        }
       }
     }
   }
