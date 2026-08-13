@@ -145,13 +145,6 @@
               class="btn small ghost"
               title="Remove all waiting spins from every wheel (does not stop a spin that is already running)"
             >Clear queues</button>
-            <label
-              class="toggle-row multi-lock-row"
-              title="When on, after a wheel spins another, it waits for that wheel (and its queue) to finish before continuing its own queue"
-            >
-              <input type="checkbox" id="chk-multi-wait-target" checked />
-              <span>Wait for other wheel</span>
-            </label>
             <span id="multi-summary" class="multi-summary" aria-live="polite"></span>
             <span id="multi-warn" class="multi-warn hidden" hidden></span>
           </div>
@@ -545,6 +538,15 @@
             <small>
               When on, a flick that is fast enough starts a normal full-force timed spin
               (Spin duration) instead of matching how hard you threw it.
+            </small>
+            <label class="toggle-row">
+              <input type="checkbox" id="chk-wait-for-target-wheel" checked />
+              <span>Wait for other wheel (multi-spin)</span>
+            </label>
+            <small>
+              When this wheel is set to spin a different wheel: if on, multi-spin waits for
+              that wheel (and its queue) to finish before continuing this wheel’s queue.
+              If off, this wheel keeps spinning and only adds to the other wheel’s queue.
             </small>
             <label class="toggle-row">
               <input type="checkbox" id="chk-pointer-locked" checked />

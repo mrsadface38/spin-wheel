@@ -5860,6 +5860,10 @@ function bindLook() {
   if ($("#chk-fair-drag-spin")) {
     $("#chk-fair-drag-spin").checked = state.look.fairDragSpin === true;
   }
+  if ($("#chk-wait-for-target-wheel")) {
+    $("#chk-wait-for-target-wheel").checked =
+      state.look.waitForTargetWheel !== false;
+  }
   if ($("#chk-auto-spin")) {
     $("#chk-auto-spin").checked = state.look.autoSpin === true;
   }
@@ -8339,6 +8343,10 @@ async function onLookChange() {
   }
   if ($("#chk-fair-drag-spin")) {
     state.look.fairDragSpin = $("#chk-fair-drag-spin").checked === true;
+  }
+  if ($("#chk-wait-for-target-wheel")) {
+    state.look.waitForTargetWheel =
+      $("#chk-wait-for-target-wheel").checked !== false;
   }
   if ($("#chk-auto-spin")) {
     state.look.autoSpin = $("#chk-auto-spin").checked === true;

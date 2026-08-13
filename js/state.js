@@ -700,6 +700,12 @@ export function defaultState() {
        */
       fairDragSpin: false,
       /**
+       * Multi-spin: when this wheel spins a different wheel, wait for that
+       * wheel (and its queue) to finish before continuing this wheel's queue.
+       * Default on.
+       */
+      waitForTargetWheel: true,
+      /**
        * Auto-dismiss win screen after N seconds (free-form number).
        * 0 = off (show until Continue), -1 = never show result overlay,
        * positive = auto-close after that many seconds.
@@ -865,6 +871,8 @@ function migrate(data) {
   look.allowGrabStopSpin = look.allowGrabStopSpin !== false;
   // Fair drag spin: only on when explicitly saved (default off)
   look.fairDragSpin = look.fairDragSpin === true;
+  // Wait for other wheel in multi-spin: default on (only false when saved off)
+  look.waitForTargetWheel = look.waitForTargetWheel !== false;
   // Center hub spins with wheel only when explicitly enabled (default off)
   look.spinCenterHub = look.spinCenterHub === true;
   // Pointer angle 0–360 (0 = top, 90 = right default). Missing → right.

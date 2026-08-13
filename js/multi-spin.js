@@ -17,7 +17,6 @@ const SEL_KEY = "spin-wheel-multi-ids-v1";
 const LAYOUT_KEY = "spin-wheel-multi-layout-v1";
 const LOCK_KEY = "spin-wheel-multi-drag-lock-v1";
 const PICKER_COLLAPSE_KEY = "spin-wheel-multi-picker-collapsed-v1";
-const WAIT_TARGET_KEY = "spin-wheel-multi-wait-target-v1";
 /** When "1", free absolute placement; default is grid (no overlap). */
 const FREE_LAYOUT_KEY = "spin-wheel-multi-free-layout-v1";
 /** Shared custom size for grid mode (null = auto max fit). */
@@ -53,8 +52,6 @@ export function createMultiSpinController(deps) {
   let layoutMap = loadLayout();
   let dragLocked = loadDragLock();
   let pickerCollapsed = loadPickerCollapsed();
-  /** When true, after spinning another wheel wait for it (and its queue) before draining ours. */
-  let waitForTargetWheel = loadWaitForTarget();
   /** When false (default), tiles snap to a non-overlapping grid. */
   let freeLayout = loadFreeLayout();
   /** Shared size in grid mode; null = auto largest that fits. */
