@@ -2101,6 +2101,16 @@ export function createMultiSpinController(deps) {
     if (freeLayoutChk()) freeLayoutChk().checked = freeLayout;
     applyLayoutModeUi();
 
+    const gridSlider = document.getElementById("multi-grid-size-slider");
+    gridSlider?.addEventListener("input", () => {
+      applyGridSizeFromSlider(gridSlider.value);
+    });
+    gridSlider?.addEventListener("change", () => {
+      applyGridSizeFromSlider(gridSlider.value);
+      saveSharedGridSize();
+    });
+    syncPickerGridSizeUi();
+
     document
       .getElementById("btn-multi-picker-collapse")
       ?.addEventListener("click", () => setPickerCollapsed(true));
