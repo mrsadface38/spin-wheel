@@ -774,22 +774,72 @@ export function createMultiSpinController(deps) {
     return tile;
   }
 
-  /** Stop every multi-spin tile mid-flight (no land SFX). */
-  function cancelAllTileSpins() {
-    for (const t of tiles.values()) {
-      try {
-        t.wheel?.cancelAnimatedSpin?.();
-      } catch {
-        /* ignore */
-      }
-      t.spinning = false;
-      t.rootEl?.classList.remove("is-spinning");
-    }
+  function isTileBusy(tile) {
+    return !!(tile && (tile.spinning || tile.wheel?.spinning));
   }
 
-  async function handleMultiLandAction(tile, win, chainDepth, gen) {
+  function updateQueueUi(tile) {
+    if (!tile?.rootEl) return;
+    const n = Array.isArray(tile.queue) ? tile.queue.length : 0;
+    const el = tile.rootEl.querySelector(".multi-tile-queue");
+    if (el) {
+      if (n > 0) {
+        el.hidden = false;
+        el.textContent = n === 1 ? "1 queued" : `${n} queued`;
+        el.title = `${n} spin${n === 1 ? "" : "s"} waiting until this wheel finishes`;
+      } else {
+        el.hidden = true;
+        el.textContent = "";
+        el.removeAttribute("title");
+      }
+    }
+    tile.rootEl.classList.toggle("has-queue", n > 0);
+  }
+
+  /**
+   * Queue a spin if the tile is busy; otherwise start immediately.
+   * Used by respin / spin-other-wheel and manual Spin.
+   */
+  function enqueueSpin(tile, opts = {}) {
+    if (!tile) return;
+    if (!Array.isArray(tile.queue)) tile.queue = [];
+    tile.queue.push({
+      silentLand: opts.silentLand === true,
+      chainDepth: Number(opts.chainDepth) || 0,
+    });
+    updateQueueUi(tile);
+  }
+
+  /**
+   * Request a spin: run now if idle, else add to this wheel's queue.
+   * @returns {Promise<object|null>|"queued"}
+   */
+  async function requestSpin(tile, opts = {}) {
+    if (!tile) return null;
+    if (isTileBusy(tile)) {
+      enqueueSpin(tile, opts);
+      return "queued";
+    }
+    return spinTile(tile, opts);
+  }
+
+  /** After a spin ends, run the next queued spin (if any). */
+  async function drainQueue(tile) {
+    if (!tile || isTileBusy(tile)) return;
+    if (!Array.isArray(tile.queue) || !tile.queue.length) {
+      updateQueueUi(tile);
+      return;
+    }
+    const next = tile.queue.shift();
+    updateQueueUi(tile);
+    await spinTile(tile, {
+      silentLand: next?.silentLand === true,
+      chainDepth: Number(next?.chainDepth) || 0,
+    });
+  }
+
+  async function handleMultiLandAction(tile, win, chainDepth) {
     if (!tile || !win || chainDepth >= MAX_LAND_CHAIN) return false;
-    if (gen != null && gen !== spinGen) return false;
 
     const raw =
       (tile.state?.sections || []).find((s) => s.id === win.id) || win;
@@ -802,17 +852,19 @@ export function createMultiSpinController(deps) {
       eff.landShowResultUnit
     );
     const waitMs = showMs > 0 ? showMs : 400;
+    const nextOpts = {
+      silentLand: true,
+      chainDepth: chainDepth + 1,
+    };
 
     if (action === "respin") {
       setTileResult(tile, win, "→ respin…");
       await sleepMs(waitMs);
-      if (gen != null && gen !== spinGen) return false;
-      await spinTile(tile, {
-        silentLand: true,
-        chainDepth: chainDepth + 1,
-        force: true,
-        gen,
-      });
+      // Queue if still finishing this spin / already busy — runs after
+      const r = await requestSpin(tile, nextOpts);
+      if (r === "queued") {
+        setTileResult(tile, win, `→ respin (queued · ${tile.queue.length})`);
+      }
       return true;
     }
 
@@ -825,13 +877,10 @@ export function createMultiSpinController(deps) {
       if (tid === tile.slotId) {
         setTileResult(tile, win, "→ respin…");
         await sleepMs(waitMs);
-        if (gen != null && gen !== spinGen) return false;
-        await spinTile(tile, {
-          silentLand: true,
-          chainDepth: chainDepth + 1,
-          force: true,
-          gen,
-        });
+        const r = await requestSpin(tile, nextOpts);
+        if (r === "queued") {
+          setTileResult(tile, win, `→ respin (queued · ${tile.queue.length})`);
+        }
         return true;
       }
       const target = await ensureTileForSlot(tid);
@@ -841,13 +890,11 @@ export function createMultiSpinController(deps) {
       }
       setTileResult(tile, win, `→ ${target.name}`);
       await sleepMs(waitMs);
-      if (gen != null && gen !== spinGen) return false;
-      await spinTile(target, {
-        silentLand: true,
-        chainDepth: chainDepth + 1,
-        force: true,
-        gen,
-      });
+      const r = await requestSpin(target, nextOpts);
+      if (r === "queued") {
+        const n = target.queue?.length || 0;
+        setTileResult(tile, win, `→ ${target.name} (queued · ${n})`);
+      }
       return true;
     }
 
@@ -855,34 +902,17 @@ export function createMultiSpinController(deps) {
   }
 
   /**
+   * Run one spin now. Does not wait for busy wheels — use requestSpin to queue.
    * @param {object} tile
-   * @param {{ silentLand?: boolean, chainDepth?: number, force?: boolean, gen?: number }} [opts]
-   * force: cancel an in-progress spin on this tile and start over
-   * gen: spin-all generation — abort if a newer Spin all started
+   * @param {{ silentLand?: boolean, chainDepth?: number }} [opts]
    */
   async function spinTile(tile, opts = {}) {
     const silentLand = opts.silentLand === true;
     const chainDepth = Number(opts.chainDepth) || 0;
-    const force = opts.force === true;
-    const gen = opts.gen;
     if (!tile) return null;
-    if (gen != null && gen !== spinGen) return null;
 
-    if (force) {
-      try {
-        tile.wheel?.cancelAnimatedSpin?.();
-      } catch {
-        /* ignore */
-      }
-      tile.spinning = false;
-      tile.rootEl?.classList.remove("is-spinning");
-      // Brief yield so cancelled promise handlers settle
-      await sleepMs(0);
-    } else {
-      await waitUntilIdle(tile);
-      if (tile.spinning || tile.wheel?.spinning) return null;
-    }
-    if (gen != null && gen !== spinGen) return null;
+    // Never block on another spin here — busy → caller should queue
+    if (isTileBusy(tile)) return null;
 
     const activeSecs = getActiveSections(tile.state);
     if (!activeSecs.length) {
@@ -891,6 +921,7 @@ export function createMultiSpinController(deps) {
         el.textContent = "No active sections";
         el.classList.remove("has-win");
       }
+      // Drop a useless queue entry path: clear empty-section queue items later
       return null;
     }
 
@@ -902,13 +933,10 @@ export function createMultiSpinController(deps) {
       deps.audio?.ensure?.();
       const dur = durationFor(tile);
       win = await tile.wheel.spin(dur, {});
-      if (gen != null && gen !== spinGen) {
-        // Superseded mid-spin — don't land-chain
-        return null;
-      }
       if (win) {
         setTileResult(tile, win);
-        await handleMultiLandAction(tile, win, chainDepth, gen);
+        // Land actions enqueue respin/other — do not nest force-restarts
+        await handleMultiLandAction(tile, win, chainDepth);
       }
     } catch (err) {
       console.error("multi-spin tile failed:", tile.name, err);
@@ -920,8 +948,10 @@ export function createMultiSpinController(deps) {
     } finally {
       tile.spinning = false;
       tile.rootEl?.classList.remove("is-spinning");
+      // Start next queued spin (if any)
+      void drainQueue(tile);
     }
-    if (win && !silentLand && chainDepth === 0 && (gen == null || gen === spinGen)) {
+    if (win && !silentLand && chainDepth === 0) {
       playLandOnce();
     }
     return win;
@@ -931,17 +961,24 @@ export function createMultiSpinController(deps) {
     const lines = [];
     for (const t of tiles.values()) {
       if (t.lastWin) {
-        lines.push(`${t.name}: ${t.lastWin.label || "—"}`);
+        const q = t.queue?.length || 0;
+        lines.push(
+          q > 0
+            ? `${t.name}: ${t.lastWin.label || "—"} (+${q} queued)`
+            : `${t.name}: ${t.lastWin.label || "—"}`
+        );
       } else if (!getActiveSections(t.state).length) {
         lines.push(`${t.name}: (no sections)`);
+      } else if (t.queue?.length) {
+        lines.push(`${t.name}: ${t.queue.length} queued`);
       }
     }
     return lines;
   }
 
   /**
-   * Spin every on-board wheel. Safe to call while spins are still running —
-   * cancels in-flight spins and starts a fresh batch.
+   * Spin only wheels that are idle right now.
+   * Does not cancel running spins and does not add to queues.
    */
   async function spinAll() {
     if (!active) return;
@@ -951,37 +988,41 @@ export function createMultiSpinController(deps) {
       return;
     }
 
-    // Interrupt any previous Spin all / tile spins / land chains
-    spinGen += 1;
-    const gen = spinGen;
-    cancelAllTileSpins();
+    const idle = list.filter((t) => !isTileBusy(t));
+    const busy = list.length - idle.length;
+    if (!idle.length) {
+      setSummary(
+        busy === 1
+          ? "That wheel is still spinning — Spin all only starts idle wheels."
+          : `All ${busy} wheels are still spinning — Spin all only starts idle wheels.`
+      );
+      return;
+    }
+
     spinAllBusy = true;
-    setSummary("Spinning…");
+    setSummary(
+      busy > 0
+        ? `Spinning ${idle.length} idle wheel${idle.length === 1 ? "" : "s"} (${busy} already spinning, left alone)…`
+        : "Spinning…"
+    );
     try {
       deps.audio?.ensure?.();
-      // Let cancelAnimatedSpin resolve before starting new spins
-      await sleepMs(0);
-      if (gen !== spinGen) return;
-
-      for (const t of list) setTileResult(t, null);
+      for (const t of idle) setTileResult(t, null);
 
       const results = await Promise.all(
-        list.map((t) =>
+        idle.map((t) =>
           spinTile(t, {
             silentLand: true,
             chainDepth: 0,
-            force: true,
-            gen,
           })
         )
       );
 
-      if (gen !== spinGen) return; // a newer Spin all took over
       const lines = buildSummaryLines();
       setSummary(lines.length ? lines.join(" · ") : "Done");
       if (results.some(Boolean) || lines.length) playLandOnce();
     } finally {
-      if (gen === spinGen) spinAllBusy = false;
+      spinAllBusy = false;
     }
   }
 
