@@ -2193,5 +2193,6 @@ export function createMultiSpinController(deps) {
     getFocusedSlotId: () => focusedSlotId,
     selectTile,
     setSelectionUiVisible,
+    applyLiveState,
   };
 }
