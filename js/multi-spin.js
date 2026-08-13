@@ -1833,6 +1833,14 @@ export function createMultiSpinController(deps) {
       void requestSpin(tile, { silentLand: false, chainDepth: 0 });
     });
 
+    // Tap big-center winner overlay to dismiss (same idea as main wheel)
+    const resultCenter = stage?.querySelector(".multi-tile-result-center");
+    resultCenter?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      clearTileResultCenter(tile);
+    });
+
     const handle = rootEl.querySelector(".multi-tile-drag");
     handle?.addEventListener("pointerdown", (e) => {
       if (dragLocked) return;
@@ -2228,6 +2236,36 @@ export function createMultiSpinController(deps) {
     if (noteEl) {
       noteEl.hidden = true;
       noteEl.textContent = "";
+    }
+  }
+
+  /** Live Look.autoDismissSec for a multi tile (library first). */
+  function tileAutoDismissSec(tile) {
+    let look = tile?.state?.look || {};
+    try {
+      const slot = librarySlots().find((w) => w.id === tile.slotId);
+      if (slot?.data?.look) look = { ...look, ...slot.data.look };
+    } catch {
+      /* tile look */
+    }
+    const n = Number(look.autoDismissSec);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  /**
+   * When a new spin starts: if Auto-dismiss is off (0), clear big-center so the
+   * spin is visible. If Auto-dismiss is on (>0), leave the overlay/timer alone.
+   */
+  function dismissTileResultForNewSpin(tile) {
+    if (!tile?.rootEl) return;
+    const autoSec = tileAutoDismissSec(tile);
+    // Positive = auto-dismiss on → follow that timer only
+    if (autoSec > 0) return;
+    clearTileResultCenter(tile);
+    const el = tile.rootEl.querySelector(".multi-tile-result");
+    if (el) {
+      el.textContent = "";
+      el.classList.remove("has-win");
     }
   }
 
@@ -3139,7 +3177,12 @@ export function createMultiSpinController(deps) {
 
     tile.spinning = true;
     tile.rootEl?.classList.add("is-spinning");
-    if (chainDepth === 0) setTileResult(tile, null);
+    // Auto-dismiss off (0): clear big-center so the spin is visible (incl. respin).
+    // Auto-dismiss on (>0): leave overlay/timer alone until it fires.
+    dismissTileResultForNewSpin(tile);
+    if (chainDepth === 0 && !(tileAutoDismissSec(tile) > 0)) {
+      setTileResult(tile, null);
+    }
     let win = null;
     try {
       deps.audio?.ensure?.();
@@ -3193,7 +3236,10 @@ export function createMultiSpinController(deps) {
 
     tile.spinning = true;
     tile.rootEl?.classList.add("is-spinning");
-    if (chainDepth === 0) setTileResult(tile, null);
+    dismissTileResultForNewSpin(tile);
+    if (chainDepth === 0 && !(tileAutoDismissSec(tile) > 0)) {
+      setTileResult(tile, null);
+    }
     let win = null;
     try {
       deps.audio?.ensure?.();
