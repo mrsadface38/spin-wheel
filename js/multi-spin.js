@@ -2182,6 +2182,125 @@ export function createMultiSpinController(deps) {
     return tile;
   }
 
+  /**
+   * Misc → replaceSourceOnOtherWheel for this board tile (library first).
+   * Default on when unset: off-board targets take this wheel's place.
+   */
+  function tileReplacesOnOtherWheel(tile) {
+    if (!tile) return true;
+    try {
+      const slot = librarySlots().find((w) => w.id === tile.slotId);
+      const look = slot?.data?.look ?? tile.state?.look;
+      if (
+        look &&
+        Object.prototype.hasOwnProperty.call(look, "replaceSourceOnOtherWheel")
+      ) {
+        return look.replaceSourceOnOtherWheel !== false;
+      }
+    } catch {
+      /* ignore */
+    }
+    return tile.state?.look?.replaceSourceOnOtherWheel !== false;
+  }
+
+  /**
+   * Bring a transfer target onto the multi board.
+   * - Already on board → use existing tile
+   * - Replace mode (default) → target inherits source layout/slot; source leaves after spin
+   * - Add mode → ensureTileForSlot (extra tile; legacy)
+   * @returns {Promise<{ tile: object|null, replaced: boolean }>}
+   */
+  async function bringTransferTarget(sourceTile, targetId) {
+    if (!targetId) return { tile: null, replaced: false };
+    if (tiles.has(targetId)) {
+      return { tile: tiles.get(targetId), replaced: false };
+    }
+
+    const replace = tileReplacesOnOtherWheel(sourceTile);
+    if (!replace) {
+      const t = await ensureTileForSlot(targetId);
+      return { tile: t, replaced: false };
+    }
+
+    const sourceId = sourceTile?.slotId;
+    if (!sourceId) {
+      const t = await ensureTileForSlot(targetId);
+      return { tile: t, replaced: false };
+    }
+
+    const slot = librarySlots().find((w) => w.id === targetId);
+    if (!slot) return { tile: null, replaced: false };
+
+    // Copy layout so the target sits exactly where the source was
+    const prev = layoutMap[sourceId] || {};
+    const layoutCopy = { ...prev };
+    const stackIdx = selectedIds.indexOf(sourceId);
+
+    // Selection: drop source, insert target at same list/stack index
+    selectedIds = selectedIds.filter((id) => id !== sourceId);
+    if (!selectedIds.includes(targetId)) {
+      const at = stackIdx >= 0 ? Math.min(stackIdx, selectedIds.length) : selectedIds.length;
+      selectedIds.splice(at, 0, targetId);
+    }
+    saveSelection();
+
+    layoutMap[targetId] = layoutCopy;
+    saveLayout();
+
+    const g = grid();
+    g?.querySelector(".multi-grid-empty")?.remove();
+    await buildTile(slot);
+
+    const target = tiles.get(targetId) || null;
+    if (target?.rootEl) {
+      const pos = layoutMap[targetId] || layoutCopy;
+      const size =
+        Number.isFinite(pos.size) && pos.size > 0
+          ? pos.size
+          : tileSize(targetId);
+      if (Number.isFinite(pos.x)) target.rootEl.style.left = `${pos.x}px`;
+      if (Number.isFinite(pos.y)) target.rootEl.style.top = `${pos.y}px`;
+      target.rootEl.style.width = `${size}px`;
+      target.rootEl.style.minWidth = `${size}px`;
+      try {
+        target.wheel?.resize?.();
+        target.wheel?.draw?.();
+      } catch {
+        /* ignore */
+      }
+      try {
+        target.rootEl.scrollIntoView?.({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Source leaves after its current spin finishes (still inside spinTile)
+    sourceTile._removeAfterSpin = true;
+    sourceTile.queue = [];
+    updateQueueUi(sourceTile);
+    if (sourceTile.rootEl) {
+      sourceTile.rootEl.classList.add("is-transfer-out");
+      sourceTile.rootEl.style.visibility = "hidden";
+      sourceTile.rootEl.style.pointerEvents = "none";
+    }
+
+    if (!freeLayout) {
+      applyGridLayout({ redraw: true });
+    } else {
+      updateBoardSize();
+      applyTileStackOrder();
+    }
+    setWarn();
+    renderPicker();
+    updateFocusUi();
+
+    return { tile: target, replaced: true };
+  }
+
   function isTileBusy(tile) {
     return !!(tile && (tile.spinning || tile.wheel?.spinning));
   }
@@ -2412,44 +2531,54 @@ export function createMultiSpinController(deps) {
         fireTimes(tile);
         return true;
       }
-      const target = await ensureTileForSlot(tid);
+      await sleepMs(waitMs);
+      // Off-board target: replace this tile in place (default) or add as extra
+      const { tile: target, replaced } = await bringTransferTarget(tile, tid);
       if (!target) {
         setTileResult(tile, win, "→ (wheel not found)");
         return false;
       }
-      setTileResult(
-        tile,
-        win,
-        times > 1 ? `→ ${target.name} ×${times}` : `→ ${target.name}`
-      );
-      await sleepMs(waitMs);
-      const { queued, started } = fireTimes(target);
-      const waitOther = tileWaitsForOtherWheel(tile);
-      if (waitOther) {
-        // Misc on: hold this wheel's queue until the other finishes completely
+      const tName = target.name || "wheel";
+      if (replaced) {
         setTileResult(
           tile,
           win,
-          `→ ${target.name}${times > 1 ? ` ×${times}` : ""} (waiting…)`
+          times > 1
+            ? `→ ${tName} ×${times} (replaced)`
+            : `→ ${tName} (replaced)`
         );
-        // Yield so target can mark spinning=true
+      } else {
+        setTileResult(
+          tile,
+          win,
+          times > 1 ? `→ ${tName} ×${times}` : `→ ${tName}`
+        );
+      }
+      const { queued, started } = fireTimes(target);
+      // Waiting only makes sense if this wheel stays on the board
+      const waitOther = !replaced && tileWaitsForOtherWheel(tile);
+      if (waitOther) {
+        setTileResult(
+          tile,
+          win,
+          `→ ${tName}${times > 1 ? ` ×${times}` : ""} (waiting…)`
+        );
         await sleepMs(0);
         await waitUntilTileFullyIdle(target);
         setTileResult(
           tile,
           win,
-          `→ ${target.name}${times > 1 ? ` ×${times}` : ""} (done)`
+          `→ ${tName}${times > 1 ? ` ×${times}` : ""} (done)`
         );
-      } else {
-        // Misc off: do not wait — our finally will drain our own queue now
+      } else if (!replaced) {
         const n = target.queue?.length || 0;
         if (queued > 0 || started > 0) {
           setTileResult(
             tile,
             win,
             n > 0
-              ? `→ ${target.name}${times > 1 ? ` ×${times}` : ""} (queued · ${n})`
-              : `→ ${target.name}${times > 1 ? ` ×${times}` : ""}`
+              ? `→ ${tName}${times > 1 ? ` ×${times}` : ""} (queued · ${n})`
+              : `→ ${tName}${times > 1 ? ` ×${times}` : ""}`
           );
         }
       }
@@ -2546,16 +2675,41 @@ export function createMultiSpinController(deps) {
     } finally {
       tile.spinning = false;
       tile.rootEl?.classList.remove("is-spinning");
-      // Apply editor changes that arrived mid-spin
-      if (tile._pendingLiveState) {
-        const pending = tile._pendingLiveState;
-        const pendingName = tile._pendingLiveName;
-        tile._pendingLiveState = null;
-        tile._pendingLiveName = null;
-        void refreshTileFromState(tile, pending, pendingName);
+      // Transfer-out: this wheel was replaced by an off-board target
+      if (tile._removeAfterSpin) {
+        tile.queue = [];
+        const sid = tile.slotId;
+        destroyOneTile(tile);
+        if (layoutMap[sid]) {
+          // Keep layout only if nothing else reuses it; target already copied
+          // Don't delete if still referenced — selectedIds no longer has source
+        }
+        // Ensure source is not re-selected
+        if (selectedIds.includes(sid)) {
+          selectedIds = selectedIds.filter((id) => id !== sid);
+          saveSelection();
+        }
+        if (focusedSlotId === sid) focusedSlotId = null;
+        renderPicker();
+        setWarn();
+        updateFocusUi();
+        if (!freeLayout) applyGridLayout({ redraw: false });
+        else {
+          updateBoardSize();
+          applyTileStackOrder();
+        }
+      } else {
+        // Apply editor changes that arrived mid-spin
+        if (tile._pendingLiveState) {
+          const pending = tile._pendingLiveState;
+          const pendingName = tile._pendingLiveName;
+          tile._pendingLiveState = null;
+          tile._pendingLiveName = null;
+          void refreshTileFromState(tile, pending, pendingName);
+        }
+        // Start next queued spin (if any)
+        void drainQueue(tile);
       }
-      // Start next queued spin (if any)
-      void drainQueue(tile);
     }
     if (win && !silentLand && chainDepth === 0) {
       playLandOnce();

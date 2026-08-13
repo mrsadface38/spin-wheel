@@ -706,6 +706,12 @@ export function defaultState() {
        */
       waitForTargetWheel: true,
       /**
+       * Multi-spin: when spinning a different wheel that is not on the board,
+       * put the target in this wheel's slot/position and remove this wheel.
+       * Default on. Off = add the target as an extra tile (legacy).
+       */
+      replaceSourceOnOtherWheel: true,
+      /**
        * Auto-dismiss win screen after N seconds (free-form number).
        * 0 = off (show until Continue), -1 = never show result overlay,
        * positive = auto-close after that many seconds.
@@ -873,6 +879,8 @@ function migrate(data) {
   look.fairDragSpin = look.fairDragSpin === true;
   // Wait for other wheel in multi-spin: default on (only false when saved off)
   look.waitForTargetWheel = look.waitForTargetWheel !== false;
+  // Replace this tile with off-board target: default on (only false when saved off)
+  look.replaceSourceOnOtherWheel = look.replaceSourceOnOtherWheel !== false;
   // Center hub spins with wheel only when explicitly enabled (default off)
   look.spinCenterHub = look.spinCenterHub === true;
   // Pointer angle 0–360 (0 = top, 90 = right default). Missing → right.
