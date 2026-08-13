@@ -1289,6 +1289,13 @@ body.multi-picker-drag-cursor * {
   border-bottom: 1px solid var(--border);
   box-shadow: none;
   overflow: hidden;
+  /* Mouse drag / fling on the mini wheel (cursor set by Wheel.enablePointerDrag) */
+  touch-action: none;
+  cursor: grab;
+}
+
+.multi-tile-stage.stage--mini:active {
+  cursor: grabbing;
 }
 
 /* Per-tile resize: free placement only */

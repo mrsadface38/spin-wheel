@@ -1717,6 +1717,75 @@ export function createMultiSpinController(deps) {
     return el;
   }
 
+  function maxSpeedScaleForTile(tile) {
+    let pct = Number(tile?.state?.spin?.maxSpeedPct);
+    if (!Number.isFinite(pct) || pct <= 0) pct = 100;
+    pct = Math.min(200, Math.max(25, pct));
+    return pct / 100;
+  }
+
+  /**
+   * Mouse/touch drag on the mini stage: aim, grab-to-stop, fling (same as main wheel).
+   */
+  function enableTileWheelPointer(tile) {
+    const stage = tile.rootEl?.querySelector(".multi-tile-stage");
+    if (!stage || !tile.wheel || tile._wheelPointerBound) return;
+    tile._wheelPointerBound = true;
+
+    try {
+      tile.wheel.enablePointerDrag(stage, {
+        canStart: () => {
+          const look = tile.state?.look;
+          if (look?.allowWheelDrag === false) return false;
+          if (!getActiveSections(tile.state || {}).length) return false;
+          // Don't steal moves while repositioning the multi tile
+          if (drag?.tile === tile) return false;
+          return true;
+        },
+        getAllowWheelDrag: () => tile.state?.look?.allowWheelDrag !== false,
+        getAllowGrabStopSpin: () =>
+          tile.state?.look?.allowGrabStopSpin !== false,
+        getFairDragSpin: () => tile.state?.look?.fairDragSpin === true,
+        onDragStart: ({ interrupted } = {}) => {
+          tile._wheelInteracted = true;
+          deps.audio?.ensure?.();
+          if (interrupted) {
+            // spinTile's await will finish with null — hold queue until fling/idle
+            tile._holdQueueForDrag = true;
+            tile.spinning = false;
+            tile.rootEl?.classList.remove("is-spinning");
+          }
+        },
+        onFling: (vel) => {
+          tile._wheelInteracted = true;
+          tile._holdQueueForDrag = false;
+          if (tile.state?.look?.fairDragSpin === true) {
+            const dir = Number(vel) < 0 ? -1 : 1;
+            void requestSpin(tile, {
+              silentLand: false,
+              chainDepth: 0,
+              spinDirection: dir,
+            });
+            return;
+          }
+          void flingTile(tile, vel, { silentLand: false, chainDepth: 0 });
+        },
+        onDragEndIdle: () => {
+          tile._wheelInteracted = true;
+          tile.spinning = false;
+          tile.rootEl?.classList.remove("is-spinning");
+          // Resume any queue held while grabbing mid-spin
+          if (tile._holdQueueForDrag) {
+            tile._holdQueueForDrag = false;
+            void drainQueue(tile);
+          }
+        },
+      });
+    } catch (err) {
+      console.warn("multi-spin enablePointerDrag:", tile.name, err);
+    }
+  }
+
   function bindTileChrome(tile) {
     const rootEl = tile.rootEl;
     const stage = rootEl.querySelector(".multi-tile-stage");
@@ -1739,11 +1808,18 @@ export function createMultiSpinController(deps) {
       if (e.target.closest("button")) return;
       if (e.target.closest(".multi-tile-resize")) return;
       if (e.target.closest(".multi-tile-drag")) return;
+      // After wheel drag/fling, don't open edit
+      if (e.target.closest(".multi-tile-stage") && tile._wheelInteracted) {
+        tile._wheelInteracted = false;
+        return;
+      }
       void selectTile(tile.slotId, { edit: true });
     });
 
     stage?.addEventListener("dblclick", (e) => {
       e.preventDefault();
+      e.stopPropagation();
+      if (tile.state?.look?.allowDoubleClickSpin === false) return;
       void requestSpin(tile, { silentLand: false, chainDepth: 0 });
     });
 
@@ -1974,6 +2050,8 @@ export function createMultiSpinController(deps) {
     applyTilePosition(tile);
     applyDragLockUi();
     updateFocusUi();
+    // Mouse drag / fling / grab-stop on the mini wheel (after DOM is live)
+    enableTileWheelPointer(tile);
 
     requestAnimationFrame(() => {
       try {
@@ -2660,9 +2738,97 @@ export function createMultiSpinController(deps) {
   }
 
   /**
-   * Run one spin now. Does not wait for busy wheels — use requestSpin to queue.
+   * Shared post-land path for timed spin and fling.
+   */
+  async function finishTileLand(tile, win, opts = {}) {
+    const silentLand = opts.silentLand === true;
+    const chainDepth = Number(opts.chainDepth) || 0;
+    const rigged = opts.rigged === true;
+    if (!win) return;
+    setTileResult(tile, win);
+    try {
+      let trackHistory = tile.state?.look?.trackHistory !== false;
+      try {
+        const slot = librarySlots().find((w) => w.id === tile.slotId);
+        if (slot?.data?.look) {
+          trackHistory = slot.data.look.trackHistory !== false;
+        }
+      } catch {
+        /* use tile look */
+      }
+      deps.onSpinHistory?.(win, {
+        wheelId: tile.slotId,
+        wheelName: tile.name || "Wheel",
+        trackHistory,
+        source: "multi-spin",
+        rigged,
+      });
+    } catch (err) {
+      console.warn("multi-spin history:", err);
+    }
+    try {
+      const stageEl =
+        tile.rootEl?.querySelector?.(".multi-tile-stage") || null;
+      let effectState = tile.state;
+      try {
+        const slot = librarySlots().find((w) => w.id === tile.slotId);
+        if (slot?.data) effectState = slot.data;
+      } catch {
+        /* tile.state */
+      }
+      deps.playWinEffect?.(win, {
+        container: stageEl,
+        state: effectState,
+      });
+    } catch (err) {
+      console.warn("multi-spin win effect:", err);
+    }
+    await handleMultiLandAction(tile, win, chainDepth);
+    if (!silentLand && chainDepth === 0) {
+      playLandOnce();
+    }
+  }
+
+  function endTileSpinSession(tile) {
+    tile.spinning = false;
+    tile.rootEl?.classList.remove("is-spinning");
+    if (tile._removeAfterSpin) {
+      tile.queue = [];
+      const sid = tile.slotId;
+      destroyOneTile(tile);
+      if (selectedIds.includes(sid)) {
+        selectedIds = selectedIds.filter((id) => id !== sid);
+        saveSelection();
+      }
+      if (focusedSlotId === sid) focusedSlotId = null;
+      renderPicker();
+      setWarn();
+      updateFocusUi();
+      if (!freeLayout) applyGridLayout({ redraw: false });
+      else {
+        updateBoardSize();
+        applyTileStackOrder();
+      }
+      return;
+    }
+    if (tile._pendingLiveState) {
+      const pending = tile._pendingLiveState;
+      const pendingName = tile._pendingLiveName;
+      tile._pendingLiveState = null;
+      tile._pendingLiveName = null;
+      void refreshTileFromState(tile, pending, pendingName);
+    }
+    // Don't drain while user still has the wheel grabbed after interrupt
+    if (tile._holdQueueForDrag || tile.wheel?._dragging) {
+      return;
+    }
+    void drainQueue(tile);
+  }
+
+  /**
+   * Run one timed spin now. Does not wait for busy wheels — use requestSpin to queue.
    * @param {object} tile
-   * @param {{ silentLand?: boolean, chainDepth?: number }} [opts]
+   * @param {{ silentLand?: boolean, chainDepth?: number, spinDirection?: 1|-1 }} [opts]
    */
   async function spinTile(tile, opts = {}) {
     const silentLand = opts.silentLand === true;
@@ -2671,6 +2837,7 @@ export function createMultiSpinController(deps) {
 
     // Never block on another spin here — busy → caller should queue
     if (isTileBusy(tile)) return null;
+    if (tile.wheel?._dragging) return null;
 
     const activeSecs = getActiveSections(tile.state);
     if (!activeSecs.length) {
@@ -2679,7 +2846,6 @@ export function createMultiSpinController(deps) {
         el.textContent = "No active sections";
         el.classList.remove("has-win");
       }
-      // Drop a useless queue entry path: clear empty-section queue items later
       return null;
     }
 
@@ -2690,51 +2856,19 @@ export function createMultiSpinController(deps) {
     try {
       deps.audio?.ensure?.();
       const dur = durationFor(tile);
-      win = await tile.wheel.spin(dur, {});
+      const spinOpts = {
+        maxSpeedScale: maxSpeedScaleForTile(tile),
+      };
+      if (opts.spinDirection === 1 || opts.spinDirection === -1) {
+        spinOpts.spinDirection = opts.spinDirection;
+      }
+      win = await tile.wheel.spin(dur, spinOpts);
       if (win) {
-        setTileResult(tile, win);
-        // History tab — same log as single-wheel (per multi-tile wheel id)
-        try {
-          let trackHistory = tile.state?.look?.trackHistory !== false;
-          try {
-            const slot = librarySlots().find((w) => w.id === tile.slotId);
-            if (slot?.data?.look) {
-              trackHistory = slot.data.look.trackHistory !== false;
-            }
-          } catch {
-            /* use tile look */
-          }
-          deps.onSpinHistory?.(win, {
-            wheelId: tile.slotId,
-            wheelName: tile.name || "Wheel",
-            trackHistory,
-            source: "multi-spin",
-            rigged: false,
-          });
-        } catch (err) {
-          console.warn("multi-spin history:", err);
-        }
-        // After-win effect (confetti / custom) clipped to this tile's stage
-        try {
-          const stage =
-            tile.rootEl?.querySelector?.(".multi-tile-stage") || null;
-          // Prefer live library data so Look/section overrides match the editor
-          let effectState = tile.state;
-          try {
-            const slot = librarySlots().find((w) => w.id === tile.slotId);
-            if (slot?.data) effectState = slot.data;
-          } catch {
-            /* tile.state */
-          }
-          deps.playWinEffect?.(win, {
-            container: stage,
-            state: effectState,
-          });
-        } catch (err) {
-          console.warn("multi-spin win effect:", err);
-        }
-        // Land actions enqueue respin/other — do not nest force-restarts
-        await handleMultiLandAction(tile, win, chainDepth);
+        await finishTileLand(tile, win, {
+          silentLand,
+          chainDepth,
+          rigged: false,
+        });
       }
     } catch (err) {
       console.error("multi-spin tile failed:", tile.name, err);
@@ -2744,46 +2878,52 @@ export function createMultiSpinController(deps) {
         /* ignore */
       }
     } finally {
-      tile.spinning = false;
-      tile.rootEl?.classList.remove("is-spinning");
-      // Transfer-out: this wheel was replaced by an off-board target
-      if (tile._removeAfterSpin) {
-        tile.queue = [];
-        const sid = tile.slotId;
-        destroyOneTile(tile);
-        if (layoutMap[sid]) {
-          // Keep layout only if nothing else reuses it; target already copied
-          // Don't delete if still referenced — selectedIds no longer has source
-        }
-        // Ensure source is not re-selected
-        if (selectedIds.includes(sid)) {
-          selectedIds = selectedIds.filter((id) => id !== sid);
-          saveSelection();
-        }
-        if (focusedSlotId === sid) focusedSlotId = null;
-        renderPicker();
-        setWarn();
-        updateFocusUi();
-        if (!freeLayout) applyGridLayout({ redraw: false });
-        else {
-          updateBoardSize();
-          applyTileStackOrder();
-        }
-      } else {
-        // Apply editor changes that arrived mid-spin
-        if (tile._pendingLiveState) {
-          const pending = tile._pendingLiveState;
-          const pendingName = tile._pendingLiveName;
-          tile._pendingLiveState = null;
-          tile._pendingLiveName = null;
-          void refreshTileFromState(tile, pending, pendingName);
-        }
-        // Start next queued spin (if any)
-        void drainQueue(tile);
-      }
+      endTileSpinSession(tile);
     }
-    if (win && !silentLand && chainDepth === 0) {
-      playLandOnce();
+    return win;
+  }
+
+  /**
+   * Momentum fling from a mouse/touch flick on a multi tile.
+   * @param {object} tile
+   * @param {number} velocityRadPerSec
+   * @param {{ silentLand?: boolean, chainDepth?: number }} [opts]
+   */
+  async function flingTile(tile, velocityRadPerSec, opts = {}) {
+    const silentLand = opts.silentLand === true;
+    const chainDepth = Number(opts.chainDepth) || 0;
+    if (!tile) return null;
+    if (isTileBusy(tile) || tile.wheel?._dragging) return null;
+
+    const activeSecs = getActiveSections(tile.state);
+    if (!activeSecs.length) return null;
+
+    tile.spinning = true;
+    tile.rootEl?.classList.add("is-spinning");
+    if (chainDepth === 0) setTileResult(tile, null);
+    let win = null;
+    try {
+      deps.audio?.ensure?.();
+      win = await tile.wheel.fling(velocityRadPerSec, {
+        maxSpeedScale: maxSpeedScaleForTile(tile),
+      });
+      if (win) {
+        await finishTileLand(tile, win, {
+          silentLand,
+          chainDepth,
+          // Fling is a player-aimed spin (same badge idea as main wheel)
+          rigged: true,
+        });
+      }
+    } catch (err) {
+      console.error("multi-spin fling failed:", tile.name, err);
+      try {
+        tile.wheel?.cancelAnimatedSpin?.();
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      endTileSpinSession(tile);
     }
     return win;
   }
