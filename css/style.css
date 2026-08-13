@@ -3375,6 +3375,28 @@ dialog.modal:not([open]) {
   margin: 0;
 }
 
+.group-gradient-row {
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.group-gradient-row input[type="color"] {
+  width: 2.4rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.group-gradient-arrow {
+  color: var(--muted);
+  font-weight: 700;
+  user-select: none;
+}
+
 .profile-parts-block {
   display: flex;
   flex-direction: column;
