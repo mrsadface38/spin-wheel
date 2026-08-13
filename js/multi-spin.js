@@ -18,6 +18,10 @@ const LAYOUT_KEY = "spin-wheel-multi-layout-v1";
 const LOCK_KEY = "spin-wheel-multi-drag-lock-v1";
 const PICKER_COLLAPSE_KEY = "spin-wheel-multi-picker-collapsed-v1";
 const WAIT_TARGET_KEY = "spin-wheel-multi-wait-target-v1";
+/** When "1", free absolute placement; default is grid (no overlap). */
+const FREE_LAYOUT_KEY = "spin-wheel-multi-free-layout-v1";
+/** Shared custom size for grid mode (null = auto max fit). */
+const GRID_SIZE_KEY = "spin-wheel-multi-grid-size-v1";
 const SOFT_WARN_AT = 12;
 const MAX_LAND_CHAIN = 20;
 /** Min / max tile width (stage is square at this size). */
@@ -51,8 +55,15 @@ export function createMultiSpinController(deps) {
   let pickerCollapsed = loadPickerCollapsed();
   /** When true, after spinning another wheel wait for it (and its queue) before draining ours. */
   let waitForTargetWheel = loadWaitForTarget();
+  /** When false (default), tiles snap to a non-overlapping grid. */
+  let freeLayout = loadFreeLayout();
+  /** Shared size in grid mode; null = auto largest that fits. */
+  let sharedGridSize = loadSharedGridSize();
   /** @type {string|null} */
   let focusedSlotId = null;
+  /** @type {ResizeObserver | null} */
+  let boardResizeObs = null;
+  let boardResizeTimer = 0;
   /**
    * When false (Hide panels), no tile/picker shows as selected — flush look.
    * rememberedFocusId is restored when panels show again.
@@ -81,6 +92,7 @@ export function createMultiSpinController(deps) {
   const btnToggle = () => document.getElementById("btn-multi-spin");
   const lockChk = () => document.getElementById("chk-multi-drag-lock");
   const waitTargetChk = () => document.getElementById("chk-multi-wait-target");
+  const freeLayoutChk = () => document.getElementById("chk-multi-free-layout");
 
   function loadSelection() {
     try {
@@ -181,6 +193,41 @@ export function createMultiSpinController(deps) {
   function saveWaitForTarget() {
     try {
       localStorage.setItem(WAIT_TARGET_KEY, waitForTargetWheel ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function loadFreeLayout() {
+    try {
+      return localStorage.getItem(FREE_LAYOUT_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  function saveFreeLayout() {
+    try {
+      localStorage.setItem(FREE_LAYOUT_KEY, freeLayout ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function loadSharedGridSize() {
+    try {
+      const n = Number(localStorage.getItem(GRID_SIZE_KEY));
+      if (!Number.isFinite(n) || n < TILE_MIN) return null;
+      return clampSize(n);
+    } catch {
+      return null;
+    }
+  }
+
+  function saveSharedGridSize() {
+    try {
+      if (sharedGridSize == null) localStorage.removeItem(GRID_SIZE_KEY);
+      else localStorage.setItem(GRID_SIZE_KEY, String(sharedGridSize));
     } catch {
       /* ignore */
     }
@@ -317,7 +364,7 @@ export function createMultiSpinController(deps) {
     // client size of the scrollport (visible board)
     const w = Math.max(200, g?.clientWidth || 800);
     const h = Math.max(200, g?.clientHeight || 600);
-    return { w: w - 12, h: h - 12 };
+    return { w: Math.max(160, w - 12), h: Math.max(160, h - 12) };
   }
 
   /**
@@ -334,39 +381,120 @@ export function createMultiSpinController(deps) {
       const s = Math.floor(Math.min(cellW, cellH - TILE_CHROME_H));
       if (s > best) best = s;
     }
-    return clampSize(best);
+    // Never wider than the board (keeps tiles reachable when window shrinks)
+    return clampSize(Math.min(best, w - 4));
   }
 
+  function effectiveGridSize() {
+    const n = Math.max(1, selectedIds.length);
+    const auto = maxTileSizeForCount(n);
+    if (sharedGridSize != null) {
+      // Custom size, but never wider than the board so a tile stays reachable
+      const maxW = Math.max(TILE_MIN, boardViewport().w - 4);
+      return clampSize(Math.min(sharedGridSize, maxW));
+    }
+    return auto;
+  }
+
+  /** Size used for a tile (grid = shared; free = per-tile custom or auto). */
   function tileSize(slotId) {
+    if (!freeLayout) return effectiveGridSize();
     const L = layoutMap[slotId];
     if (L?.customSize && Number.isFinite(L.size) && L.size > 0) {
       return clampSize(L.size);
     }
-    // Default: as large as will fit for the current number of on-board wheels
     return maxTileSizeForCount(Math.max(1, selectedIds.length));
   }
 
+  function gridMetrics(size) {
+    const s = size || effectiveGridSize();
+    const { w } = boardViewport();
+    const cols = Math.max(1, Math.floor((w + TILE_GAP) / (s + TILE_GAP)));
+    const cellW = s + TILE_GAP;
+    const cellH = s + TILE_CHROME_H + TILE_GAP;
+    return { size: s, cols, cellW, cellH };
+  }
+
   function defaultPosForIndex(i, size) {
-    const s = size || maxTileSizeForCount(Math.max(1, selectedIds.length));
-    const totalH = s + TILE_CHROME_H;
-    const g = grid();
-    const wrapW = Math.max(s + 40, g?.clientWidth || 600);
-    const cols = Math.max(1, Math.floor((wrapW + TILE_GAP) / (s + TILE_GAP)));
+    const { size: s, cols, cellW, cellH } = gridMetrics(size);
     const col = i % cols;
     const row = Math.floor(i / cols);
     return {
-      x: col * (s + TILE_GAP),
-      y: row * (totalH + TILE_GAP),
+      x: col * cellW,
+      y: row * cellH,
       size: s,
       customSize: false,
     };
   }
 
+  /**
+   * Non-overlapping grid: positions follow selectedIds order + current size.
+   * Always keeps tiles within a scrollable pack that reflows on resize.
+   */
+  function applyGridLayout({ redraw = true } = {}) {
+    const n = selectedIds.length;
+    if (!n) {
+      updateBoardSize();
+      return;
+    }
+    let size = effectiveGridSize();
+    // If a custom shared size no longer fits the window width, shrink it
+    const { w } = boardViewport();
+    const maxOneCol = clampSize(w - 4);
+    if (size > maxOneCol) {
+      size = maxOneCol;
+      if (sharedGridSize != null) {
+        sharedGridSize = size;
+        saveSharedGridSize();
+      }
+    }
+    const { cols, cellW, cellH } = gridMetrics(size);
+    selectedIds.forEach((id, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const prev = layoutMap[id] || {};
+      layoutMap[id] = {
+        x: col * cellW,
+        y: row * cellH,
+        size,
+        customSize: sharedGridSize != null,
+        // preserve free-mode extras if any
+        freeX: prev.freeX,
+        freeY: prev.freeY,
+      };
+    });
+    for (const t of tiles.values()) {
+      if (!t.rootEl) continue;
+      const pos = layoutMap[t.slotId];
+      if (!pos) continue;
+      t.rootEl.style.left = `${pos.x}px`;
+      t.rootEl.style.top = `${pos.y}px`;
+      t.rootEl.style.width = `${size}px`;
+      t.rootEl.style.minWidth = `${size}px`;
+      const sizeLabel = t.rootEl.querySelector(".multi-tile-size-label");
+      if (sizeLabel) sizeLabel.textContent = `${size}px`;
+      if (redraw) {
+        try {
+          t.wheel?.resize?.();
+          t.wheel?.draw?.();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    updateBoardSize();
+  }
+
   function ensureLayoutFor(slotId, indexHint = 0) {
+    if (!freeLayout) {
+      // Grid positions are always derived from order
+      return defaultPosForIndex(
+        Math.max(0, selectedIds.indexOf(slotId) >= 0 ? selectedIds.indexOf(slotId) : indexHint)
+      );
+    }
     if (layoutMap[slotId] && Number.isFinite(layoutMap[slotId].x)) {
       const L = layoutMap[slotId];
       if (!L.customSize) {
-        // Keep position but refresh auto size when count changes
         L.size = maxTileSizeForCount(Math.max(1, selectedIds.length));
       }
       return L;
@@ -378,6 +506,10 @@ export function createMultiSpinController(deps) {
 
   function applyTilePosition(tile) {
     if (!tile?.rootEl) return;
+    if (!freeLayout) {
+      applyGridLayout({ redraw: false });
+      return;
+    }
     const idx = selectedIds.indexOf(tile.slotId);
     const pos = ensureLayoutFor(tile.slotId, Math.max(0, idx));
     const size = tileSize(tile.slotId);
@@ -386,14 +518,19 @@ export function createMultiSpinController(deps) {
     tile.rootEl.style.top = `${pos.y}px`;
     tile.rootEl.style.width = `${size}px`;
     tile.rootEl.style.minWidth = `${size}px`;
-    // Label size % in head if present
     const sizeLabel = tile.rootEl.querySelector(".multi-tile-size-label");
-    if (sizeLabel) {
-      sizeLabel.textContent = `${size}px`;
-    }
+    if (sizeLabel) sizeLabel.textContent = `${size}px`;
   }
 
   function relayoutWheelsAfterSize(tile) {
+    if (!freeLayout) {
+      // In grid mode, resizing one tile sets the shared size for all
+      const s = tileSize(tile.slotId);
+      sharedGridSize = s;
+      saveSharedGridSize();
+      applyGridLayout({ redraw: true });
+      return;
+    }
     applyTilePosition(tile);
     updateBoardSize();
     requestAnimationFrame(() => {
@@ -409,6 +546,19 @@ export function createMultiSpinController(deps) {
   function updateBoardSize() {
     const g = grid();
     if (!g) return;
+    const vp = boardViewport();
+    if (!freeLayout) {
+      // Grid: board is full width of the viewport; height grows with rows (scroll if needed)
+      g.style.minWidth = "";
+      g.style.width = "100%";
+      const n = Math.max(1, selectedIds.length);
+      const size = effectiveGridSize();
+      const { cols, cellH } = gridMetrics(size);
+      const rows = Math.ceil(n / cols);
+      const contentH = rows * cellH + 8;
+      g.style.minHeight = `${Math.max(contentH, vp.h)}px`;
+      return;
+    }
     let maxR = 200;
     let maxB = 200;
     for (const id of selectedIds) {
@@ -417,29 +567,58 @@ export function createMultiSpinController(deps) {
       maxR = Math.max(maxR, pos.x + size + 24);
       maxB = Math.max(maxB, pos.y + size + TILE_CHROME_H + 24);
     }
-    // At least fill the viewport so one large wheel has room
-    const vp = boardViewport();
+    g.style.width = "";
     g.style.minHeight = `${Math.max(maxB, vp.h)}px`;
     g.style.minWidth = `${Math.max(maxR, vp.w)}px`;
+  }
+
+  /** Drop index under pointer for grid reorder. */
+  function gridIndexFromPoint(clientX, clientY) {
+    const g = grid();
+    if (!g || !selectedIds.length) return 0;
+    const rect = g.getBoundingClientRect();
+    const x = clientX - rect.left + g.scrollLeft;
+    const y = clientY - rect.top + g.scrollTop;
+    const { cols, cellW, cellH } = gridMetrics();
+    const col = Math.max(0, Math.min(cols - 1, Math.floor(x / cellW)));
+    const row = Math.max(0, Math.floor(y / cellH));
+    const idx = row * cols + col;
+    return Math.max(0, Math.min(selectedIds.length - 1, idx));
+  }
+
+  function reorderSelectedId(slotId, toIndex) {
+    const from = selectedIds.indexOf(slotId);
+    if (from < 0) return;
+    const next = selectedIds.slice();
+    next.splice(from, 1);
+    const ti = Math.max(0, Math.min(next.length, toIndex));
+    next.splice(ti, 0, slotId);
+    selectedIds = next;
+    saveSelection();
   }
 
   /**
    * Pack every on-board wheel as large as possible (clears custom sizes).
    */
   function fitAllLargest() {
+    sharedGridSize = null;
+    saveSharedGridSize();
+    if (!freeLayout) {
+      applyGridLayout({ redraw: true });
+      setSummary(
+        `Fitted ${selectedIds.length} wheel${selectedIds.length === 1 ? "" : "s"} at ${effectiveGridSize()}px (grid)`
+      );
+      return;
+    }
     const n = Math.max(1, selectedIds.length);
     const size = maxTileSizeForCount(n);
-    const { w } = boardViewport();
-    const cols = Math.max(
-      1,
-      Math.floor((w + TILE_GAP) / (size + TILE_GAP))
-    );
+    const { cols, cellW, cellH } = gridMetrics(size);
     selectedIds.forEach((id, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
       layoutMap[id] = {
-        x: col * (size + TILE_GAP),
-        y: row * (size + TILE_CHROME_H + TILE_GAP),
+        x: col * cellW,
+        y: row * cellH,
         size,
         customSize: false,
       };
@@ -456,6 +635,59 @@ export function createMultiSpinController(deps) {
     }
     updateBoardSize();
     setSummary(`Fitted ${selectedIds.length} wheel${selectedIds.length === 1 ? "" : "s"} at ${size}px`);
+  }
+
+  function applyLayoutModeUi() {
+    const g = grid();
+    g?.classList.toggle("is-free-layout", freeLayout);
+    g?.classList.toggle("is-grid-layout", !freeLayout);
+    root()?.classList.toggle("is-free-layout", freeLayout);
+    const chk = freeLayoutChk();
+    if (chk) chk.checked = freeLayout;
+  }
+
+  function setFreeLayout(on) {
+    freeLayout = !!on;
+    saveFreeLayout();
+    applyLayoutModeUi();
+    if (!freeLayout) {
+      // Snap everything into a clean non-overlapping grid
+      applyGridLayout({ redraw: true });
+      setSummary("Grid layout — drag to reorder; tiles won’t overlap");
+    } else {
+      // Seed free positions from current grid cells
+      for (const id of selectedIds) {
+        const L = layoutMap[id];
+        if (L) {
+          L.customSize = Number.isFinite(L.size);
+        }
+      }
+      saveLayout();
+      for (const t of tiles.values()) applyTilePosition(t);
+      updateBoardSize();
+      setSummary("Free placement — drag anywhere (can overlap)");
+    }
+  }
+
+  function scheduleBoardReflow() {
+    if (boardResizeTimer) clearTimeout(boardResizeTimer);
+    boardResizeTimer = setTimeout(() => {
+      boardResizeTimer = 0;
+      if (!active) return;
+      if (!freeLayout) applyGridLayout({ redraw: true });
+      else {
+        // Free mode: keep positions but ensure board scroll size is ok
+        updateBoardSize();
+      }
+    }, 80);
+  }
+
+  function ensureBoardResizeObserver() {
+    if (boardResizeObs || typeof ResizeObserver === "undefined") return;
+    const g = grid();
+    if (!g) return;
+    boardResizeObs = new ResizeObserver(() => scheduleBoardReflow());
+    boardResizeObs.observe(g);
   }
 
   function applyDragLockUi() {
@@ -712,14 +944,18 @@ export function createMultiSpinController(deps) {
       e.preventDefault();
       e.stopPropagation();
       const pos = layoutMap[tile.slotId] || { x: 0, y: 0 };
+      // Prefer live left/top if already laid out
+      const left = parseFloat(rootEl.style.left) || pos.x || 0;
+      const top = parseFloat(rootEl.style.top) || pos.y || 0;
       drag = {
         tile,
         pointerId: e.pointerId,
         grabX: e.clientX,
         grabY: e.clientY,
-        startX: pos.x,
-        startY: pos.y,
+        startX: left,
+        startY: top,
         moved: false,
+        mode: freeLayout ? "free" : "grid",
       };
       try {
         handle.setPointerCapture(e.pointerId);
@@ -759,15 +995,34 @@ export function createMultiSpinController(deps) {
       const dy = e.clientY - resize.grabY;
       // Grow with the larger axis so the square stage stays natural
       const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
-      const next = clampSize(resize.startSize + delta);
-      const prev = layoutMap[resize.tile.slotId] || { x: 0, y: 0 };
-      layoutMap[resize.tile.slotId] = {
-        x: prev.x || 0,
-        y: prev.y || 0,
-        size: next,
-        customSize: true,
-      };
-      relayoutWheelsAfterSize(resize.tile);
+      let next = clampSize(resize.startSize + delta);
+      if (!freeLayout) {
+        // Keep at least one full column on screen
+        next = clampSize(Math.min(next, boardViewport().w - 4));
+      }
+      if (!freeLayout) {
+        sharedGridSize = next;
+        // live preview all tiles at new shared size
+        const prev = layoutMap[resize.tile.slotId] || { x: 0, y: 0 };
+        layoutMap[resize.tile.slotId] = {
+          ...prev,
+          size: next,
+          customSize: true,
+        };
+        // Don't save shared yet — on pointerup
+        applyGridLayout({ redraw: false });
+        resize.tile.rootEl?.querySelector(".multi-tile-size-label") &&
+          (resize.tile.rootEl.querySelector(".multi-tile-size-label").textContent = `${next}px`);
+      } else {
+        const prev = layoutMap[resize.tile.slotId] || { x: 0, y: 0 };
+        layoutMap[resize.tile.slotId] = {
+          x: prev.x || 0,
+          y: prev.y || 0,
+          size: next,
+          customSize: true,
+        };
+        relayoutWheelsAfterSize(resize.tile);
+      }
       return;
     }
     if (!drag || e.pointerId !== drag.pointerId) return;
@@ -777,45 +1032,66 @@ export function createMultiSpinController(deps) {
     drag.moved = true;
     const x = Math.max(0, drag.startX + dx);
     const y = Math.max(0, drag.startY + dy);
-    const prev = layoutMap[drag.tile.slotId] || {};
-    layoutMap[drag.tile.slotId] = {
-      x,
-      y,
-      size: prev.size,
-      customSize: prev.customSize === true,
-    };
-    applyTilePosition(drag.tile);
-    updateBoardSize();
+    // Visual follow under the pointer (both modes)
+    drag.tile.rootEl.style.left = `${x}px`;
+    drag.tile.rootEl.style.top = `${y}px`;
+    if (drag.mode === "free") {
+      const prev = layoutMap[drag.tile.slotId] || {};
+      layoutMap[drag.tile.slotId] = {
+        x,
+        y,
+        size: prev.size,
+        customSize: prev.customSize === true,
+      };
+      updateBoardSize();
+    }
   }
 
   function onDragPointerUp(e) {
     if (resize && e.pointerId === resize.pointerId) {
       const t = resize.tile;
+      const finalSize = tileSize(t.slotId);
       resize = null;
       t.rootEl?.classList.remove("is-resizing");
       t.rootEl.style.zIndex = "";
-      saveLayout();
-      updateBoardSize();
-      try {
-        t.wheel?.resize?.();
-        t.wheel?.draw?.();
-      } catch {
-        /* ignore */
+      if (!freeLayout) {
+        sharedGridSize = finalSize;
+        saveSharedGridSize();
+        applyGridLayout({ redraw: true });
+      } else {
+        saveLayout();
+        updateBoardSize();
+        try {
+          t.wheel?.resize?.();
+          t.wheel?.draw?.();
+        } catch {
+          /* ignore */
+        }
       }
       return;
     }
     if (!drag || e.pointerId !== drag.pointerId) return;
     const t = drag.tile;
     const didMove = drag.moved;
+    const mode = drag.mode;
+    const clientX = e.clientX;
+    const clientY = e.clientY;
     drag = null;
     t.rootEl?.classList.remove("is-dragging");
     t.rootEl.style.zIndex = "";
-    if (didMove) {
+    if (!didMove) {
+      void selectTile(t.slotId, { edit: false });
+      return;
+    }
+    if (mode === "grid" || !freeLayout) {
+      // Snap into grid order at drop cell
+      const toIndex = gridIndexFromPoint(clientX, clientY);
+      reorderSelectedId(t.slotId, toIndex);
+      applyGridLayout({ redraw: true });
+      setSummary("Reordered on grid");
+    } else {
       saveLayout();
       updateBoardSize();
-    } else {
-      // Treat as select if barely moved
-      void selectTile(t.slotId, { edit: false });
     }
   }
 

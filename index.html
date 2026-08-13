@@ -126,11 +126,18 @@
               <input type="checkbox" id="chk-multi-drag-lock" />
               <span>Lock positions</span>
             </label>
+            <label
+              class="toggle-row multi-lock-row"
+              title="Off (default): tiles sit on a grid with no overlap; drag to reorder. On: free placement anywhere (can overlap)."
+            >
+              <input type="checkbox" id="chk-multi-free-layout" />
+              <span>Free placement</span>
+            </label>
             <button
               type="button"
               id="btn-multi-fit-size"
               class="btn small ghost"
-              title="Make every on-board wheel as large as will fit, and pack them"
+              title="Make every on-board wheel as large as will fit, and pack them on the grid"
             >Fit largest</button>
             <button
               type="button"

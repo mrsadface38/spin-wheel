@@ -859,7 +859,7 @@ body.multi-spin-mode #stage {
   white-space: nowrap;
 }
 
-/* Free-position board (drag tiles anywhere) */
+/* Multi board: grid by default (no overlap); free placement optional */
 .multi-grid.multi-board {
   flex: 1;
   min-width: 0;
@@ -874,6 +874,17 @@ body.multi-spin-mode #stage {
     radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 0);
   background-size: 18px 18px;
   background-color: rgba(10, 12, 22, 0.55);
+  box-sizing: border-box;
+}
+
+.multi-grid.multi-board.is-grid-layout {
+  /* Full width of panel so reflow uses real viewport; scroll vertically if needed */
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.multi-grid.multi-board.is-free-layout {
+  background-size: 22px 22px;
 }
 
 .multi-tile {
