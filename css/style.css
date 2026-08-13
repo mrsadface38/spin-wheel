@@ -897,9 +897,9 @@ body.multi-spin-mode #stage {
 }
 
 .multi-grid.multi-board.is-grid-layout {
-  /* Full width of panel so reflow uses real viewport; scroll vertically if needed */
-  width: 100% !important;
-  min-width: 0 !important;
+  /* Full width by default; JS may grow min-width for empty side columns / sparse layout */
+  width: 100%;
+  min-width: 0;
 }
 
 .multi-grid.multi-board.is-free-layout {
@@ -1138,11 +1138,14 @@ body.multi-spin-mode #stage {
   box-shadow: 0 0 0 3px rgba(90, 140, 255, 0.25);
 }
 
-/* Placement grid shown while dragging a wheel (grid mode) */
+/* Placement grid shown while dragging a wheel (grid mode) — empty cells are valid targets */
 .multi-grid-drop-layer {
   position: absolute;
-  inset: 0;
-  z-index: 2;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 25;
   pointer-events: none;
 }
 
@@ -1160,8 +1163,9 @@ body.multi-spin-mode #stage {
 
 .multi-grid-drop-cell.is-empty {
   border-style: dashed;
-  border-color: rgba(140, 170, 255, 0.35);
-  background: rgba(70, 110, 220, 0.05);
+  border-color: rgba(160, 190, 255, 0.55);
+  background: rgba(20, 28, 48, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .multi-grid-drop-cell.is-occupied {
@@ -1186,7 +1190,8 @@ body.multi-spin-mode #stage {
 }
 
 .multi-grid-drop-cell.is-active.is-empty {
-  background: rgba(126, 224, 168, 0.12);
+  background: rgba(126, 224, 168, 0.18);
+  border-color: var(--accent-2, #7ee0a8);
 }
 
 .multi-grid-drop-cell-num {
@@ -1204,11 +1209,14 @@ body.multi-spin-mode #stage {
 }
 
 .multi-grid-drop-cell.is-empty .multi-grid-drop-cell-num {
-  color: rgba(140, 170, 255, 0.35);
-  font-size: 1.1rem;
+  color: rgba(160, 185, 255, 0.55);
+  font-size: 0.85rem;
+  font-weight: 700;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .multi-grid-drop-cell.is-active .multi-grid-drop-cell-num {
@@ -1216,14 +1224,15 @@ body.multi-spin-mode #stage {
 }
 
 .multi-grid.is-showing-drop-grid .multi-tile:not(.is-dragging) {
-  opacity: 0.72;
+  opacity: 0.55;
+  /* Keep tiles under the drop grid so empty labels stay readable */
+  z-index: 1 !important;
 }
 
 .multi-grid.is-showing-drop-grid .multi-tile.is-dragging {
   z-index: 50 !important;
   opacity: 1;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-}
 }
 
 .multi-tile-result {
