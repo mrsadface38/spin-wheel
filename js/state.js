@@ -730,6 +730,12 @@ export function defaultState() {
        */
       waitForTargetWheel: true,
       /**
+       * Multi-spin: when Wait is on, also wait for a target that is itself
+       * waiting (and so on). If that would form a wait loop, force-spin the
+       * wheel that would close the loop. Off by default.
+       */
+      followWait: false,
+      /**
        * Multi-spin: when spinning a different wheel that is not on the board,
        * put the target in this wheel's slot/position and remove this wheel.
        * Default on. Off = add the target as an extra tile (legacy).
@@ -908,6 +914,8 @@ function migrate(data) {
   look.fairDragSpin = look.fairDragSpin === true;
   // Wait for other wheel in multi-spin: default on (only false when saved off)
   look.waitForTargetWheel = look.waitForTargetWheel !== false;
+  // Following wait (wait for waiting wheels / break loops): only when saved on
+  look.followWait = look.followWait === true;
   // Replace this tile with off-board target: default on (only false when saved off)
   look.replaceSourceOnOtherWheel = look.replaceSourceOnOtherWheel !== false;
   // Shuffle section order every spin: only when explicitly saved on

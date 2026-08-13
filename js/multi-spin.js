@@ -2611,10 +2611,18 @@ export function createMultiSpinController(deps) {
     let sawBusy = !isTileSpinWorkIdle(tile);
     const graceEnd = start + 200;
     while (!sawBusy && Date.now() < graceEnd) {
+      if (tile._forceBreakWait) {
+        tile._forceBreakWait = false;
+        return;
+      }
       await sleepMs(16);
       if (!isTileSpinWorkIdle(tile)) sawBusy = true;
     }
     while (!isTileSpinWorkIdle(tile)) {
+      if (tile._forceBreakWait) {
+        tile._forceBreakWait = false;
+        return;
+      }
       if (Date.now() - start > timeoutMs) break;
       await sleepMs(40);
     }
@@ -2624,8 +2632,136 @@ export function createMultiSpinController(deps) {
     if (!tile) return;
     const start = Date.now();
     while (!isTileFullyIdle(tile)) {
+      if (tile._forceBreakWait) {
+        tile._forceBreakWait = false;
+        return;
+      }
       if (Date.now() - start > timeoutMs) break;
       await sleepMs(40);
+    }
+  }
+
+  /**
+   * True if walking target's wait chain reaches sourceId (wait loop).
+   */
+  function waitChainReaches(startTile, sourceId) {
+    if (!startTile || !sourceId) return false;
+    let cur = startTile;
+    const seen = new Set();
+    while (cur && cur._waitingForSlotId) {
+      if (cur._waitingForSlotId === sourceId) return true;
+      if (seen.has(cur.slotId)) return true;
+      seen.add(cur.slotId);
+      cur = tiles.get(cur._waitingForSlotId);
+    }
+    return false;
+  }
+
+  /**
+   * Wheel in the wait chain that waits for source (closes the cycle), or target.
+   */
+  function findWaitLoopCloser(sourceTile, targetTile) {
+    if (!sourceTile || !targetTile) return targetTile || null;
+    let cur = targetTile;
+    const seen = new Set();
+    while (cur && !seen.has(cur.slotId)) {
+      seen.add(cur.slotId);
+      if (cur._waitingForSlotId === sourceTile.slotId) return cur;
+      if (!cur._waitingForSlotId) break;
+      cur = tiles.get(cur._waitingForSlotId);
+    }
+    return targetTile;
+  }
+
+  /**
+   * Wait for another wheel after a land transfer.
+   * - Normal Wait: spin/queue idle only (target may still be “waiting” on someone).
+   * - Following wait: also wait while target is waiting (and so on). If that would
+   *   form a loop, force-spin the wheel that would close the loop and stop waiting.
+   */
+  async function waitForOtherWheelSmart(sourceTile, targetTile) {
+    if (!sourceTile || !targetTile) return;
+    const follow = tileFollowsWait(sourceTile);
+    sourceTile._waitingForSlotId = targetTile.slotId;
+    try {
+      await sleepMs(0);
+      if (!follow) {
+        await waitUntilTileSpinWorkIdle(targetTile);
+        return;
+      }
+
+      // Following wait: target must be spin-work idle and not waiting (chain resolved)
+      const start = Date.now();
+      const timeoutMs = 600000;
+      // Grace so a just-started spin is seen
+      let sawBusy = !isTileSpinWorkIdle(targetTile) || !!targetTile._waitingForSlotId;
+      const graceEnd = start + 200;
+      while (!sawBusy && Date.now() < graceEnd) {
+        if (sourceTile._forceBreakWait) {
+          sourceTile._forceBreakWait = false;
+          return;
+        }
+        await sleepMs(16);
+        if (!isTileSpinWorkIdle(targetTile) || targetTile._waitingForSlotId) {
+          sawBusy = true;
+        }
+      }
+
+      while (Date.now() - start < timeoutMs) {
+        if (sourceTile._forceBreakWait) {
+          sourceTile._forceBreakWait = false;
+          return;
+        }
+
+        // Loop: target (or its wait chain) is waiting for us
+        if (waitChainReaches(targetTile, sourceTile.slotId)) {
+          const kick = findWaitLoopCloser(sourceTile, targetTile);
+          // Signal everyone in the chain to stop waiting
+          let walk = targetTile;
+          const seen = new Set();
+          while (walk && !seen.has(walk.slotId)) {
+            seen.add(walk.slotId);
+            walk._forceBreakWait = true;
+            if (!walk._waitingForSlotId) break;
+            if (walk._waitingForSlotId === sourceTile.slotId) break;
+            walk = tiles.get(walk._waitingForSlotId);
+          }
+          // Force-spin the wheel that would close the loop (waits for us), if idle
+          if (
+            kick &&
+            kick.slotId !== sourceTile.slotId &&
+            isTileSpinWorkIdle(kick) &&
+            !isTileBusy(kick)
+          ) {
+            setSummary(
+              `Following wait: loop broken — force spinning ${kick.name || "wheel"}`
+            );
+            setTileResult(
+              sourceTile,
+              sourceTile.lastWin,
+              `wait loop → force ${kick.name || "wheel"}`
+            );
+            void requestSpin(kick, {
+              silentLand: true,
+              chainDepth: 0,
+            });
+          } else {
+            setSummary(
+              `Following wait: loop broken — continuing ${sourceTile.name || "wheel"}`
+            );
+          }
+          // Stop waiting so this wheel can continue (respin / queue)
+          return;
+        }
+
+        // Done when target has no spin work and is not waiting on anyone
+        if (isTileSpinWorkIdle(targetTile) && !targetTile._waitingForSlotId) {
+          return;
+        }
+        await sleepMs(40);
+      }
+    } finally {
+      sourceTile._waitingForSlotId = null;
     }
   }
 
@@ -2743,6 +2879,23 @@ export function createMultiSpinController(deps) {
     }
     // Tile clone / hydrate default
     return tile.state?.look?.waitForTargetWheel !== false;
+  }
+
+  /**
+   * Live Misc → followWait (following wait). Default off.
+   */
+  function tileFollowsWait(tile) {
+    if (!tile) return false;
+    try {
+      const slot = librarySlots().find((w) => w.id === tile.slotId);
+      const look = slot?.data?.look ?? tile.state?.look;
+      if (look && Object.prototype.hasOwnProperty.call(look, "followWait")) {
+        return look.followWait === true;
+      }
+    } catch {
+      /* ignore */
+    }
+    return tile.state?.look?.followWait === true;
   }
 
   async function handleMultiLandAction(tile, win, chainDepth) {
@@ -2887,15 +3040,7 @@ export function createMultiSpinController(deps) {
           win,
           `→ ${tName}${times > 1 ? ` ×${times}` : ""} (waiting…)`
         );
-        await sleepMs(0);
-        // Wait for target's spin/queue only — not its own wait-for-other
-        // (avoids A↔B deadlock when both have Wait on).
-        tile._waitingForSlotId = target.slotId;
-        try {
-          await waitUntilTileSpinWorkIdle(target);
-        } finally {
-          tile._waitingForSlotId = null;
-        }
+        await waitForOtherWheelSmart(tile, target);
         setTileResult(
           tile,
           win,
@@ -2964,14 +3109,7 @@ export function createMultiSpinController(deps) {
           `→ ${tName}×${otherN} (waiting…) · then ↻×${respinN}`
         );
         fireTimes(target, otherN);
-        // Let target mark spinning=true before we poll idle
-        await sleepMs(0);
-        tile._waitingForSlotId = target.slotId;
-        try {
-          await waitUntilTileSpinWorkIdle(target);
-        } finally {
-          tile._waitingForSlotId = null;
-        }
+        await waitForOtherWheelSmart(tile, target);
         setTileResult(
           tile,
           win,

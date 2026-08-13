@@ -6113,6 +6113,9 @@ function bindLook() {
     $("#chk-wait-for-target-wheel").checked =
       state.look.waitForTargetWheel !== false;
   }
+  if ($("#chk-follow-wait")) {
+    $("#chk-follow-wait").checked = state.look.followWait === true;
+  }
   if ($("#chk-replace-on-other-wheel")) {
     $("#chk-replace-on-other-wheel").checked =
       state.look.replaceSourceOnOtherWheel !== false;
@@ -8709,6 +8712,9 @@ async function onLookChange() {
     state.look.waitForTargetWheel =
       $("#chk-wait-for-target-wheel").checked !== false;
   }
+  if ($("#chk-follow-wait")) {
+    state.look.followWait = $("#chk-follow-wait").checked === true;
+  }
   if ($("#chk-replace-on-other-wheel")) {
     state.look.replaceSourceOnOtherWheel =
       $("#chk-replace-on-other-wheel").checked !== false;
@@ -8758,7 +8764,7 @@ async function onLookChange() {
   scheduleAutoSpin();
 }
 
-["bg-color", "center-color", "center-size", "chk-spin-center-hub", "border-color", "text-color", "text-style", "text-font", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-double-click-spin", "chk-wheel-drag", "chk-grab-stop-spin", "chk-fair-drag-spin", "chk-wait-for-target-wheel", "chk-replace-on-other-wheel", "chk-shuffle-every-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
+["bg-color", "center-color", "center-size", "chk-spin-center-hub", "border-color", "text-color", "text-style", "text-font", "winner-text-color", "chk-show-labels", "chk-show-images", "image-layout-mode", "chk-pointer-locked", "result-style", "winner-label", "chk-allow-winner-hide", "chk-allow-winner-remove", "eliminate-after-win", "win-effect", "chk-keyboard-spin", "chk-double-click-spin", "chk-wheel-drag", "chk-grab-stop-spin", "chk-fair-drag-spin", "chk-wait-for-target-wheel", "chk-follow-wait", "chk-replace-on-other-wheel", "chk-shuffle-every-spin", "chk-auto-spin", "auto-spin-value", "auto-spin-unit", "weight-slider-min", "weight-slider-max", "weight-slider-step"].forEach(
   (id) => {
     $(`#${id}`)?.addEventListener("input", onLookChange);
     $(`#${id}`)?.addEventListener("change", () => {

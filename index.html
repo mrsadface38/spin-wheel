@@ -569,6 +569,15 @@
               continues its own queue. If off, both can run at the same time.
             </small>
             <label class="toggle-row">
+              <input type="checkbox" id="chk-follow-wait" />
+              <span>Following wait (multi-spin)</span>
+            </label>
+            <small>
+              With Wait on: also wait while the other wheel is itself waiting for someone
+              (and so on). If that would create a wait loop (A waits for B waits for A…),
+              force-spin the wheel that would close the loop so the chain can continue.
+            </small>
+            <label class="toggle-row">
               <input type="checkbox" id="chk-replace-on-other-wheel" checked />
               <span>Replace with target if off board (multi-spin)</span>
             </label>
