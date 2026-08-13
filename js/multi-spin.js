@@ -880,6 +880,7 @@ export function createMultiSpinController(deps) {
     // Keep editor available — do not force-collapse panels
     focusedSlotId = activeLibraryId();
     applyDragLockUi();
+    applyPickerCollapsedUi();
     renderPicker();
     void syncTilesWithLibrary().then(() => {
       // Select active library wheel if on board
@@ -969,6 +970,14 @@ export function createMultiSpinController(deps) {
       applyDragLockUi();
     });
     if (lockChk()) lockChk().checked = dragLocked;
+
+    document
+      .getElementById("btn-multi-picker-collapse")
+      ?.addEventListener("click", () => setPickerCollapsed(true));
+    document
+      .getElementById("btn-multi-picker-expand")
+      ?.addEventListener("click", () => setPickerCollapsed(false));
+    applyPickerCollapsedUi();
 
     window.addEventListener("pointermove", onDragPointerMove);
     window.addEventListener("pointerup", onDragPointerUp);
