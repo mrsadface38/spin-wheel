@@ -97,19 +97,32 @@ export function createMultiSpinController(deps) {
     }
   }
 
+  function clampSize(s) {
+    const n = Number(s);
+    if (!Number.isFinite(n)) return TILE_MIN;
+    return Math.min(TILE_MAX, Math.max(TILE_MIN, Math.round(n)));
+  }
+
   function loadLayout() {
     try {
       const raw = localStorage.getItem(LAYOUT_KEY);
       if (!raw) return {};
       const obj = JSON.parse(raw);
       if (!obj || typeof obj !== "object") return {};
-      /** @type {Record<string, { x: number, y: number }>} */
+      /** @type {Record<string, { x: number, y: number, size?: number, customSize?: boolean }>} */
       const out = {};
       for (const [k, v] of Object.entries(obj)) {
         const x = Number(v?.x);
         const y = Number(v?.y);
         if (Number.isFinite(x) && Number.isFinite(y)) {
-          out[k] = { x: Math.max(0, x), y: Math.max(0, y) };
+          /** @type {{ x: number, y: number, size?: number, customSize?: boolean }} */
+          const entry = { x: Math.max(0, x), y: Math.max(0, y) };
+          const size = Number(v?.size);
+          if (Number.isFinite(size) && size > 0) {
+            entry.size = clampSize(size);
+            entry.customSize = v?.customSize === true || true;
+          }
+          out[k] = entry;
         }
       }
       return out;
@@ -276,21 +289,64 @@ export function createMultiSpinController(deps) {
     if (el) el.textContent = text || "";
   }
 
-  function defaultPosForIndex(i) {
+  function boardViewport() {
     const g = grid();
-    const wrapW = Math.max(TILE_W + 40, g?.clientWidth || 600);
-    const cols = Math.max(1, Math.floor((wrapW + TILE_GAP) / (TILE_W + TILE_GAP)));
+    // client size of the scrollport (visible board)
+    const w = Math.max(200, g?.clientWidth || 800);
+    const h = Math.max(200, g?.clientHeight || 600);
+    return { w: w - 12, h: h - 12 };
+  }
+
+  /**
+   * Largest square stage size so `n` tiles pack into the board viewport.
+   */
+  function maxTileSizeForCount(n) {
+    const count = Math.max(1, Number(n) || 1);
+    const { w, h } = boardViewport();
+    let best = TILE_MIN;
+    for (let cols = 1; cols <= count; cols++) {
+      const rows = Math.ceil(count / cols);
+      const cellW = (w - (cols - 1) * TILE_GAP) / cols;
+      const cellH = (h - (rows - 1) * TILE_GAP) / rows;
+      const s = Math.floor(Math.min(cellW, cellH - TILE_CHROME_H));
+      if (s > best) best = s;
+    }
+    return clampSize(best);
+  }
+
+  function tileSize(slotId) {
+    const L = layoutMap[slotId];
+    if (L?.customSize && Number.isFinite(L.size) && L.size > 0) {
+      return clampSize(L.size);
+    }
+    // Default: as large as will fit for the current number of on-board wheels
+    return maxTileSizeForCount(Math.max(1, selectedIds.length));
+  }
+
+  function defaultPosForIndex(i, size) {
+    const s = size || maxTileSizeForCount(Math.max(1, selectedIds.length));
+    const totalH = s + TILE_CHROME_H;
+    const g = grid();
+    const wrapW = Math.max(s + 40, g?.clientWidth || 600);
+    const cols = Math.max(1, Math.floor((wrapW + TILE_GAP) / (s + TILE_GAP)));
     const col = i % cols;
     const row = Math.floor(i / cols);
     return {
-      x: col * (TILE_W + TILE_GAP),
-      y: row * (TILE_W + 88 + TILE_GAP),
+      x: col * (s + TILE_GAP),
+      y: row * (totalH + TILE_GAP),
+      size: s,
+      customSize: false,
     };
   }
 
   function ensureLayoutFor(slotId, indexHint = 0) {
     if (layoutMap[slotId] && Number.isFinite(layoutMap[slotId].x)) {
-      return layoutMap[slotId];
+      const L = layoutMap[slotId];
+      if (!L.customSize) {
+        // Keep position but refresh auto size when count changes
+        L.size = maxTileSizeForCount(Math.max(1, selectedIds.length));
+      }
+      return L;
     }
     const pos = defaultPosForIndex(indexHint);
     layoutMap[slotId] = pos;
@@ -301,9 +357,30 @@ export function createMultiSpinController(deps) {
     if (!tile?.rootEl) return;
     const idx = selectedIds.indexOf(tile.slotId);
     const pos = ensureLayoutFor(tile.slotId, Math.max(0, idx));
+    const size = tileSize(tile.slotId);
+    pos.size = size;
     tile.rootEl.style.left = `${pos.x}px`;
     tile.rootEl.style.top = `${pos.y}px`;
-    tile.rootEl.style.width = `${TILE_W}px`;
+    tile.rootEl.style.width = `${size}px`;
+    tile.rootEl.style.minWidth = `${size}px`;
+    // Label size % in head if present
+    const sizeLabel = tile.rootEl.querySelector(".multi-tile-size-label");
+    if (sizeLabel) {
+      sizeLabel.textContent = `${size}px`;
+    }
+  }
+
+  function relayoutWheelsAfterSize(tile) {
+    applyTilePosition(tile);
+    updateBoardSize();
+    requestAnimationFrame(() => {
+      try {
+        tile.wheel?.resize?.();
+        tile.wheel?.draw?.();
+      } catch {
+        /* ignore */
+      }
+    });
   }
 
   function updateBoardSize() {
@@ -313,11 +390,49 @@ export function createMultiSpinController(deps) {
     let maxB = 200;
     for (const id of selectedIds) {
       const pos = layoutMap[id] || { x: 0, y: 0 };
-      maxR = Math.max(maxR, pos.x + TILE_W + 24);
-      maxB = Math.max(maxB, pos.y + TILE_W + 100);
+      const size = tileSize(id);
+      maxR = Math.max(maxR, pos.x + size + 24);
+      maxB = Math.max(maxB, pos.y + size + TILE_CHROME_H + 24);
     }
-    g.style.minHeight = `${maxB}px`;
-    g.style.minWidth = `${maxR}px`;
+    // At least fill the viewport so one large wheel has room
+    const vp = boardViewport();
+    g.style.minHeight = `${Math.max(maxB, vp.h)}px`;
+    g.style.minWidth = `${Math.max(maxR, vp.w)}px`;
+  }
+
+  /**
+   * Pack every on-board wheel as large as possible (clears custom sizes).
+   */
+  function fitAllLargest() {
+    const n = Math.max(1, selectedIds.length);
+    const size = maxTileSizeForCount(n);
+    const { w } = boardViewport();
+    const cols = Math.max(
+      1,
+      Math.floor((w + TILE_GAP) / (size + TILE_GAP))
+    );
+    selectedIds.forEach((id, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      layoutMap[id] = {
+        x: col * (size + TILE_GAP),
+        y: row * (size + TILE_CHROME_H + TILE_GAP),
+        size,
+        customSize: false,
+      };
+    });
+    saveLayout();
+    for (const t of tiles.values()) {
+      applyTilePosition(t);
+      try {
+        t.wheel?.resize?.();
+        t.wheel?.draw?.();
+      } catch {
+        /* ignore */
+      }
+    }
+    updateBoardSize();
+    setSummary(`Fitted ${selectedIds.length} wheel${selectedIds.length === 1 ? "" : "s"} at ${size}px`);
   }
 
   function applyDragLockUi() {
@@ -333,6 +448,13 @@ export function createMultiSpinController(deps) {
         handle.title = dragLocked
           ? "Positions locked — unlock in the toolbar to drag"
           : "Drag to move this wheel";
+      }
+      const rh = t.rootEl?.querySelector(".multi-tile-resize");
+      if (rh) {
+        rh.title = dragLocked
+          ? "Positions locked — unlock to resize"
+          : "Drag to resize this wheel";
+        rh.style.pointerEvents = dragLocked ? "none" : "";
       }
     }
   }
@@ -525,6 +647,8 @@ export function createMultiSpinController(deps) {
       </div>
       <div class="multi-tile-result" aria-live="polite"></div>
       <div class="multi-tile-queue" hidden title="Spins waiting to run after this wheel finishes"></div>
+      <div class="multi-tile-resize" title="Drag to resize this wheel" aria-label="Resize wheel"></div>
+      <span class="multi-tile-size-label" aria-hidden="true"></span>
     `;
     el.querySelector(".multi-tile-name").textContent = slot.name || "Untitled";
     return el;
@@ -582,9 +706,47 @@ export function createMultiSpinController(deps) {
       rootEl.classList.add("is-dragging");
       rootEl.style.zIndex = "20";
     });
+
+    const resizeHandle = rootEl.querySelector(".multi-tile-resize");
+    resizeHandle?.addEventListener("pointerdown", (e) => {
+      if (dragLocked) return;
+      if (e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      resize = {
+        tile,
+        pointerId: e.pointerId,
+        grabX: e.clientX,
+        grabY: e.clientY,
+        startSize: tileSize(tile.slotId),
+      };
+      try {
+        resizeHandle.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      rootEl.classList.add("is-resizing");
+      rootEl.style.zIndex = "25";
+    });
   }
 
   function onDragPointerMove(e) {
+    if (resize && e.pointerId === resize.pointerId) {
+      const dx = e.clientX - resize.grabX;
+      const dy = e.clientY - resize.grabY;
+      // Grow with the larger axis so the square stage stays natural
+      const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+      const next = clampSize(resize.startSize + delta);
+      const prev = layoutMap[resize.tile.slotId] || { x: 0, y: 0 };
+      layoutMap[resize.tile.slotId] = {
+        x: prev.x || 0,
+        y: prev.y || 0,
+        size: next,
+        customSize: true,
+      };
+      relayoutWheelsAfterSize(resize.tile);
+      return;
+    }
     if (!drag || e.pointerId !== drag.pointerId) return;
     const dx = e.clientX - drag.grabX;
     const dy = e.clientY - drag.grabY;
@@ -592,12 +754,33 @@ export function createMultiSpinController(deps) {
     drag.moved = true;
     const x = Math.max(0, drag.startX + dx);
     const y = Math.max(0, drag.startY + dy);
-    layoutMap[drag.tile.slotId] = { x, y };
+    const prev = layoutMap[drag.tile.slotId] || {};
+    layoutMap[drag.tile.slotId] = {
+      x,
+      y,
+      size: prev.size,
+      customSize: prev.customSize === true,
+    };
     applyTilePosition(drag.tile);
     updateBoardSize();
   }
 
   function onDragPointerUp(e) {
+    if (resize && e.pointerId === resize.pointerId) {
+      const t = resize.tile;
+      resize = null;
+      t.rootEl?.classList.remove("is-resizing");
+      t.rootEl.style.zIndex = "";
+      saveLayout();
+      updateBoardSize();
+      try {
+        t.wheel?.resize?.();
+        t.wheel?.draw?.();
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     if (!drag || e.pointerId !== drag.pointerId) return;
     const t = drag.tile;
     const didMove = drag.moved;
@@ -1108,6 +1291,19 @@ export function createMultiSpinController(deps) {
     applyPickerCollapsedUi();
     renderPicker();
     void syncTilesWithLibrary().then(() => {
+      // First paint often has 0 board size — re-fit auto sizes once layout is real
+      requestAnimationFrame(() => {
+        for (const t of tiles.values()) {
+          applyTilePosition(t);
+          try {
+            t.wheel?.resize?.();
+            t.wheel?.draw?.();
+          } catch {
+            /* ignore */
+          }
+        }
+        updateBoardSize();
+      });
       // Select active library wheel if on board
       const aid = activeLibraryId();
       if (aid && tiles.has(aid)) {
@@ -1188,6 +1384,9 @@ export function createMultiSpinController(deps) {
     document
       .getElementById("btn-multi-clear")
       ?.addEventListener("click", () => clearSelection());
+    document
+      .getElementById("btn-multi-fit-size")
+      ?.addEventListener("click", () => fitAllLargest());
 
     lockChk()?.addEventListener("change", () => {
       dragLocked = lockChk().checked === true;
