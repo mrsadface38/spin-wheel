@@ -2403,9 +2403,21 @@ export function createMultiSpinController(deps) {
     return true;
   }
 
+  /**
+   * Wait until a tile has finished its current spin work (and queue).
+   * If a spin was just fired with void spinTile, give it a moment to set
+   * spinning=true so we don't treat "not started yet" as already idle.
+   */
   async function waitUntilTileSpinWorkIdle(tile, timeoutMs = 600000) {
     if (!tile) return;
     const start = Date.now();
+    // Brief grace: wait until busy, or up to ~200ms, so a just-started spin counts
+    let sawBusy = !isTileSpinWorkIdle(tile);
+    const graceEnd = start + 200;
+    while (!sawBusy && Date.now() < graceEnd) {
+      await sleepMs(16);
+      if (!isTileSpinWorkIdle(tile)) sawBusy = true;
+    }
     while (!isTileSpinWorkIdle(tile)) {
       if (Date.now() - start > timeoutMs) break;
       await sleepMs(40);
@@ -2746,21 +2758,17 @@ export function createMultiSpinController(deps) {
         return true;
       }
       const tName = target.name || "wheel";
-      setTileResult(
-        tile,
-        win,
-        `↻×${respinN} + → ${tName}×${otherN}`
-      );
-      // Start/queue both with independent counts
-      fireTimes(target, otherN);
-      fireTimes(tile, respinN);
       const waitOther = tileWaitsForOtherWheel(tile);
+
       if (waitOther) {
+        // Wait on: spin the other wheel first, then respin this one after it finishes
         setTileResult(
           tile,
           win,
-          `↻×${respinN} + → ${tName}×${otherN} (waiting…)`
+          `→ ${tName}×${otherN} (waiting…) · then ↻×${respinN}`
         );
+        fireTimes(target, otherN);
+        // Let target mark spinning=true before we poll idle
         await sleepMs(0);
         tile._waitingForSlotId = target.slotId;
         try {
@@ -2771,8 +2779,18 @@ export function createMultiSpinController(deps) {
         setTileResult(
           tile,
           win,
-          `↻×${respinN} + → ${tName}×${otherN} · respin queued`
+          `→ ${tName} done · ↻×${respinN}`
         );
+        fireTimes(tile, respinN);
+      } else {
+        // Wait off: both can run / queue in parallel
+        setTileResult(
+          tile,
+          win,
+          `↻×${respinN} + → ${tName}×${otherN}`
+        );
+        fireTimes(target, otherN);
+        fireTimes(tile, respinN);
       }
       return true;
     }
@@ -3008,6 +3026,12 @@ export function createMultiSpinController(deps) {
 
     const activeSecs = getActiveSections(tile.state);
     if (!activeSecs.length) return null;
+
+    try {
+      deps.onBeforeTileSpin?.(tile.slotId);
+    } catch {
+      /* ignore */
+    }
 
     tile.spinning = true;
     tile.rootEl?.classList.add("is-spinning");

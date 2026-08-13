@@ -564,9 +564,9 @@
               <span>Wait for other wheel (multi-spin)</span>
             </label>
             <small>
-              When this wheel is set to spin a different wheel: if on, multi-spin waits for
-              that wheel (and its queue) to finish before continuing this wheel’s queue.
-              If off, this wheel keeps spinning and only adds to the other wheel’s queue.
+              When this wheel spins a different wheel (or respin + different): if on, multi-spin
+              waits for that other wheel (and its queue) to finish before this wheel respins or
+              continues its own queue. If off, both can run at the same time.
             </small>
             <label class="toggle-row">
               <input type="checkbox" id="chk-replace-on-other-wheel" checked />
