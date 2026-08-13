@@ -2425,10 +2425,14 @@ export function createMultiSpinController(deps) {
   function enqueueSpin(tile, opts = {}) {
     if (!tile) return;
     if (!Array.isArray(tile.queue)) tile.queue = [];
-    tile.queue.push({
+    const entry = {
       silentLand: opts.silentLand === true,
       chainDepth: Number(opts.chainDepth) || 0,
-    });
+    };
+    if (opts.spinDirection === 1 || opts.spinDirection === -1) {
+      entry.spinDirection = opts.spinDirection;
+    }
+    tile.queue.push(entry);
     updateQueueUi(tile);
   }
 
@@ -2483,10 +2487,14 @@ export function createMultiSpinController(deps) {
     }
     const next = tile.queue.shift();
     updateQueueUi(tile);
-    await spinTile(tile, {
+    const spinOpts = {
       silentLand: next?.silentLand === true,
       chainDepth: Number(next?.chainDepth) || 0,
-    });
+    };
+    if (next?.spinDirection === 1 || next?.spinDirection === -1) {
+      spinOpts.spinDirection = next.spinDirection;
+    }
+    await spinTile(tile, spinOpts);
   }
 
   /**
