@@ -82,7 +82,7 @@ export function createMultiSpinController(deps) {
   let resize = null;
   /**
    * Reorder "Wheels on screen" list (selectedIds order = free-placement stack).
-   * Top of list = lowest z (behind); bottom = highest z (eclipses others).
+   * Top of list = highest z (on top); bottom = lowest z (behind).
    */
   /** @type {null | {
    *   pointerId: number,
@@ -1061,8 +1061,8 @@ export function createMultiSpinController(deps) {
 
   /**
    * Free placement stack order from selectedIds:
-   * index 0 (top of Wheels list) → lowest z (behind);
-   * last index (bottom of list) → highest z (eclipses others).
+   * index 0 (top of Wheels list) → highest z (on top / eclipses others);
+   * last index (bottom of list) → lowest z (behind).
    * Grid mode clears inline z so CSS defaults apply.
    */
   function applyTileStackOrder() {
@@ -1079,6 +1079,7 @@ export function createMultiSpinController(deps) {
       }
       return;
     }
+    const n = selectedIds.length;
     selectedIds.forEach((id, i) => {
       const t = tiles.get(id);
       if (!t?.rootEl) return;
@@ -1088,8 +1089,8 @@ export function createMultiSpinController(deps) {
       ) {
         return;
       }
-      // 10 + index: top of list behind, bottom of list on top
-      t.rootEl.style.zIndex = String(10 + i);
+      // Top of list = highest z; bottom of list = lowest z
+      t.rootEl.style.zIndex = String(10 + (n - 1 - i));
     });
   }
 
@@ -1176,7 +1177,7 @@ export function createMultiSpinController(deps) {
       applyTileStackOrder();
       renderPicker();
       setSummary(
-        "Free placement — drag tiles to move; drag list ⋮⋮ to set stack (bottom of list eclipses top)"
+        "Free placement — drag tiles to move; list order = stack (top of list is on top)"
       );
     }
   }
