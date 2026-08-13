@@ -41,6 +41,7 @@ const TILE_CHROME_H = 92;
  * @param {(slotId: string) => void|Promise<void>} [deps.onSelectWheel]
  * @param {(slotId: string) => void|Promise<void>} [deps.onEditWheel]
  * @param {(slotId: string) => void|Promise<string|null|void>} [deps.onDuplicateWheel]
+ * @param {(section: object, opts?: object) => void} [deps.onSpinHistory] record History tab entry for a multi-tile land
  * @param {() => void} [deps.onEnter]
  * @param {() => void} [deps.onExit]
  */
@@ -2434,6 +2435,27 @@ export function createMultiSpinController(deps) {
       win = await tile.wheel.spin(dur, {});
       if (win) {
         setTileResult(tile, win);
+        // History tab — same log as single-wheel (per multi-tile wheel id)
+        try {
+          let trackHistory = tile.state?.look?.trackHistory !== false;
+          try {
+            const slot = librarySlots().find((w) => w.id === tile.slotId);
+            if (slot?.data?.look) {
+              trackHistory = slot.data.look.trackHistory !== false;
+            }
+          } catch {
+            /* use tile look */
+          }
+          deps.onSpinHistory?.(win, {
+            wheelId: tile.slotId,
+            wheelName: tile.name || "Wheel",
+            trackHistory,
+            source: "multi-spin",
+            rigged: false,
+          });
+        } catch (err) {
+          console.warn("multi-spin history:", err);
+        }
         // Land actions enqueue respin/other — do not nest force-restarts
         await handleMultiLandAction(tile, win, chainDepth);
       }

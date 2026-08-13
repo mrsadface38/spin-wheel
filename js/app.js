@@ -6455,21 +6455,47 @@ function isHistoryTrackingEnabled() {
 
 /**
  * @param {{ id: string, label: string }} section
- * @param {{ rigged?: boolean }} [opts]
+ * @param {{
+ *   rigged?: boolean,
+ *   wheelId?: string,
+ *   wheelName?: string,
+ *   trackHistory?: boolean,
+ *   source?: string,
+ * }} [opts]
  */
 function recordSpinHistory(section, opts = {}) {
   if (!section) return;
-  if (!isHistoryTrackingEnabled()) return;
+  // Per-wheel tracking (multi-spin passes the tile's look; else use active wheel)
+  const trackOn =
+    opts.trackHistory !== undefined
+      ? opts.trackHistory !== false
+      : isHistoryTrackingEnabled();
+  if (!trackOn) return;
   const slot = getActiveSlot(library);
+  const wheelId =
+    (opts.wheelId && String(opts.wheelId)) ||
+    slot?.id ||
+    library?.activeId ||
+    "";
+  let wheelName =
+    (opts.wheelName && String(opts.wheelName).trim()) ||
+    slot?.name ||
+    "Wheel";
+  // Prefer live library name when we have a wheelId
+  if (opts.wheelId && library?.wheels) {
+    const named = library.wheels.find((w) => w.id === opts.wheelId);
+    if (named?.name) wheelName = named.name;
+  }
   const entry = {
     id: uid("hist"),
     at: new Date().toISOString(),
-    wheelId: slot?.id || library?.activeId || "",
-    wheelName: slot?.name || "Wheel",
+    wheelId,
+    wheelName,
     sectionId: section.id,
-    sectionLabel: section.label || "Winner",
+    sectionLabel: section.label || section.name || "Winner",
     rigged: !!opts.rigged,
   };
+  if (opts.source) entry.source = String(opts.source);
   const list = loadSpinHistory();
   list.unshift(entry);
   saveSpinHistory(list);
@@ -6488,15 +6514,26 @@ function updateHistoryTrackUi() {
   const hint = $("#history-track-hint");
   if (hint) {
     const parts = [];
+    const multiOn = !!multiSpin?.isActive?.();
     if (!on) {
       parts.push(
-        "Tracking is off for this wheel — new spins are not saved to history."
+        multiOn
+          ? "Tracking is off for the wheel selected in the sidebar — that wheel’s multi spins won’t be saved. Other multi wheels use their own Track history setting."
+          : "Tracking is off for this wheel — new spins are not saved to history."
+      );
+    } else if (multiOn) {
+      parts.push(
+        "Multi-spin winners are logged per wheel (same History list). Each wheel’s Look → Track history setting applies."
       );
     } else {
       parts.push("New winners will be listed below.");
     }
     if (isHistoryThisWheelOnly()) {
-      parts.push("Showing this wheel only.");
+      parts.push(
+        multiOn
+          ? "Showing the sidebar wheel only — turn off “This wheel only” to see every multi-spin board wheel."
+          : "Showing this wheel only."
+      );
     }
     hint.textContent = parts.join(" ");
   }
@@ -11268,6 +11305,13 @@ async function init() {
       clampSpinDuration,
       playGlobalLandSfx,
       getSpinTickPreset,
+      onSpinHistory: (section, opts) => {
+        try {
+          recordSpinHistory(section, opts || {});
+        } catch (err) {
+          console.warn("multi-spin → history:", err);
+        }
+      },
       onSelectWheel: async (slotId) => {
         // Switch library active wheel so the sidebar edits THIS multi tile
         if (!slotId) return;
@@ -11324,6 +11368,15 @@ async function init() {
         } catch {
           /* ignore */
         }
+        try {
+          if ($("#tab-history")?.classList.contains("active")) {
+            renderHistory();
+          } else {
+            updateHistoryTrackUi();
+          }
+        } catch {
+          /* ignore */
+        }
       },
       onExit: () => {
         try {
@@ -11339,6 +11392,15 @@ async function init() {
         }
         try {
           updateShareButtonHint();
+        } catch {
+          /* ignore */
+        }
+        try {
+          if ($("#tab-history")?.classList.contains("active")) {
+            renderHistory();
+          } else {
+            updateHistoryTrackUi();
+          }
         } catch {
           /* ignore */
         }
