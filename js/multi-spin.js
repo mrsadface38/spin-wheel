@@ -504,7 +504,6 @@ export function createMultiSpinController(deps) {
         </button>
         <span class="multi-tile-name"></span>
         <button type="button" class="btn small ghost multi-tile-edit" title="Edit this wheel in the sidebar">Edit</button>
-        <button type="button" class="btn small ghost multi-tile-dup" title="Duplicate this wheel">Dup</button>
         <button type="button" class="btn small multi-tile-spin" title="Spin this wheel">Spin</button>
       </div>
       <div class="stage stage--mini multi-tile-stage">
@@ -540,12 +539,6 @@ export function createMultiSpinController(deps) {
       e.preventDefault();
       e.stopPropagation();
       void selectTile(tile.slotId, { edit: true });
-    });
-
-    rootEl.querySelector(".multi-tile-dup")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      void duplicateSlot(tile.slotId);
     });
 
     // Click tile (not drag handle) to select for editing
@@ -1189,11 +1182,6 @@ export function createMultiSpinController(deps) {
     document
       .getElementById("btn-multi-clear")
       ?.addEventListener("click", () => clearSelection());
-    document
-      .getElementById("btn-multi-duplicate")
-      ?.addEventListener("click", () => {
-        void duplicateSlot();
-      });
 
     lockChk()?.addEventListener("change", () => {
       dragLocked = lockChk().checked === true;
