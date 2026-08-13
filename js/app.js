@@ -798,11 +798,53 @@ function bindWheelNewMenu() {
   });
 }
 
-async function duplicateCurrentWheel() {
+/**
+ * Duplicate a saved wheel (current active if id omitted).
+ * Prompts for a name; defaults to "Name (copy)".
+ * @param {string} [slotId]
+ */
+async function duplicateWheelById(slotId) {
+  const id = slotId || library.activeId;
+  const src = library.wheels.find((w) => w.id === id);
+  if (!src) {
+    await safeAlert("Could not find that wheel to duplicate.");
+    return null;
+  }
+  // Save current edits first (especially if duplicating the active wheel)
   library = writeActiveState(library, state);
-  const result = duplicateWheel(library, library.activeId);
-  if (!result) return;
+  const suggested = (() => {
+    try {
+      // local helper from wheels — recompute via duplicateWheel default
+      const base = src.name || "My wheel";
+      const names = new Set(library.wheels.map((w) => w.name || ""));
+      let c = `${base} (copy)`;
+      if (!names.has(c)) return c;
+      for (let n = 2; n < 100; n++) {
+        c = `${base} (copy ${n})`;
+        if (!names.has(c)) return c;
+      }
+      return `${base} (copy)`;
+    } catch {
+      return `${src.name || "My wheel"} (copy)`;
+    }
+  })();
+  const name = await safePrompt(
+    "Name for the duplicate wheel:",
+    suggested,
+    "Duplicate wheel"
+  );
+  if (name === null) return null; // cancelled
+  const result = duplicateWheel(library, id, name || suggested);
+  if (!result) {
+    await safeAlert("Could not duplicate that wheel.");
+    return null;
+  }
   await applyLoadedWheel(result.lib, result.state);
+  return result.id;
+}
+
+async function duplicateCurrentWheel() {
+  return duplicateWheelById(library.activeId);
 }
 
 async function renameCurrentWheel() {
@@ -11018,6 +11060,10 @@ async function init() {
         } catch {
           /* ignore */
         }
+      },
+      onDuplicateWheel: async (slotId) => {
+        const newId = await duplicateWheelById(slotId);
+        return newId || null;
       },
       onExit: () => {
         try {
