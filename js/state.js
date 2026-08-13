@@ -42,6 +42,7 @@
  *   landShowResultEvery: number,
  *   landShowResultUnit: 'seconds'|'minutes'|'hours'|'days',
  *   landActionTimes: number,
+ *   landActionTimesOther: number,
  *   winBgm: 'inherit'|'custom'|'mute',
  *   winBgmData: string|null,
  *   winBgmName: string|null,
@@ -220,6 +221,7 @@ export const LAND_ACTION_KEYS = [
   "landShowResultEvery",
   "landShowResultUnit",
   "landActionTimes",
+  "landActionTimesOther",
 ];
 
 /** @typedef {{ color?: boolean, textColor?: boolean, textStyle?: boolean, textFont?: boolean, winnerTextColor?: boolean, image?: boolean, sfx?: boolean, winEffect?: boolean, landAction?: boolean }} ProfileParts */
@@ -248,7 +250,14 @@ export function normalizeLandActionTimes(v, fallback = 1) {
 /**
  * Normalize land-action fields (shared by groups + sections).
  * @param {object} [src]
- * @returns {{ landAction: string, landTargetWheelId: string|null, landShowResultEvery: number, landShowResultUnit: string, landActionTimes: number }}
+ * @returns {{
+ *   landAction: string,
+ *   landTargetWheelId: string|null,
+ *   landShowResultEvery: number,
+ *   landShowResultUnit: string,
+ *   landActionTimes: number,
+ *   landActionTimesOther: number,
+ * }}
  */
 export function normalizeLandActionFields(src = {}) {
   const landAction = normalizeLandAction(src.landAction);
@@ -265,9 +274,20 @@ export function normalizeLandActionFields(src = {}) {
   }
   landShowResultEvery = Math.min(99999, Math.round(landShowResultEvery));
   let landActionTimes = normalizeLandActionTimes(src.landActionTimes, 1);
+  // Separate count for the other wheel (respin + other action)
+  let landActionTimesOther = normalizeLandActionTimes(
+    src.landActionTimesOther != null
+      ? src.landActionTimesOther
+      : src.landActionTimes,
+    landActionTimes
+  );
   if (landAction === "none") {
     landShowResultEvery = 0;
     landActionTimes = 1;
+    landActionTimesOther = 1;
+  } else if (landAction !== "respinAndOther") {
+    // Single-action modes only use landActionTimes
+    landActionTimesOther = landActionTimes;
   }
   const landShowResultUnit = normalizeLandShowResultUnit(src.landShowResultUnit);
   return {
@@ -276,6 +296,7 @@ export function normalizeLandActionFields(src = {}) {
     landShowResultEvery,
     landShowResultUnit,
     landActionTimes,
+    landActionTimesOther,
   };
 }
 

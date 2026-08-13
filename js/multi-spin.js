@@ -2472,6 +2472,10 @@ export function createMultiSpinController(deps) {
       99,
       Math.max(1, Number(eff.landActionTimes) || 1)
     );
+    const timesOther = Math.min(
+      99,
+      Math.max(1, Number(eff.landActionTimesOther) || times)
+    );
     const nextOpts = {
       silentLand: true,
       chainDepth: chainDepth + 1,
@@ -2481,12 +2485,15 @@ export function createMultiSpinController(deps) {
     /**
      * Start/queue spins without awaiting (so Wait off can continue).
      * First spin starts if idle; the rest always enqueue (avoids racing busy).
+     * @param {object} targetTile
+     * @param {number} [count]
      * @returns {{ queued: number, started: number }}
      */
-    function fireTimes(targetTile) {
+    function fireTimes(targetTile, count = times) {
+      const n = Math.min(99, Math.max(1, Number(count) || 1));
       let queued = 0;
       let started = 0;
-      for (let i = 0; i < times; i++) {
+      for (let i = 0; i < n; i++) {
         if (i === 0 && !isTileBusy(targetTile)) {
           void spinTile(targetTile, nextOpts);
           started = 1;
@@ -2587,26 +2594,28 @@ export function createMultiSpinController(deps) {
 
     // Respin this wheel AND spin a different wheel (this wheel stays on the board)
     if (action === "respinAndOther") {
+      const respinN = times;
+      const otherN = timesOther;
       const tid = eff.landTargetWheelId;
       if (!tid) {
         // No target → plain respin
         setTileResult(
           tile,
           win,
-          times > 1 ? `→ respin ×${times}…` : "→ respin…"
+          respinN > 1 ? `→ respin ×${respinN}…` : "→ respin…"
         );
         await sleepMs(waitMs);
-        fireTimes(tile);
+        fireTimes(tile, respinN);
         return true;
       }
       if (tid === tile.slotId) {
         setTileResult(
           tile,
           win,
-          times > 1 ? `→ respin ×${times}…` : "→ respin…"
+          respinN > 1 ? `→ respin ×${respinN}…` : "→ respin…"
         );
         await sleepMs(waitMs);
-        fireTimes(tile);
+        fireTimes(tile, respinN);
         return true;
       }
       await sleepMs(waitMs);
@@ -2617,33 +2626,31 @@ export function createMultiSpinController(deps) {
       }
       if (!target) {
         setTileResult(tile, win, "→ (wheel not found) · respin only");
-        fireTimes(tile);
+        fireTimes(tile, respinN);
         return true;
       }
       const tName = target.name || "wheel";
       setTileResult(
         tile,
         win,
-        times > 1
-          ? `↻ + → ${tName} ×${times}`
-          : `↻ + → ${tName}`
+        `↻×${respinN} + → ${tName}×${otherN}`
       );
-      // Start/queue both (this wheel is still busy → respin goes to its queue)
-      fireTimes(target);
-      fireTimes(tile);
+      // Start/queue both with independent counts
+      fireTimes(target, otherN);
+      fireTimes(tile, respinN);
       const waitOther = tileWaitsForOtherWheel(tile);
       if (waitOther) {
         setTileResult(
           tile,
           win,
-          `↻ + → ${tName}${times > 1 ? ` ×${times}` : ""} (waiting…)`
+          `↻×${respinN} + → ${tName}×${otherN} (waiting…)`
         );
         await sleepMs(0);
         await waitUntilTileFullyIdle(target);
         setTileResult(
           tile,
           win,
-          `↻ + → ${tName}${times > 1 ? ` ×${times}` : ""} · respin queued`
+          `↻×${respinN} + → ${tName}×${otherN} · respin queued`
         );
       }
       return true;

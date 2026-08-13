@@ -2339,6 +2339,33 @@ function updateLandActionUI(prefix) {
   if (showField) showField.hidden = !chain;
   const timesField = $(`#${p}-land-times-field`);
   if (timesField) timesField.hidden = !chain;
+  const timesOtherField = $(`#${p}-land-times-other-field`);
+  if (timesOtherField) {
+    timesOtherField.hidden = action !== "respinAndOther";
+  }
+  // Labels: dual mode uses "Respin times" + "Other wheel times"
+  const timesLabel = $(`#${p}-land-times-label`);
+  const timesHint = $(`#${p}-land-times-hint`);
+  const timesInput = $(`#${p}-land-times`);
+  if (action === "respinAndOther") {
+    if (timesLabel) timesLabel.textContent = "Respin times";
+    if (timesHint) {
+      timesHint.textContent =
+        "How many times to respin this wheel (1–99). Separate from other wheel times below.";
+    }
+    if (timesInput) {
+      timesInput.title = "How many times to respin this wheel";
+    }
+  } else {
+    if (timesLabel) timesLabel.textContent = "Times";
+    if (timesHint) {
+      timesHint.textContent =
+        "Run the respin / other-wheel action this many times (1–99).";
+    }
+    if (timesInput) {
+      timesInput.title = "How many times to respin or spin the other wheel";
+    }
+  }
 }
 
 function updateSectionLandActionUI() {
@@ -2369,6 +2396,7 @@ function readLandActionFromForm(prefix = "section") {
   let landShowResultEvery = 0;
   let landShowResultUnit = "seconds";
   let landActionTimes = 1;
+  let landActionTimesOther = 1;
   if (
     landAction === "respin" ||
     landAction === "otherWheel" ||
@@ -2383,6 +2411,13 @@ function readLandActionFromForm(prefix = "section") {
     let t = Number($(`#${p}-land-times`)?.value);
     if (!Number.isFinite(t) || t < 1) t = 1;
     landActionTimes = Math.min(99, Math.max(1, Math.round(t)));
+    if (landAction === "respinAndOther") {
+      let t2 = Number($(`#${p}-land-times-other`)?.value);
+      if (!Number.isFinite(t2) || t2 < 1) t2 = landActionTimes;
+      landActionTimesOther = Math.min(99, Math.max(1, Math.round(t2)));
+    } else {
+      landActionTimesOther = landActionTimes;
+    }
   }
   return normalizeLandActionFields({
     landAction,
@@ -2390,6 +2425,7 @@ function readLandActionFromForm(prefix = "section") {
     landShowResultEvery,
     landShowResultUnit,
     landActionTimes,
+    landActionTimesOther,
   });
 }
 
@@ -2411,6 +2447,11 @@ function setLandActionForm(prefix, src) {
   }
   if ($(`#${p}-land-times`)) {
     $(`#${p}-land-times`).value = String(land.landActionTimes ?? 1);
+  }
+  if ($(`#${p}-land-times-other`)) {
+    $(`#${p}-land-times-other`).value = String(
+      land.landActionTimesOther ?? land.landActionTimes ?? 1
+    );
   }
   updateLandActionUI(p);
 }

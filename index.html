@@ -1354,7 +1354,7 @@
               <small><strong>0</strong> = skip the win screen and spin next right away. Otherwise show this result that long, then respin or switch wheels.</small>
             </label>
             <label class="field" id="section-land-times-field" hidden>
-              <span>Times</span>
+              <span id="section-land-times-label">Times</span>
               <input
                 type="number"
                 id="section-land-times"
@@ -1364,7 +1364,20 @@
                 value="1"
                 title="How many times to respin or spin the other wheel"
               />
-              <small>Run the respin / other-wheel action this many times (1–99).</small>
+              <small id="section-land-times-hint">Run the respin / other-wheel action this many times (1–99).</small>
+            </label>
+            <label class="field" id="section-land-times-other-field" hidden>
+              <span>Other wheel times</span>
+              <input
+                type="number"
+                id="section-land-times-other"
+                min="1"
+                max="99"
+                step="1"
+                value="1"
+                title="How many times to spin the different wheel"
+              />
+              <small>How many times to spin the target wheel (1–99). Separate from respin times above.</small>
             </label>
           </div>
         </div>
@@ -1696,7 +1709,7 @@
                 <small><strong>0</strong> = skip the win screen and spin next right away.</small>
               </label>
               <label class="field" id="group-land-times-field" hidden>
-                <span>Times</span>
+                <span id="group-land-times-label">Times</span>
                 <input
                   type="number"
                   id="group-land-times"
@@ -1706,7 +1719,20 @@
                   value="1"
                   title="How many times to respin or spin the other wheel"
                 />
-                <small>Run the respin / other-wheel action this many times (1–99).</small>
+                <small id="group-land-times-hint">Run the respin / other-wheel action this many times (1–99).</small>
+              </label>
+              <label class="field" id="group-land-times-other-field" hidden>
+                <span>Other wheel times</span>
+                <input
+                  type="number"
+                  id="group-land-times-other"
+                  min="1"
+                  max="99"
+                  step="1"
+                  value="1"
+                  title="How many times to spin the different wheel"
+                />
+                <small>How many times to spin the target wheel (1–99). Separate from respin times above.</small>
               </label>
             </div>
 
