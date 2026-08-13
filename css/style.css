@@ -819,6 +819,9 @@ body.multi-spin-mode #stage {
   cursor: pointer;
   font-size: 0.84rem;
   user-select: none;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
 }
 
 .multi-picker-row:hover {

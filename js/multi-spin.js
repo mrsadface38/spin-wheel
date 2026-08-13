@@ -987,7 +987,8 @@ export function createMultiSpinController(deps) {
       return;
     }
     for (const w of slots) {
-      const row = document.createElement("div");
+      // <label> so clicking the name toggles the checkbox (not only the tiny box)
+      const row = document.createElement("label");
       row.className =
         "multi-picker-row" + (focus && w.id === focus ? " is-focused" : "");
       row.dataset.slotId = w.id;
@@ -996,7 +997,6 @@ export function createMultiSpinController(deps) {
       cb.type = "checkbox";
       cb.checked = idSet.has(w.id);
       cb.title = "Show on multi-spin board";
-      cb.addEventListener("click", (e) => e.stopPropagation());
       cb.addEventListener("change", () => {
         if (cb.checked) {
           if (!selectedIds.includes(w.id)) selectedIds.push(w.id);
@@ -1012,12 +1012,14 @@ export function createMultiSpinController(deps) {
       const span = document.createElement("span");
       span.className = "multi-picker-name";
       span.textContent = w.name || "Untitled";
-      span.title = "Click to select / edit this wheel";
+      span.title = "Click to show or hide on the multi-spin board (double-click to edit)";
 
       row.appendChild(cb);
       row.appendChild(span);
-      row.addEventListener("click", (e) => {
-        if (e.target === cb) return;
+      // Double-click opens edit (two label clicks often cancel; resync checkbox)
+      row.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        cb.checked = selectedIds.includes(w.id);
         void selectTile(w.id, { edit: true });
       });
       list.appendChild(row);
