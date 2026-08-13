@@ -3979,6 +3979,67 @@ $("#group-sfx-preview")?.addEventListener("click", async () => {
 });
 
 /**
+ * Parse #rrggbb (or #rgb) to {r,g,b} 0–255.
+ * @param {string} hex
+ */
+function parseHexColorRgb(hex) {
+  let h = String(hex || "").trim().replace(/^#/, "");
+  if (/^[0-9a-fA-F]{3}$/.test(h)) {
+    h = h
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  }
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return { r: 0, g: 0, b: 0 };
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+}
+
+/**
+ * @param {number} r
+ * @param {number} g
+ * @param {number} b
+ */
+function rgbToHexColor(r, g, b) {
+  const clamp = (n) =>
+    Math.max(0, Math.min(255, Math.round(Number(n) || 0)));
+  return (
+    "#" +
+    [clamp(r), clamp(g), clamp(b)]
+      .map((n) => n.toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
+/**
+ * Linear blend of two hex colors. t in [0, 1].
+ * @param {string} fromHex
+ * @param {string} toHex
+ * @param {number} t
+ */
+function lerpHexColor(fromHex, toHex, t) {
+  const a = parseHexColorRgb(fromHex);
+  const b = parseHexColorRgb(toHex);
+  const u = Math.max(0, Math.min(1, Number(t) || 0));
+  return rgbToHexColor(
+    a.r + (b.r - a.r) * u,
+    a.g + (b.g - a.g) * u,
+    a.b + (b.b - a.b) * u
+  );
+}
+
+/** Readable label color on a solid slice. */
+function contrastTextOnHex(hex) {
+  const { r, g, b } = parseHexColorRgb(hex);
+  // Relative luminance (sRGB approx)
+  const L = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return L > 0.55 ? "#111111" : "#ffffff";
+}
+
+/**
  * Randomize member section colors with the solid d20 palette system
  * (shuffled; never same color on both neighbors).
  */
@@ -4015,6 +4076,52 @@ $("#btn-group-randomize-colors")?.addEventListener("click", async () => {
   // Optional: turn on group color override with a random solid for the profile swatch
   const swatch = colors[0] || { color: "#0000ff" };
   if ($("#group-color")) $("#group-color").value = swatch.color;
+  if ($("#group-override-color")) $("#group-override-color").checked = false;
+  persist();
+  renderSections();
+  renderGroups();
+  await refreshWheel();
+  scheduleGroupLivePreview();
+});
+
+/**
+ * Form gradient: blend two colors across group members in Sections tab order.
+ */
+$("#btn-group-form-gradient")?.addEventListener("click", async () => {
+  // Same order as the Sections tab list (state.sections array)
+  const ordered = state.sections.filter((s) =>
+    pendingGroupMemberIds.has(s.id)
+  );
+  if (!ordered.length) {
+    alert(
+      "Add at least one section to this group first (Sections in this group list)."
+    );
+    return;
+  }
+  const fromHex = $("#group-gradient-from")?.value || "#4a6cf7";
+  const toHex = $("#group-gradient-to")?.value || "#e85d6c";
+  if (
+    !confirm(
+      `Form gradient on ${ordered.length} section(s) in this group?\n\n` +
+        `From ${fromHex} → ${toHex} in Sections tab order (top → bottom).\n` +
+        `Each section gets its own solid color along that blend.`
+    )
+  ) {
+    return;
+  }
+  checkpoint();
+  const n = ordered.length;
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : i / (n - 1);
+    const color = lerpHexColor(fromHex, toHex, t);
+    const s = ordered[i];
+    s.customColor = true;
+    s.color = color;
+    s.customTextColor = true;
+    s.textColor = contrastTextOnHex(color);
+  }
+  // Profile swatch follows the start of the gradient; leave override off so members show
+  if ($("#group-color")) $("#group-color").value = fromHex;
   if ($("#group-override-color")) $("#group-override-color").checked = false;
   persist();
   renderSections();
@@ -10494,6 +10601,25 @@ function resolveLandAction(winSection) {
     return { type: "show" };
   }
 
+  if (action === "respinAndOther") {
+    const tid = eff.landTargetWheelId;
+    if (
+      tid &&
+      tid !== library.activeId &&
+      library.wheels.some((w) => w.id === tid)
+    ) {
+      return {
+        type: "respinAndOther",
+        wheelId: tid,
+        showMs,
+        section: raw,
+        times,
+      };
+    }
+    // No valid target — fall back to respin only
+    return { type: "respin", showMs, section: raw, times };
+  }
+
   return { type: "show" };
 }
 
@@ -10560,6 +10686,21 @@ async function handleSpinWinner(win, resultOpts = {}, spinOpts = {}) {
     }
     if (next.type === "otherWheel" && next.wheelId) {
       await showLandActionResultThenWait(win, resultOpts, next.showMs || 0);
+      await switchToWheelId(next.wheelId);
+      await sleepMs(200);
+      for (let i = 0; i < times; i++) {
+        landActionChainDepth += 1;
+        await doSpin({ fromLandAction: true });
+      }
+      return;
+    }
+    if (next.type === "respinAndOther" && next.wheelId) {
+      // Single-wheel mode is sequential: respin this wheel, then switch & spin other
+      await showLandActionResultThenWait(win, resultOpts, next.showMs || 0);
+      for (let i = 0; i < times; i++) {
+        landActionChainDepth += 1;
+        await doSpin({ fromLandAction: true });
+      }
       await switchToWheelId(next.wheelId);
       await sleepMs(200);
       for (let i = 0; i < times; i++) {

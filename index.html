@@ -1468,6 +1468,33 @@
               <small>Randomize paints member sections with the solid palette (red / blue / green / cyan / yellow / purple), same rules as a new d20 — each section’s two neighbors are different colors.</small>
             </label>
             <label class="field">
+              <span>Form gradient</span>
+              <div class="slider-with-value group-gradient-row">
+                <input
+                  type="color"
+                  id="group-gradient-from"
+                  value="#4a6cf7"
+                  title="Gradient start color (first section in Sections tab order)"
+                />
+                <span class="group-gradient-arrow" aria-hidden="true">→</span>
+                <input
+                  type="color"
+                  id="group-gradient-to"
+                  value="#e85d6c"
+                  title="Gradient end color (last section in Sections tab order)"
+                />
+                <button
+                  type="button"
+                  id="btn-group-form-gradient"
+                  class="btn small ghost"
+                  title="Blend member section colors from start → end in Sections tab order"
+                >
+                  Form gradient
+                </button>
+              </div>
+              <small>Paints every section in this group along a smooth color blend from the first picker to the second, in the same order as the Sections tab (top → bottom).</small>
+            </label>
+            <label class="field">
               <span>Profile text color</span>
               <input type="color" id="group-text-color" value="#ffffff" />
               <small>Default label color for sections in this group</small>
