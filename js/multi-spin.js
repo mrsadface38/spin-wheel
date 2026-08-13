@@ -580,29 +580,63 @@ export function createMultiSpinController(deps) {
     g.style.minWidth = `${Math.max(maxR, vp.w)}px`;
   }
 
-  /** Drop index under pointer for grid reorder. */
+  /**
+   * Which grid slot is under the pointer — nearest tile center (not floor toward top-left).
+   */
   function gridIndexFromPoint(clientX, clientY) {
     const g = grid();
     if (!g || !selectedIds.length) return 0;
     const rect = g.getBoundingClientRect();
-    const x = clientX - rect.left + g.scrollLeft;
-    const y = clientY - rect.top + g.scrollTop;
-    const { cols, cellW, cellH } = gridMetrics();
-    const col = Math.max(0, Math.min(cols - 1, Math.floor(x / cellW)));
-    const row = Math.max(0, Math.floor(y / cellH));
-    const idx = row * cols + col;
-    return Math.max(0, Math.min(selectedIds.length - 1, idx));
+    const style = getComputedStyle(g);
+    const padL = parseFloat(style.paddingLeft) || 0;
+    const padT = parseFloat(style.paddingTop) || 0;
+    const x = clientX - rect.left + g.scrollLeft - padL;
+    const y = clientY - rect.top + g.scrollTop - padT;
+    const size = effectiveGridSize();
+    const n = selectedIds.length;
+
+    let best = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < n; i++) {
+      const id = selectedIds[i];
+      const pos = layoutMap[id] || defaultPosForIndex(i, size);
+      const s = Number(pos.size) || size;
+      // Center of the full tile (stage + chrome)
+      const cx = (pos.x || 0) + s / 2;
+      const cy = (pos.y || 0) + (s + TILE_CHROME_H) / 2;
+      const d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+    return best;
   }
 
-  function reorderSelectedId(slotId, toIndex) {
+  /** Swap two grid slots so a wheel can land on any other wheel's cell. */
+  function swapSelectedIds(slotId, toIndex) {
     const from = selectedIds.indexOf(slotId);
     if (from < 0) return;
+    const ti = Math.max(0, Math.min(selectedIds.length - 1, toIndex));
+    if (from === ti) return;
     const next = selectedIds.slice();
-    next.splice(from, 1);
-    const ti = Math.max(0, Math.min(next.length, toIndex));
-    next.splice(ti, 0, slotId);
+    const tmp = next[ti];
+    next[ti] = next[from];
+    next[from] = tmp;
     selectedIds = next;
     saveSelection();
+  }
+
+  function clearGridDropHighlight() {
+    for (const t of tiles.values()) {
+      t.rootEl?.classList.remove("is-drop-target");
+    }
+  }
+
+  function setGridDropHighlight(slotId) {
+    for (const t of tiles.values()) {
+      t.rootEl?.classList.toggle("is-drop-target", t.slotId === slotId);
+    }
   }
 
   /**
@@ -729,68 +763,45 @@ export function createMultiSpinController(deps) {
     positionGridResizeHandle();
   }
 
-  /** Single resize control at bottom-right of the packed grid (grid mode only). */
-  function ensureGridResizeHandle() {
-    const g = grid();
-    if (!g) return null;
-    let el = document.getElementById("multi-grid-resize");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "multi-grid-resize";
-      el.className = "multi-grid-resize";
-      el.title = "Drag to resize the grid (all wheels)";
-      el.setAttribute("role", "slider");
-      el.setAttribute("aria-label", "Resize grid");
-      el.innerHTML =
-        '<span class="multi-grid-resize-grip" aria-hidden="true"></span>' +
-        '<span class="multi-grid-resize-label" aria-hidden="true"></span>';
-      el.addEventListener("pointerdown", (e) => {
-        if (freeLayout || dragLocked) return;
-        if (e.button != null && e.button !== 0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        resize = {
-          mode: "grid",
-          pointerId: e.pointerId,
-          grabX: e.clientX,
-          grabY: e.clientY,
-          startSize: effectiveGridSize(),
-        };
-        try {
-          el.setPointerCapture(e.pointerId);
-        } catch {
-          /* ignore */
-        }
-        el.classList.add("is-active");
-        g.classList.add("is-grid-resizing");
-      });
-      g.appendChild(el);
+  /**
+   * Grid size control lives in the Wheels on screen panel (not on the board).
+   */
+  function syncPickerGridSizeUi() {
+    const wrap = document.getElementById("multi-picker-grid-size");
+    const slider = document.getElementById("multi-grid-size-slider");
+    const valueEl = document.getElementById("multi-grid-size-value");
+    if (wrap) {
+      // Only relevant in grid mode with wheels on the board
+      wrap.hidden = freeLayout || !selectedIds.length || dragLocked;
+      wrap.classList.toggle("is-disabled", freeLayout || dragLocked);
     }
-    return el;
+    const size = effectiveGridSize();
+    if (slider) {
+      // Max = largest that still fits the board width
+      const maxW = Math.max(TILE_MIN, boardViewport().w - 4);
+      slider.min = String(TILE_MIN);
+      slider.max = String(Math.min(TILE_MAX, maxW));
+      slider.value = String(clampSize(Math.min(size, maxW)));
+      slider.disabled = freeLayout || dragLocked || !selectedIds.length;
+    }
+    if (valueEl) valueEl.textContent = `${size}px`;
   }
 
+  /** @deprecated name kept — updates picker slider, not a board handle */
   function positionGridResizeHandle() {
-    const el = ensureGridResizeHandle();
-    if (!el) return;
-    if (freeLayout || !selectedIds.length || dragLocked) {
-      el.hidden = true;
-      return;
-    }
-    el.hidden = false;
-    let maxR = 0;
-    let maxB = 0;
-    for (const id of selectedIds) {
-      const pos = layoutMap[id];
-      if (!pos) continue;
-      const size = Number(pos.size) || tileSize(id);
-      maxR = Math.max(maxR, (pos.x || 0) + size);
-      maxB = Math.max(maxB, (pos.y || 0) + size + TILE_CHROME_H);
-    }
-    // Sit on the bottom-right corner of the wheel block
-    el.style.left = `${Math.max(0, maxR - 2)}px`;
-    el.style.top = `${Math.max(0, maxB - 2)}px`;
-    const label = el.querySelector(".multi-grid-resize-label");
-    if (label) label.textContent = `${effectiveGridSize()}px`;
+    // Remove any leftover board-corner grip from older builds
+    document.getElementById("multi-grid-resize")?.remove();
+    syncPickerGridSizeUi();
+  }
+
+  function applyGridSizeFromSlider(raw) {
+    if (freeLayout || dragLocked) return;
+    const maxW = Math.max(TILE_MIN, boardViewport().w - 4);
+    const next = clampSize(Math.min(Number(raw) || TILE_MIN, maxW));
+    sharedGridSize = next;
+    saveSharedGridSize();
+    applyGridLayout({ redraw: true });
+    syncPickerGridSizeUi();
   }
 
   function setFreeLayout(on) {
@@ -1151,30 +1162,20 @@ export function createMultiSpinController(deps) {
 
   function onDragPointerMove(e) {
     if (resize && e.pointerId === resize.pointerId) {
+      // Tile resize only (free placement) — grid size uses the picker slider
+      if (resize.mode !== "tile" || !resize.tile) return;
       const dx = e.clientX - resize.grabX;
       const dy = e.clientY - resize.grabY;
-      // Grow with the larger axis so the square stage stays natural
       const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
-      let next = clampSize(resize.startSize + delta);
-      if (resize.mode === "grid" || !freeLayout) {
-        // Resize the whole grid (shared size for every wheel)
-        next = clampSize(Math.min(next, boardViewport().w - 4));
-        sharedGridSize = next;
-        applyGridLayout({ redraw: false });
-        positionGridResizeHandle();
-        const grip = document.getElementById("multi-grid-resize");
-        const label = grip?.querySelector(".multi-grid-resize-label");
-        if (label) label.textContent = `${next}px`;
-      } else if (resize.tile) {
-        const prev = layoutMap[resize.tile.slotId] || { x: 0, y: 0 };
-        layoutMap[resize.tile.slotId] = {
-          x: prev.x || 0,
-          y: prev.y || 0,
-          size: next,
-          customSize: true,
-        };
-        relayoutWheelsAfterSize(resize.tile);
-      }
+      const next = clampSize(resize.startSize + delta);
+      const prev = layoutMap[resize.tile.slotId] || { x: 0, y: 0 };
+      layoutMap[resize.tile.slotId] = {
+        x: prev.x || 0,
+        y: prev.y || 0,
+        size: next,
+        customSize: true,
+      };
+      relayoutWheelsAfterSize(resize.tile);
       return;
     }
     if (!drag || e.pointerId !== drag.pointerId) return;
@@ -1196,41 +1197,33 @@ export function createMultiSpinController(deps) {
         customSize: prev.customSize === true,
       };
       updateBoardSize();
+    } else {
+      // Highlight the slot under the cursor (swap target)
+      const toIndex = gridIndexFromPoint(e.clientX, e.clientY);
+      const targetId = selectedIds[toIndex];
+      if (targetId && targetId !== drag.tile.slotId) {
+        setGridDropHighlight(targetId);
+      } else {
+        clearGridDropHighlight();
+      }
     }
   }
 
   function onDragPointerUp(e) {
     if (resize && e.pointerId === resize.pointerId) {
-      const mode = resize.mode || (freeLayout ? "tile" : "grid");
       const t = resize.tile;
-      const finalSize =
-        mode === "grid"
-          ? effectiveGridSize()
-          : t
-            ? tileSize(t.slotId)
-            : TILE_MIN;
       resize = null;
-      const grip = document.getElementById("multi-grid-resize");
-      grip?.classList.remove("is-active");
-      grid()?.classList.remove("is-grid-resizing");
       if (t?.rootEl) {
         t.rootEl.classList.remove("is-resizing");
         t.rootEl.style.zIndex = "";
       }
-      if (mode === "grid" || !freeLayout) {
-        sharedGridSize = finalSize;
-        saveSharedGridSize();
-        applyGridLayout({ redraw: true });
-        positionGridResizeHandle();
-      } else {
-        saveLayout();
-        updateBoardSize();
-        try {
-          t?.wheel?.resize?.();
-          t?.wheel?.draw?.();
-        } catch {
-          /* ignore */
-        }
+      saveLayout();
+      updateBoardSize();
+      try {
+        t?.wheel?.resize?.();
+        t?.wheel?.draw?.();
+      } catch {
+        /* ignore */
       }
       return;
     }
@@ -1243,16 +1236,17 @@ export function createMultiSpinController(deps) {
     drag = null;
     t.rootEl?.classList.remove("is-dragging");
     t.rootEl.style.zIndex = "";
+    clearGridDropHighlight();
     if (!didMove) {
       void selectTile(t.slotId, { edit: false });
       return;
     }
     if (mode === "grid" || !freeLayout) {
-      // Snap into grid order at drop cell
+      // Swap with the wheel under the pointer (any slot, not insert toward top-left)
       const toIndex = gridIndexFromPoint(clientX, clientY);
-      reorderSelectedId(t.slotId, toIndex);
+      swapSelectedIds(t.slotId, toIndex);
       applyGridLayout({ redraw: true });
-      setSummary("Reordered on grid");
+      setSummary("Swapped grid slots");
     } else {
       saveLayout();
       updateBoardSize();

@@ -167,6 +167,22 @@
                 <button type="button" id="btn-multi-clear" class="btn small ghost">Clear</button>
               </div>
               <div id="multi-picker-list" class="multi-picker-list"></div>
+              <div class="multi-picker-grid-size" id="multi-picker-grid-size">
+                <span class="multi-picker-grid-size-title">Grid size</span>
+                <div class="multi-picker-grid-size-row">
+                  <input
+                    type="range"
+                    id="multi-grid-size-slider"
+                    min="140"
+                    max="960"
+                    step="4"
+                    value="280"
+                    title="Resize the multi-spin grid (all wheels)"
+                  />
+                  <span id="multi-grid-size-value" class="slider-value">280px</span>
+                </div>
+                <small>Grid mode only — scales every on-board wheel and reflows the layout.</small>
+              </div>
             </aside>
             <button
               type="button"
