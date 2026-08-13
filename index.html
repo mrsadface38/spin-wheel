@@ -138,6 +138,13 @@
               class="btn small ghost"
               title="Remove all waiting spins from every wheel (does not stop a spin that is already running)"
             >Clear queues</button>
+            <label
+              class="toggle-row multi-lock-row"
+              title="When on, after a wheel spins another, it waits for that wheel (and its queue) to finish before continuing its own queue"
+            >
+              <input type="checkbox" id="chk-multi-wait-target" checked />
+              <span>Wait for other wheel</span>
+            </label>
             <span id="multi-summary" class="multi-summary" aria-live="polite"></span>
             <span id="multi-warn" class="multi-warn hidden" hidden></span>
           </div>
@@ -1304,6 +1311,19 @@
               </div>
               <small><strong>0</strong> = skip the win screen and spin next right away. Otherwise show this result that long, then respin or switch wheels.</small>
             </label>
+            <label class="field" id="section-land-times-field" hidden>
+              <span>Times</span>
+              <input
+                type="number"
+                id="section-land-times"
+                min="1"
+                max="99"
+                step="1"
+                value="1"
+                title="How many times to respin or spin the other wheel"
+              />
+              <small>Run the respin / other-wheel action this many times (1–99).</small>
+            </label>
           </div>
         </div>
       </div>
@@ -1604,6 +1624,19 @@
                   </select>
                 </div>
                 <small><strong>0</strong> = skip the win screen and spin next right away.</small>
+              </label>
+              <label class="field" id="group-land-times-field" hidden>
+                <span>Times</span>
+                <input
+                  type="number"
+                  id="group-land-times"
+                  min="1"
+                  max="99"
+                  step="1"
+                  value="1"
+                  title="How many times to respin or spin the other wheel"
+                />
+                <small>Run the respin / other-wheel action this many times (1–99).</small>
               </label>
             </div>
 

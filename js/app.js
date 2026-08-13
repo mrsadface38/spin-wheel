@@ -2296,10 +2296,11 @@ function updateLandActionUI(prefix) {
       $(`#${p}-land-target-wheel`)?.value
     );
   }
+  const chain = action === "respin" || action === "otherWheel";
   const showField = $(`#${p}-land-show-result-field`);
-  if (showField) {
-    showField.hidden = action !== "respin" && action !== "otherWheel";
-  }
+  if (showField) showField.hidden = !chain;
+  const timesField = $(`#${p}-land-times-field`);
+  if (timesField) timesField.hidden = !chain;
 }
 
 function updateSectionLandActionUI() {
@@ -2329,6 +2330,7 @@ function readLandActionFromForm(prefix = "section") {
   }
   let landShowResultEvery = 0;
   let landShowResultUnit = "seconds";
+  let landActionTimes = 1;
   if (landAction === "respin" || landAction === "otherWheel") {
     let n = Number($(`#${p}-land-show-result-value`)?.value);
     if (!Number.isFinite(n) || n < 0) n = 0;
@@ -2336,12 +2338,16 @@ function readLandActionFromForm(prefix = "section") {
     landShowResultUnit = normalizeLandShowResultUnit(
       $(`#${p}-land-show-result-unit`)?.value
     );
+    let t = Number($(`#${p}-land-times`)?.value);
+    if (!Number.isFinite(t) || t < 1) t = 1;
+    landActionTimes = Math.min(99, Math.max(1, Math.round(t)));
   }
   return normalizeLandActionFields({
     landAction,
     landTargetWheelId,
     landShowResultEvery,
     landShowResultUnit,
+    landActionTimes,
   });
 }
 
@@ -2360,6 +2366,9 @@ function setLandActionForm(prefix, src) {
   }
   if ($(`#${p}-land-show-result-unit`)) {
     $(`#${p}-land-show-result-unit`).value = land.landShowResultUnit;
+  }
+  if ($(`#${p}-land-times`)) {
+    $(`#${p}-land-times`).value = String(land.landActionTimes ?? 1);
   }
   updateLandActionUI(p);
 }
@@ -10099,8 +10108,13 @@ function resolveLandAction(winSection) {
     eff.landShowResultUnit
   );
 
+  const times = Math.min(
+    99,
+    Math.max(1, Number(eff.landActionTimes) || 1)
+  );
+
   if (action === "respin") {
-    return { type: "respin", showMs, section: raw };
+    return { type: "respin", showMs, section: raw, times };
   }
 
   if (action === "otherWheel") {
@@ -10115,6 +10129,7 @@ function resolveLandAction(winSection) {
         wheelId: tid,
         showMs,
         section: raw,
+        times,
       };
     }
     // Missing / deleted target — treat as normal win
@@ -10176,18 +10191,23 @@ async function handleSpinWinner(win, resultOpts = {}, spinOpts = {}) {
   if (!win) return;
   try {
     const next = resolveLandAction(win);
+    const times = Math.min(99, Math.max(1, Number(next.times) || 1));
     if (next.type === "respin") {
-      landActionChainDepth += 1;
       await showLandActionResultThenWait(win, resultOpts, next.showMs || 0);
-      await doSpin({ fromLandAction: true });
+      for (let i = 0; i < times; i++) {
+        landActionChainDepth += 1;
+        await doSpin({ fromLandAction: true });
+      }
       return;
     }
     if (next.type === "otherWheel" && next.wheelId) {
-      landActionChainDepth += 1;
       await showLandActionResultThenWait(win, resultOpts, next.showMs || 0);
       await switchToWheelId(next.wheelId);
       await sleepMs(200);
-      await doSpin({ fromLandAction: true });
+      for (let i = 0; i < times; i++) {
+        landActionChainDepth += 1;
+        await doSpin({ fromLandAction: true });
+      }
       return;
     }
     // Normal result — reset chain so the next user spin starts fresh

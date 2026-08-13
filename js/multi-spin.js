@@ -17,6 +17,7 @@ const SEL_KEY = "spin-wheel-multi-ids-v1";
 const LAYOUT_KEY = "spin-wheel-multi-layout-v1";
 const LOCK_KEY = "spin-wheel-multi-drag-lock-v1";
 const PICKER_COLLAPSE_KEY = "spin-wheel-multi-picker-collapsed-v1";
+const WAIT_TARGET_KEY = "spin-wheel-multi-wait-target-v1";
 const SOFT_WARN_AT = 12;
 const MAX_LAND_CHAIN = 20;
 /** Min / max tile width (stage is square at this size). */
@@ -48,6 +49,8 @@ export function createMultiSpinController(deps) {
   let layoutMap = loadLayout();
   let dragLocked = loadDragLock();
   let pickerCollapsed = loadPickerCollapsed();
+  /** When true, after spinning another wheel wait for it (and its queue) before draining ours. */
+  let waitForTargetWheel = loadWaitForTarget();
   /** @type {string|null} */
   let focusedSlotId = null;
   /**
@@ -77,6 +80,7 @@ export function createMultiSpinController(deps) {
   const stageEl = () => document.getElementById("stage");
   const btnToggle = () => document.getElementById("btn-multi-spin");
   const lockChk = () => document.getElementById("chk-multi-drag-lock");
+  const waitTargetChk = () => document.getElementById("chk-multi-wait-target");
 
   function loadSelection() {
     try {
@@ -160,6 +164,25 @@ export function createMultiSpinController(deps) {
       return localStorage.getItem(PICKER_COLLAPSE_KEY) === "1";
     } catch {
       return false;
+    }
+  }
+
+  function loadWaitForTarget() {
+    try {
+      const v = localStorage.getItem(WAIT_TARGET_KEY);
+      // Default on when unset
+      if (v == null) return true;
+      return v === "1";
+    } catch {
+      return true;
+    }
+  }
+
+  function saveWaitForTarget() {
+    try {
+      localStorage.setItem(WAIT_TARGET_KEY, waitForTargetWheel ? "1" : "0");
+    } catch {
+      /* ignore */
     }
   }
 

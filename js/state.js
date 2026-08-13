@@ -41,6 +41,7 @@
  *   landTargetWheelId: string|null,
  *   landShowResultEvery: number,
  *   landShowResultUnit: 'seconds'|'minutes'|'hours'|'days',
+ *   landActionTimes: number,
  *   winBgm: 'inherit'|'custom'|'mute',
  *   winBgmData: string|null,
  *   winBgmName: string|null,
@@ -218,6 +219,7 @@ export const LAND_ACTION_KEYS = [
   "landTargetWheelId",
   "landShowResultEvery",
   "landShowResultUnit",
+  "landActionTimes",
 ];
 
 /** @typedef {{ color?: boolean, textColor?: boolean, textStyle?: boolean, textFont?: boolean, winnerTextColor?: boolean, image?: boolean, sfx?: boolean, winEffect?: boolean, landAction?: boolean }} ProfileParts */
@@ -233,9 +235,20 @@ export function uid(prefix = "id") {
 }
 
 /**
+ * How many times to fire respin / spin-other-wheel (1–99).
+ * @param {unknown} v
+ * @param {number} [fallback=1]
+ */
+export function normalizeLandActionTimes(v, fallback = 1) {
+  let n = Number(v);
+  if (!Number.isFinite(n) || n < 1) n = fallback;
+  return Math.min(99, Math.max(1, Math.round(n)));
+}
+
+/**
  * Normalize land-action fields (shared by groups + sections).
  * @param {object} [src]
- * @returns {{ landAction: string, landTargetWheelId: string|null, landShowResultEvery: number, landShowResultUnit: string }}
+ * @returns {{ landAction: string, landTargetWheelId: string|null, landShowResultEvery: number, landShowResultUnit: string, landActionTimes: number }}
  */
 export function normalizeLandActionFields(src = {}) {
   const landAction = normalizeLandAction(src.landAction);
@@ -249,8 +262,10 @@ export function normalizeLandActionFields(src = {}) {
     landShowResultEvery = 0;
   }
   landShowResultEvery = Math.min(99999, Math.round(landShowResultEvery));
+  let landActionTimes = normalizeLandActionTimes(src.landActionTimes, 1);
   if (landAction === "none") {
     landShowResultEvery = 0;
+    landActionTimes = 1;
   }
   const landShowResultUnit = normalizeLandShowResultUnit(src.landShowResultUnit);
   return {
@@ -258,6 +273,7 @@ export function normalizeLandActionFields(src = {}) {
     landTargetWheelId,
     landShowResultEvery,
     landShowResultUnit,
+    landActionTimes,
   };
 }
 
@@ -503,6 +519,7 @@ export function applyProfileToSection(section, profile, parts) {
     section.landTargetWheelId = land.landTargetWheelId;
     section.landShowResultEvery = land.landShowResultEvery;
     section.landShowResultUnit = land.landShowResultUnit;
+    section.landActionTimes = land.landActionTimes;
   }
   return section;
 }
