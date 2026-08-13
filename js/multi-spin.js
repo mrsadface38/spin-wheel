@@ -497,7 +497,7 @@ export function createMultiSpinController(deps) {
 
     stage?.addEventListener("dblclick", (e) => {
       e.preventDefault();
-      void spinTile(tile);
+      void spinTile(tile, { force: true });
     });
 
     const handle = rootEl.querySelector(".multi-tile-drag");
