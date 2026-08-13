@@ -1216,7 +1216,7 @@ export function createMultiSpinController(deps) {
 
     if (!selectedIds.length) {
       destroyTiles();
-      g.innerHTML = `<p class="multi-grid-empty">Select wheels on the left to show them here. Drag the grip to place them; lock positions in the toolbar.</p>`;
+      g.innerHTML = `<p class="multi-grid-empty">Select wheels on the left to show them here. Grid mode packs them without overlap; enable Free placement to drag anywhere.</p>`;
       setSummary("");
       updateFocusUi();
       return;
@@ -1237,12 +1237,18 @@ export function createMultiSpinController(deps) {
       i += 1;
     }
 
-    for (const t of tiles.values()) applyTilePosition(t);
-    updateBoardSize();
+    if (!freeLayout) {
+      applyGridLayout({ redraw: true });
+    } else {
+      for (const t of tiles.values()) applyTilePosition(t);
+      updateBoardSize();
+    }
     applyDragLockUi();
+    applyLayoutModeUi();
     updateFocusUi();
     setSummary(
-      `${selectedIds.length} wheel${selectedIds.length === 1 ? "" : "s"} ready`
+      `${selectedIds.length} wheel${selectedIds.length === 1 ? "" : "s"} ready` +
+        (freeLayout ? " · free placement" : " · grid")
     );
     renderPicker();
   }
@@ -1663,20 +1669,25 @@ export function createMultiSpinController(deps) {
     focusedSlotId = activeLibraryId();
     applyDragLockUi();
     applyPickerCollapsedUi();
+    applyLayoutModeUi();
+    ensureBoardResizeObserver();
     renderPicker();
     void syncTilesWithLibrary().then(() => {
-      // First paint often has 0 board size — re-fit auto sizes once layout is real
+      // First paint often has 0 board size — re-fit once layout is real
       requestAnimationFrame(() => {
-        for (const t of tiles.values()) {
-          applyTilePosition(t);
-          try {
-            t.wheel?.resize?.();
-            t.wheel?.draw?.();
-          } catch {
-            /* ignore */
+        if (!freeLayout) applyGridLayout({ redraw: true });
+        else {
+          for (const t of tiles.values()) {
+            applyTilePosition(t);
+            try {
+              t.wheel?.resize?.();
+              t.wheel?.draw?.();
+            } catch {
+              /* ignore */
+            }
           }
+          updateBoardSize();
         }
-        updateBoardSize();
       });
       // Select active library wheel if on board
       const aid = activeLibraryId();
@@ -1702,6 +1713,19 @@ export function createMultiSpinController(deps) {
     spinAllBusy = false;
     focusedSlotId = null;
     drag = null;
+    resize = null;
+    if (boardResizeTimer) {
+      clearTimeout(boardResizeTimer);
+      boardResizeTimer = 0;
+    }
+    if (boardResizeObs) {
+      try {
+        boardResizeObs.disconnect();
+      } catch {
+        /* ignore */
+      }
+      boardResizeObs = null;
+    }
     document.body.classList.remove("multi-spin-mode");
     const st = stageEl();
     if (st) {
@@ -1777,6 +1801,12 @@ export function createMultiSpinController(deps) {
       saveWaitForTarget();
     });
     if (waitTargetChk()) waitTargetChk().checked = waitForTargetWheel;
+
+    freeLayoutChk()?.addEventListener("change", () => {
+      setFreeLayout(freeLayoutChk().checked === true);
+    });
+    if (freeLayoutChk()) freeLayoutChk().checked = freeLayout;
+    applyLayoutModeUi();
 
     document
       .getElementById("btn-multi-picker-collapse")
