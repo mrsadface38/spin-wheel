@@ -42,6 +42,7 @@ const TILE_CHROME_H = 92;
  * @param {(slotId: string) => void|Promise<void>} [deps.onEditWheel]
  * @param {(slotId: string) => void|Promise<string|null|void>} [deps.onDuplicateWheel]
  * @param {(section: object, opts?: object) => void} [deps.onSpinHistory] record History tab entry for a multi-tile land
+ * @param {(section: object, opts?: { container?: HTMLElement, state?: object }) => void} [deps.playWinEffect] after-win confetti/custom in tile stage
  * @param {() => void} [deps.onEnter]
  * @param {() => void} [deps.onExit]
  */
@@ -1381,9 +1382,9 @@ export function createMultiSpinController(deps) {
       );
       if (badge) {
         badge.textContent = freeLayout
-          ? i === order.length - 1
+          ? i === 0
             ? "top"
-            : i === 0
+            : i === order.length - 1
               ? "back"
               : `#${i + 1}`
           : `#${i + 1}`;
@@ -1499,7 +1500,7 @@ export function createMultiSpinController(deps) {
         const pos = selectedIds.indexOf(slotId) + 1;
         setSummary(
           freeLayout
-            ? `Stack order: “${pos === n ? "front" : pos === 1 ? "back" : "#" + pos}” of ${n} (bottom of list = on top)`
+            ? `Stack order: “${pos === 1 ? "top" : pos === n ? "back" : "#" + pos}” of ${n} (top of list = on top)`
             : `On-screen order updated (#${pos} of ${n})`
         );
       }
@@ -1608,7 +1609,7 @@ export function createMultiSpinController(deps) {
       grip.className = "multi-picker-drag";
       grip.hidden = !onScreen;
       grip.title = freeLayout
-        ? "Drag to set stack order — top of list sits behind, bottom eclipses others"
+        ? "Drag to set stack order — top of list is on top"
         : "Drag to reorder wheels on screen";
       grip.setAttribute("aria-label", "Drag to reorder");
       grip.innerHTML = `<span class="drag-grip" aria-hidden="true"></span>`;
@@ -1655,13 +1656,13 @@ export function createMultiSpinController(deps) {
       badge.className = "multi-picker-stack";
       if (onScreen && onScreenCount > 0) {
         if (freeLayout) {
-          if (stackIdx === onScreenCount - 1) badge.textContent = "top";
-          else if (stackIdx === 0) badge.textContent = "back";
+          if (stackIdx === 0) badge.textContent = "top";
+          else if (stackIdx === onScreenCount - 1) badge.textContent = "back";
           else badge.textContent = `#${stackIdx + 1}`;
           badge.title =
-            stackIdx === onScreenCount - 1
-              ? "Front — overlaps other wheels in free placement"
-              : stackIdx === 0
+            stackIdx === 0
+              ? "Top — overlaps other wheels in free placement"
+              : stackIdx === onScreenCount - 1
                 ? "Back — under other wheels in free placement"
                 : `Stack #${stackIdx + 1} of ${onScreenCount}`;
         } else {
@@ -2109,7 +2110,7 @@ export function createMultiSpinController(deps) {
     setSummary(
       `${selectedIds.length} wheel${selectedIds.length === 1 ? "" : "s"} ready` +
         (freeLayout
-          ? " · free placement (list order = stack: bottom eclipses top)"
+          ? " · free placement (list order = stack: top of list is on top)"
           : " · grid")
     );
     renderPicker();
@@ -2512,6 +2513,25 @@ export function createMultiSpinController(deps) {
           });
         } catch (err) {
           console.warn("multi-spin history:", err);
+        }
+        // After-win effect (confetti / custom) clipped to this tile's stage
+        try {
+          const stage =
+            tile.rootEl?.querySelector?.(".multi-tile-stage") || null;
+          // Prefer live library data so Look/section overrides match the editor
+          let effectState = tile.state;
+          try {
+            const slot = librarySlots().find((w) => w.id === tile.slotId);
+            if (slot?.data) effectState = slot.data;
+          } catch {
+            /* tile.state */
+          }
+          deps.playWinEffect?.(win, {
+            container: stage,
+            state: effectState,
+          });
+        } catch (err) {
+          console.warn("multi-spin win effect:", err);
         }
         // Land actions enqueue respin/other — do not nest force-restarts
         await handleMultiLandAction(tile, win, chainDepth);

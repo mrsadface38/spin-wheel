@@ -282,6 +282,166 @@ body.focus-mode .stage-panel {
   animation: win-fx-shrink-out 0.45s cubic-bezier(0.4, 0, 1, 1) forwards !important;
 }
 
+
+/* Class-based after-win media (multi-spin tile layers + shared rules) */
+/* Custom after-win media overlay (image / GIF / video) */
+.win-effect-media-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 185;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 14, 0.4);
+  overflow: hidden;
+}
+.win-effect-media-layer .win-fx-media {
+  max-width: min(92vw, 720px);
+  max-height: min(70vh, 520px);
+  object-fit: contain;
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  will-change: transform, opacity, filter;
+  background: transparent;
+}
+/* Transparent WebM / GIF / WebP / APNG — no dark scrim or hard frame */
+.win-effect-media-layer.win-fx-transparent {
+  background: transparent;
+}
+.win-effect-media-layer.win-fx-transparent .win-fx-media {
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* --- Entrance (layer backdrop + media) --- */
+.win-effect-media-layer.win-fx-enter-pop {
+  animation: win-fx-bg-in 0.35s ease both;
+}
+.win-effect-media-layer.win-fx-enter-pop .win-fx-media {
+  animation: win-fx-pop-in 0.55s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+}
+.win-effect-media-layer.win-fx-enter-drop {
+  animation: win-fx-bg-in 0.3s ease both;
+}
+.win-effect-media-layer.win-fx-enter-drop .win-fx-media {
+  animation: win-fx-drop-in 0.65s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+.win-effect-media-layer.win-fx-enter-spin {
+  animation: win-fx-bg-in 0.3s ease both;
+}
+.win-effect-media-layer.win-fx-enter-spin .win-fx-media {
+  animation: win-fx-spin-in 0.7s cubic-bezier(0.2, 1.1, 0.35, 1) both;
+}
+.win-effect-media-layer.win-fx-enter-slide {
+  animation: win-fx-bg-in 0.3s ease both;
+}
+.win-effect-media-layer.win-fx-enter-slide .win-fx-media {
+  animation: win-fx-slide-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.win-effect-media-layer.win-fx-enter-flip {
+  animation: win-fx-bg-in 0.3s ease both;
+  perspective: 900px;
+}
+.win-effect-media-layer.win-fx-enter-flip .win-fx-media {
+  animation: win-fx-flip-in 0.7s cubic-bezier(0.2, 1, 0.3, 1) both;
+}
+.win-effect-media-layer.win-fx-enter-zoomblur {
+  animation: win-fx-bg-in 0.4s ease both;
+}
+.win-effect-media-layer.win-fx-enter-zoomblur .win-fx-media {
+  animation: win-fx-zoomblur-in 0.65s cubic-bezier(0.2, 1, 0.35, 1) both;
+}
+
+/* --- Hold / idle motion while on screen --- */
+.win-effect-media-layer.win-fx-hold-float .win-fx-media {
+  animation: win-fx-float 2.4s ease-in-out infinite;
+}
+.win-effect-media-layer.win-fx-hold-pulse .win-fx-media {
+  animation: win-fx-pulse 1.6s ease-in-out infinite;
+}
+.win-effect-media-layer.win-fx-hold-sway .win-fx-media {
+  animation: win-fx-sway 2.2s ease-in-out infinite;
+}
+.win-effect-media-layer.win-fx-hold-kenburns .win-fx-media {
+  animation: win-fx-kenburns 3.4s ease-out both;
+}
+
+/* Apply hold after entrance finishes (animation-delay set in JS via class combo) */
+.win-effect-media-layer.win-fx-enter-pop.win-fx-hold-float .win-fx-media,
+.win-effect-media-layer.win-fx-enter-drop.win-fx-hold-float .win-fx-media,
+.win-effect-media-layer.win-fx-enter-spin.win-fx-hold-float .win-fx-media,
+.win-effect-media-layer.win-fx-enter-slide.win-fx-hold-float .win-fx-media,
+.win-effect-media-layer.win-fx-enter-flip.win-fx-hold-float .win-fx-media,
+.win-effect-media-layer.win-fx-enter-zoomblur.win-fx-hold-float .win-fx-media {
+  animation:
+    var(--win-fx-enter-name, win-fx-pop-in) var(--win-fx-enter-dur, 0.55s)
+      cubic-bezier(0.22, 1.2, 0.36, 1) both,
+    win-fx-float 2.4s ease-in-out var(--win-fx-enter-dur, 0.55s) infinite;
+}
+
+/* --- Exit --- */
+.win-effect-media-layer.win-fx-exit-fade {
+  animation: win-fx-bg-out 0.45s ease forwards;
+}
+.win-effect-media-layer.win-fx-exit-fade .win-fx-media {
+  animation: win-fx-fade-out 0.4s ease forwards !important;
+}
+.win-effect-media-layer.win-fx-exit-up {
+  animation: win-fx-bg-out 0.45s ease forwards;
+}
+.win-effect-media-layer.win-fx-exit-up .win-fx-media {
+  animation: win-fx-fly-up 0.5s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+.win-effect-media-layer.win-fx-exit-spin {
+  animation: win-fx-bg-out 0.5s ease forwards;
+}
+.win-effect-media-layer.win-fx-exit-spin .win-fx-media {
+  animation: win-fx-spin-out 0.55s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+.win-effect-media-layer.win-fx-exit-shrink {
+  animation: win-fx-bg-out 0.4s ease forwards;
+}
+.win-effect-media-layer.win-fx-exit-shrink .win-fx-media {
+  animation: win-fx-shrink-out 0.45s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+
+
+/* Multi-spin: confetti / custom effect clipped to that wheel's stage */
+.multi-tile-stage > .confetti-layer,
+.multi-tile-stage > .win-effect-media-layer,
+.confetti-layer--local,
+.win-effect-media-layer--local {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 28;
+  border-radius: inherit;
+}
+.confetti-layer--local {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 28;
+  pointer-events: none;
+  overflow: hidden;
+}
+.confetti-layer--local canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.multi-tile-stage > .win-effect-media-layer .win-fx-media,
+.win-effect-media-layer--local .win-fx-media {
+  max-width: min(92%, 280px);
+  max-height: min(78%, 240px);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.multi-tile-stage > .win-effect-media-layer.win-fx-transparent .win-fx-media,
+.win-effect-media-layer--local.win-fx-transparent .win-fx-media {
+  box-shadow: none;
+  border-radius: 0;
+}
+
 @keyframes win-fx-bg-in {
   from { opacity: 0; }
   to { opacity: 1; }

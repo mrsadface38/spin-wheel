@@ -6688,15 +6688,17 @@ $("#btn-history-export")?.addEventListener("click", () => {
 /**
  * Resolve effective after-win effect for a winner section (Look default / group / section).
  * @param {{ id?: string }|null} section
+ * @param {object|null} [wheelState] wheel project state (multi-spin tiles pass their own)
  */
-function resolveWinEffectForSection(section) {
+function resolveWinEffectForSection(section, wheelState = null) {
+  const st = wheelState && typeof wheelState === "object" ? wheelState : state;
   try {
     if (section?.id) {
       const raw =
-        state.sections.find((s) => s.id === section.id) || section;
-      const disp = resolveSectionForDisplay(state, raw);
+        (st?.sections || []).find((s) => s.id === section.id) || section;
+      const disp = resolveSectionForDisplay(st, raw);
       return {
-        effect: disp?.winEffect || state.look?.winEffect || "confetti",
+        effect: disp?.winEffect || st?.look?.winEffect || "confetti",
         data: disp?.winEffectData || null,
         name: disp?.winEffectName || null,
       };
@@ -6705,26 +6707,34 @@ function resolveWinEffectForSection(section) {
     /* fall through */
   }
   return {
-    effect: state.look?.winEffect || "confetti",
-    data: state.look?.winEffectData || null,
-    name: state.look?.winEffectName || null,
+    effect: st?.look?.winEffect || "confetti",
+    data: st?.look?.winEffectData || null,
+    name: st?.look?.winEffectName || null,
   };
 }
 
 /**
  * After-win visual effect — uses section/group override or Look global default.
  * @param {{ id?: string }|null} [section]
+ * @param {{ container?: HTMLElement|null, state?: object|null }} [opts]
+ *   container: play inside this element (multi-spin tile stage); default = full page
+ *   state: wheel state for resolving section/group effects (multi-spin)
  */
-function playWinEffect(section = null) {
-  const { effect, data } = resolveWinEffectForSection(section);
+function playWinEffect(section = null, opts = {}) {
+  const wheelState = opts?.state || null;
+  const container =
+    opts?.container instanceof HTMLElement ? opts.container : null;
+  const { effect, data, name } = resolveWinEffectForSection(
+    section,
+    wheelState
+  );
   if (effect === "none") return;
   if (effect === "custom" && data) {
-    const { name } = resolveWinEffectForSection(section);
-    playCustomWinMedia(data, { fileName: name || "" });
+    playCustomWinMedia(data, { fileName: name || "", container });
     return;
   }
   if (effect === "confetti" || (effect === "custom" && !data)) {
-    fireConfetti();
+    fireConfetti({ container });
   }
 }
 
@@ -6827,17 +6837,33 @@ async function loadWinEffectFile(file) {
 }
 
 /**
- * Full-screen custom media with random enter/hold/exit.
+ * Custom media with random enter/hold/exit.
  * Supports transparent WebM, WebP, PNG, and MP4.
  * @param {string} dataUrl
- * @param {{ fileName?: string }} [opts]
+ * @param {{ fileName?: string, container?: HTMLElement|null }} [opts]
+ *   container: multi-spin tile stage (or any host); default = full page body
  */
 function playCustomWinMedia(dataUrl, opts = {}) {
   if (!dataUrl) return;
   try {
-    document.getElementById("win-effect-media-layer")?.remove();
+    const host =
+      opts.container instanceof HTMLElement ? opts.container : null;
+    const local = !!host;
+    if (local) {
+      host
+        .querySelectorAll(".win-effect-media-layer--local")
+        .forEach((el) => el.remove());
+    } else {
+      document.getElementById("win-effect-media-layer")?.remove();
+    }
+
     const layer = document.createElement("div");
-    layer.id = "win-effect-media-layer";
+    if (local) {
+      layer.className = "win-effect-media-layer win-effect-media-layer--local";
+    } else {
+      layer.id = "win-effect-media-layer";
+      layer.className = "win-effect-media-layer";
+    }
     layer.setAttribute("aria-hidden", "true");
 
     const fileName = opts.fileName || "";
@@ -6876,9 +6902,12 @@ function playCustomWinMedia(dataUrl, opts = {}) {
     }
     el.classList.add("win-fx-media");
     layer.appendChild(el);
-    document.body.appendChild(layer);
+    (host || document.body).appendChild(layer);
 
-    const holdMs = 2800 + Math.floor(Math.random() * 900);
+    // Slightly shorter on small multi tiles so they don't linger over the next spin
+    const holdMs = local
+      ? 2000 + Math.floor(Math.random() * 700)
+      : 2800 + Math.floor(Math.random() * 900);
     const exitMs = 520;
     const remove = () => {
       try {
@@ -6901,8 +6930,10 @@ function playCustomWinMedia(dataUrl, opts = {}) {
   }
 }
 
-/** Bumps when a new confetti run starts so old RAF loops stop. */
+/** Bumps when a new full-page confetti run starts so old RAF loops stop. */
 let confettiGeneration = 0;
+/** Per-container confetti generation (multi-spin tiles can run in parallel). */
+const confettiLocalGen = new WeakMap();
 
 /** Remove confetti + custom win-effect layers (and stop confetti RAF). */
 function clearWinOverlays() {
@@ -6917,29 +6948,61 @@ function clearWinOverlays() {
   } catch {
     /* ignore */
   }
+  // Multi-spin tile-local effects
+  try {
+    document
+      .querySelectorAll(
+        ".confetti-layer--local, .win-effect-media-layer--local"
+      )
+      .forEach((el) => el.remove());
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
- * Confetti falls from the top of the screen (flutter + drift), no dependency.
- * Only one run at a time — a new win cancels the previous loop.
+ * Confetti falls (flutter + drift). Full page by default, or clipped to container.
+ * Full-page: only one run at a time. Local (multi-spin): per-tile, concurrent OK.
+ * @param {{ container?: HTMLElement|null }} [opts]
  */
-function fireConfetti() {
+function fireConfetti(opts = {}) {
   try {
-    // Kill any prior confetti RAF + layer so rapid spins cannot stack
-    confettiGeneration += 1;
-    const gen = confettiGeneration;
-    document.getElementById("confetti-layer")?.remove();
+    const host =
+      opts.container instanceof HTMLElement ? opts.container : null;
+    const local = !!host;
+
+    let gen;
+    if (local) {
+      gen = (confettiLocalGen.get(host) || 0) + 1;
+      confettiLocalGen.set(host, gen);
+      host
+        .querySelectorAll(".confetti-layer--local")
+        .forEach((el) => el.remove());
+    } else {
+      confettiGeneration += 1;
+      gen = confettiGeneration;
+      document.getElementById("confetti-layer")?.remove();
+    }
 
     const layer = document.createElement("div");
-    layer.id = "confetti-layer";
+    if (local) {
+      layer.className = "confetti-layer confetti-layer--local";
+    } else {
+      layer.id = "confetti-layer";
+      layer.className = "confetti-layer";
+    }
     layer.setAttribute("aria-hidden", "true");
-    document.body.appendChild(layer);
+    (host || document.body).appendChild(layer);
 
     const canvas = document.createElement("canvas");
     layer.appendChild(canvas);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = local
+      ? Math.max(40, host.clientWidth || host.offsetWidth || 120)
+      : window.innerWidth;
+    const h = local
+      ? Math.max(40, host.clientHeight || host.offsetHeight || 120)
+      : window.innerHeight;
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
     canvas.style.width = `${w}px`;
@@ -6957,24 +7020,25 @@ function fireConfetti() {
       "#b388ff",
       "#ff9f43",
     ];
-    // Fewer pieces than before — enough sparkle, much less main-thread load
-    const n = 120;
+    // Fewer pieces on small multi tiles
+    const n = local ? Math.max(28, Math.min(70, Math.round((w * h) / 900))) : 120;
+    const scale = local ? Math.max(0.45, Math.min(1, w / 360)) : 1;
     const parts = [];
     for (let i = 0; i < n; i++) {
       const wave = i / n;
-      const fallSpeed = 1.6 + Math.random() * 2.8;
+      const fallSpeed = (1.6 + Math.random() * 2.8) * (local ? 0.85 : 1);
       parts.push({
         x: Math.random() * w,
-        y: -12 - Math.random() * h * 0.35 - wave * 80,
-        vx: (Math.random() - 0.5) * 1.8,
+        y: -12 - Math.random() * h * 0.35 - wave * (local ? 40 : 80),
+        vx: (Math.random() - 0.5) * 1.8 * scale,
         vy: fallSpeed,
-        swayAmp: 0.6 + Math.random() * 1.4,
+        swayAmp: (0.6 + Math.random() * 1.4) * scale,
         swayFreq: 0.04 + Math.random() * 0.08,
         swayPhase: Math.random() * Math.PI * 2,
         rot: Math.random() * Math.PI * 2,
         vr: (Math.random() - 0.5) * 0.18,
         wobble: 0.02 + Math.random() * 0.05,
-        size: 5 + Math.random() * 9,
+        size: (5 + Math.random() * 9) * scale,
         aspect: 0.35 + Math.random() * 0.45,
         color: colors[i % colors.length],
         delay: wave * 0.28,
@@ -6982,10 +7046,13 @@ function fireConfetti() {
       });
     }
     const start = performance.now();
-    const dur = 4200;
+    const dur = local ? 3200 : 4200;
+    const stillCurrent = () =>
+      local
+        ? confettiLocalGen.get(host) === gen
+        : gen === confettiGeneration;
     const frame = (now) => {
-      // Superseded by a newer confetti / clearWinOverlays
-      if (gen !== confettiGeneration) return;
+      if (!stillCurrent()) return;
       const elapsed = now - start;
       const t = elapsed / dur;
       ctx.clearRect(0, 0, w, h);
@@ -7013,11 +7080,11 @@ function fireConfetti() {
         ctx.fillRect(-sw / 2, -sh / 2, sw, sh);
         ctx.restore();
       }
-      if (t < 1 && gen === confettiGeneration) {
+      if (t < 1 && stillCurrent()) {
         requestAnimationFrame(frame);
       } else {
         try {
-          if (gen === confettiGeneration) layer.remove();
+          if (stillCurrent()) layer.remove();
         } catch {
           /* ignore */
         }
@@ -11310,6 +11377,13 @@ async function init() {
           recordSpinHistory(section, opts || {});
         } catch (err) {
           console.warn("multi-spin → history:", err);
+        }
+      },
+      playWinEffect: (section, opts) => {
+        try {
+          playWinEffect(section, opts || {});
+        } catch (err) {
+          console.warn("multi-spin → win effect:", err);
         }
       },
       onSelectWheel: async (slotId) => {
