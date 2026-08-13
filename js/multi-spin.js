@@ -88,7 +88,6 @@ export function createMultiSpinController(deps) {
   const stageEl = () => document.getElementById("stage");
   const btnToggle = () => document.getElementById("btn-multi-spin");
   const lockChk = () => document.getElementById("chk-multi-drag-lock");
-  const waitTargetChk = () => document.getElementById("chk-multi-wait-target");
   const freeLayoutChk = () => document.getElementById("chk-multi-free-layout");
 
   function loadSelection() {
@@ -173,25 +172,6 @@ export function createMultiSpinController(deps) {
       return localStorage.getItem(PICKER_COLLAPSE_KEY) === "1";
     } catch {
       return false;
-    }
-  }
-
-  function loadWaitForTarget() {
-    try {
-      const v = localStorage.getItem(WAIT_TARGET_KEY);
-      // Default on when unset
-      if (v == null) return true;
-      return v === "1";
-    } catch {
-      return true;
-    }
-  }
-
-  function saveWaitForTarget() {
-    try {
-      localStorage.setItem(WAIT_TARGET_KEY, waitForTargetWheel ? "1" : "0");
-    } catch {
-      /* ignore */
     }
   }
 
@@ -1497,9 +1477,9 @@ export function createMultiSpinController(deps) {
       );
       await sleepMs(waitMs);
       await fireTimes(target, target.name);
-      // Wait for the other wheel to finish (and drain its queue) before we
-      // continue this wheel's own queue — optional multi-spin setting.
-      if (waitForTargetWheel) {
+      // Per-wheel Misc setting: wait for the other wheel before our queue continues
+      const waitOther = tile.state?.look?.waitForTargetWheel !== false;
+      if (waitOther) {
         setTileResult(
           tile,
           win,
@@ -1792,12 +1772,6 @@ export function createMultiSpinController(deps) {
       applyDragLockUi();
     });
     if (lockChk()) lockChk().checked = dragLocked;
-
-    waitTargetChk()?.addEventListener("change", () => {
-      waitForTargetWheel = waitTargetChk().checked === true;
-      saveWaitForTarget();
-    });
-    if (waitTargetChk()) waitTargetChk().checked = waitForTargetWheel;
 
     freeLayoutChk()?.addEventListener("change", () => {
       setFreeLayout(freeLayoutChk().checked === true);
