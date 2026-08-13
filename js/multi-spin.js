@@ -1563,15 +1563,22 @@ export function createMultiSpinController(deps) {
 
   /**
    * Request a spin: run now if idle, else add to this wheel's queue.
-   * @returns {Promise<object|null>|"queued"}
+   * When awaitRun is false (default for portals), start without awaiting so
+   * the source wheel can continue / wait separately.
+   * @returns {Promise<object|null>|"queued"|"started"}
    */
   async function requestSpin(tile, opts = {}) {
     if (!tile) return null;
+    const awaitRun = opts.awaitRun === true;
     if (isTileBusy(tile)) {
       enqueueSpin(tile, opts);
       return "queued";
     }
-    return spinTile(tile, opts);
+    if (awaitRun) {
+      return spinTile(tile, opts);
+    }
+    void spinTile(tile, opts);
+    return "started";
   }
 
   /** After a spin ends, run the next queued spin (if any). */
@@ -1589,12 +1596,55 @@ export function createMultiSpinController(deps) {
     });
   }
 
+  /**
+   * Live Misc → waitForTargetWheel for this board tile (library first).
+   * Default on when unset.
+   */
+  function tileWaitsForOtherWheel(tile) {
+    if (!tile) return true;
+    try {
+      const slot = librarySlots().find((w) => w.id === tile.slotId);
+      const look = slot?.data?.look ?? tile.state?.look;
+      if (look && Object.prototype.hasOwnProperty.call(look, "waitForTargetWheel")) {
+        return look.waitForTargetWheel !== false;
+      }
+    } catch {
+      /* ignore */
+    }
+    // Tile clone / hydrate default
+    return tile.state?.look?.waitForTargetWheel !== false;
+  }
+
   async function handleMultiLandAction(tile, win, chainDepth) {
     if (!tile || !win || chainDepth >= MAX_LAND_CHAIN) return false;
 
+    // Prefer live library data for land-action fields + look
+    let stateForLand = tile.state;
+    try {
+      const slot = librarySlots().find((w) => w.id === tile.slotId);
+      if (slot?.data) {
+        stateForLand = hydrateState(deepClone(slot.data));
+        // Keep sections list ids in sync for resolve; don't replace mid-spin geometry
+        if (tile.state?.sections) {
+          // only pull look + group land overrides freshness via hydrate on slot
+        }
+        // Merge look from live save so Misc toggles apply immediately
+        if (tile.state) {
+          tile.state.look = {
+            ...(tile.state.look || {}),
+            ...(stateForLand.look || {}),
+          };
+        }
+      }
+    } catch {
+      stateForLand = tile.state;
+    }
+
     const raw =
-      (tile.state?.sections || []).find((s) => s.id === win.id) || win;
-    const eff = getEffectiveLandAction(tile.state, raw);
+      (stateForLand?.sections || tile.state?.sections || []).find(
+        (s) => s.id === win.id
+      ) || win;
+    const eff = getEffectiveLandAction(stateForLand || tile.state, raw);
     const action = normalizeLandAction(eff.landAction);
     if (action === "none") return false;
 
@@ -1610,32 +1660,47 @@ export function createMultiSpinController(deps) {
     const nextOpts = {
       silentLand: true,
       chainDepth: chainDepth + 1,
+      awaitRun: false,
     };
 
-    async function fireTimes(targetTile, label) {
+    /**
+     * Start/queue spins without awaiting (so Wait off can continue).
+     * @returns {{ queued: number, started: number }}
+     */
+    function fireTimes(targetTile) {
       let queued = 0;
+      let started = 0;
       for (let i = 0; i < times; i++) {
-        const r = await requestSpin(targetTile, nextOpts);
-        if (r === "queued") queued += 1;
+        if (isTileBusy(targetTile)) {
+          enqueueSpin(targetTile, nextOpts);
+          queued += 1;
+        } else if (i === 0) {
+          // First free spin starts immediately (don't await)
+          void spinTile(targetTile, nextOpts);
+          started += 1;
+          // Further times queue (target will be busy)
+        } else {
+          enqueueSpin(targetTile, nextOpts);
+          queued += 1;
+        }
       }
-      if (queued > 0) {
-        const n = targetTile.queue?.length || queued;
-        setTileResult(
-          tile,
-          win,
-          times > 1
-            ? `→ ${label} ×${times} (queued · ${n})`
-            : `→ ${label} (queued · ${n})`
-        );
-      } else if (times > 1) {
-        setTileResult(tile, win, `→ ${label} ×${times}`);
-      }
+      return { queued, started };
     }
 
     if (action === "respin") {
       setTileResult(tile, win, times > 1 ? `→ respin ×${times}…` : "→ respin…");
       await sleepMs(waitMs);
-      await fireTimes(tile, "respin");
+      // Queue on self — runs after this spin's finally/drainQueue
+      const { queued } = fireTimes(tile);
+      if (queued > 0) {
+        setTileResult(
+          tile,
+          win,
+          times > 1
+            ? `→ respin ×${times} (queued · ${tile.queue.length})`
+            : `→ respin (queued · ${tile.queue.length})`
+        );
+      }
       return true;
     }
 
@@ -1652,7 +1717,7 @@ export function createMultiSpinController(deps) {
           times > 1 ? `→ respin ×${times}…` : "→ respin…"
         );
         await sleepMs(waitMs);
-        await fireTimes(tile, "respin");
+        fireTimes(tile);
         return true;
       }
       const target = await ensureTileForSlot(tid);
@@ -1666,21 +1731,35 @@ export function createMultiSpinController(deps) {
         times > 1 ? `→ ${target.name} ×${times}` : `→ ${target.name}`
       );
       await sleepMs(waitMs);
-      await fireTimes(target, target.name);
-      // Per-wheel Misc setting: wait for the other wheel before our queue continues
-      const waitOther = tile.state?.look?.waitForTargetWheel !== false;
+      const { queued, started } = fireTimes(target);
+      const waitOther = tileWaitsForOtherWheel(tile);
       if (waitOther) {
+        // Misc on: hold this wheel's queue until the other finishes completely
         setTileResult(
           tile,
           win,
           `→ ${target.name}${times > 1 ? ` ×${times}` : ""} (waiting…)`
         );
+        // Yield so target can mark spinning=true
+        await sleepMs(0);
         await waitUntilTileFullyIdle(target);
         setTileResult(
           tile,
           win,
           `→ ${target.name}${times > 1 ? ` ×${times}` : ""} (done)`
         );
+      } else {
+        // Misc off: do not wait — our finally will drain our own queue now
+        const n = target.queue?.length || 0;
+        if (queued > 0 || started > 0) {
+          setTileResult(
+            tile,
+            win,
+            n > 0
+              ? `→ ${target.name}${times > 1 ? ` ×${times}` : ""} (queued · ${n})`
+              : `→ ${target.name}${times > 1 ? ` ×${times}` : ""}`
+          );
+        }
       }
       return true;
     }
