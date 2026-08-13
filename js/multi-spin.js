@@ -1050,6 +1050,28 @@ export function createMultiSpinController(deps) {
     updateQueueUi(tile);
   }
 
+  /** Drop every waiting spin on every on-board wheel (does not stop current spins). */
+  function clearAllQueues() {
+    let cleared = 0;
+    for (const t of tiles.values()) {
+      const n = Array.isArray(t.queue) ? t.queue.length : 0;
+      if (n > 0) {
+        cleared += n;
+        t.queue = [];
+        updateQueueUi(t);
+      }
+    }
+    if (cleared > 0) {
+      setSummary(
+        cleared === 1
+          ? "Cleared 1 queued spin"
+          : `Cleared ${cleared} queued spins`
+      );
+    } else {
+      setSummary("No queued spins to clear");
+    }
+  }
+
   /**
    * Request a spin: run now if idle, else add to this wheel's queue.
    * @returns {Promise<object|null>|"queued"}
@@ -1387,6 +1409,9 @@ export function createMultiSpinController(deps) {
     document
       .getElementById("btn-multi-fit-size")
       ?.addEventListener("click", () => fitAllLargest());
+    document
+      .getElementById("btn-multi-clear-queues")
+      ?.addEventListener("click", () => clearAllQueues());
 
     lockChk()?.addEventListener("change", () => {
       dragLocked = lockChk().checked === true;
@@ -1424,6 +1449,7 @@ export function createMultiSpinController(deps) {
     exit,
     toggle,
     spinAll,
+    clearAllQueues,
     bindUi,
     onLibraryChanged,
     rebuildTiles,
