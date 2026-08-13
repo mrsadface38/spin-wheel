@@ -800,7 +800,7 @@ function bindWheelNewMenu() {
 
 /**
  * Duplicate a saved wheel (current active if id omitted).
- * Prompts for a name; defaults to "Name (copy)".
+ * No name prompt — keeps the same name; rename manually after.
  * @param {string} [slotId]
  */
 async function duplicateWheelById(slotId) {
@@ -812,29 +812,7 @@ async function duplicateWheelById(slotId) {
   }
   // Save current edits first (especially if duplicating the active wheel)
   library = writeActiveState(library, state);
-  const suggested = (() => {
-    try {
-      // local helper from wheels — recompute via duplicateWheel default
-      const base = src.name || "My wheel";
-      const names = new Set(library.wheels.map((w) => w.name || ""));
-      let c = `${base} (copy)`;
-      if (!names.has(c)) return c;
-      for (let n = 2; n < 100; n++) {
-        c = `${base} (copy ${n})`;
-        if (!names.has(c)) return c;
-      }
-      return `${base} (copy)`;
-    } catch {
-      return `${src.name || "My wheel"} (copy)`;
-    }
-  })();
-  const name = await safePrompt(
-    "Name for the duplicate wheel:",
-    suggested,
-    "Duplicate wheel"
-  );
-  if (name === null) return null; // cancelled
-  const result = duplicateWheel(library, id, name || suggested);
+  const result = duplicateWheel(library, id);
   if (!result) {
     await safeAlert("Could not duplicate that wheel.");
     return null;

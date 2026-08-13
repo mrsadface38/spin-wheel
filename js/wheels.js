@@ -265,35 +265,17 @@ export function clearAllWheels(name = "My wheel", data = null) {
 }
 
 /**
- * Suggest a unique name for a duplicated wheel ("Foo (copy)", "Foo (copy 2)", …).
- * @param {WheelLibrary} lib
- * @param {string} baseName
- * @returns {string}
- */
-export function nextDuplicateName(lib, baseName) {
-  const base = String(baseName || "My wheel").trim() || "My wheel";
-  const names = new Set((lib.wheels || []).map((w) => w.name || ""));
-  let candidate = `${base} (copy)`;
-  if (!names.has(candidate)) return candidate;
-  for (let n = 2; n < 1000; n++) {
-    candidate = `${base} (copy ${n})`;
-    if (!names.has(candidate)) return candidate;
-  }
-  return `${base} (copy ${Date.now()})`;
-}
-
-/**
  * Duplicate a wheel (by id) and switch to the copy.
+ * Keeps the same name by default (user can Rename after).
  * @param {WheelLibrary} lib
  * @param {string} id
- * @param {string} [name] optional name for the copy (default: "… (copy)")
+ * @param {string} [name] optional name for the copy (default: source name)
  * @returns {{ lib: WheelLibrary, state: object, id: string } | null}
  */
 export function duplicateWheel(lib, id, name) {
   const src = lib.wheels.find((w) => w.id === id);
   if (!src) return null;
   const copyName =
-    (name && String(name).trim()) ||
-    nextDuplicateName(lib, src.name || "My wheel");
+    (name && String(name).trim()) || src.name || "My wheel";
   return addWheel(lib, copyName, src.data);
 }
