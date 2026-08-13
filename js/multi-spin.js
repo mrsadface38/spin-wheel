@@ -369,13 +369,16 @@ export function createMultiSpinController(deps) {
 
   function boardViewport() {
     const g = grid();
-    // Prefer the multi-body content area so a huge minWidth on the board
-    // cannot make "available" space look bigger than the real panel.
+    // Measure the visible board area only (not oversized scroll content).
     const body = document.getElementById("multi-body");
     const picker = document.getElementById("multi-picker");
     let w = 0;
     let h = 0;
-    if (body) {
+    // Prefer the grid's client box — that's the actual on-screen scrollport
+    if (g && g.clientWidth >= 80 && g.clientHeight >= 80) {
+      w = g.clientWidth;
+      h = g.clientHeight;
+    } else if (body) {
       const pickerW =
         picker &&
         !body.classList.contains("picker-collapsed") &&
@@ -385,38 +388,61 @@ export function createMultiSpinController(deps) {
       w = Math.max(0, body.clientWidth - pickerW - 12);
       h = Math.max(0, body.clientHeight - 8);
     }
-    if (g) {
-      // Visible scrollport (not scrollWidth of oversized content)
-      w = Math.max(w, g.clientWidth || 0);
-      h = Math.max(h, g.clientHeight || 0);
-    }
-    if (w < 160) w = 600;
-    if (h < 160) h = 400;
-    return { w: Math.max(160, w - 8), h: Math.max(160, h - 8) };
+    // Padding inside the board (~0.5rem each side)
+    w = Math.max(0, w - 16);
+    h = Math.max(0, h - 16);
+    // Modest fallback if layout hasn't settled (avoid huge phantom viewports)
+    if (w < 120) w = 480;
+    if (h < 120) h = 360;
+    return { w: Math.max(120, w), h: Math.max(120, h) };
   }
 
   /**
-   * Largest square stage size so `n` tiles pack into the board viewport.
-   * Tries every column count; prefers one-screen fit (w+h), allows vertical
-   * scroll only when necessary.
+   * Largest tile size + column count so all `n` wheels fit on screen
+   * (width AND height — no “make them huge and scroll” fallback).
+   * @returns {{ size: number, cols: number, rows: number }}
    */
-  function maxTileSizeForCount(n) {
+  function bestFitPack(n) {
     const count = Math.max(1, Number(n) || 1);
     const { w, h } = boardViewport();
-    let bestFit = TILE_MIN; // fits both width and height
-    let bestWidth = TILE_MIN; // fits width only (scroll vertically)
+    let best = { size: 0, cols: 1, rows: count };
+
     for (let cols = 1; cols <= count; cols++) {
       const rows = Math.ceil(count / cols);
-      const cellW = (w - (cols - 1) * TILE_GAP) / cols;
-      const cellH = (h - (rows - 1) * TILE_GAP) / rows;
-      const sW = Math.floor(cellW);
-      const sBoth = Math.floor(Math.min(cellW, cellH - TILE_CHROME_H));
-      if (sBoth > bestFit) bestFit = sBoth;
-      if (sW > bestWidth) bestWidth = sW;
+      // Width budget per column
+      const maxByW = Math.floor((w - (cols - 1) * TILE_GAP) / cols);
+      // Height budget per row (stage + chrome under/above the square)
+      const maxByH = Math.floor(
+        (h - (rows - 1) * TILE_GAP) / rows - TILE_CHROME_H
+      );
+      const s = Math.floor(Math.min(maxByW, maxByH));
+      if (s > best.size) {
+        best = { size: s, cols, rows };
+      } else if (s === best.size && s > 0) {
+        // Prefer fewer rows when size ties (more horizontal, less tall)
+        if (rows < best.rows) best = { size: s, cols, rows };
+      }
     }
-    // Prefer full on-screen pack; if nothing fits height, pack by width + scroll
-    const pick = bestFit >= TILE_MIN + 20 ? bestFit : bestWidth;
-    return clampSize(Math.min(pick, w - 4));
+
+    // Soft floor: allow below TILE_MIN when many wheels so they still fit
+    let size = best.size;
+    if (!Number.isFinite(size) || size < 80) size = 80;
+    size = Math.min(TILE_MAX, size);
+    // Cap to viewport width so a single tile never overflows
+    size = Math.min(size, Math.max(80, w - 4));
+    return {
+      size: Math.round(size),
+      cols: best.cols || 1,
+      rows: best.rows || 1,
+    };
+  }
+
+  /**
+   * Largest square stage size so `n` tiles all fit on the board viewport.
+   * Always fits width + height (no vertical-scroll-only oversize).
+   */
+  function maxTileSizeForCount(n) {
+    return bestFitPack(n).size;
   }
 
   function effectiveGridSize() {
@@ -907,9 +933,8 @@ export function createMultiSpinController(deps) {
   }
 
   /**
-   * Hard reset: clear custom sizes, scroll to origin, remeasure board, pack
-   * every wheel into a non-overlapping grid at the largest size that fits.
-   * Works even when tiles were oversized / off-screen.
+   * Hard reset: pack every on-screen wheel into a dense grid at the largest
+   * size that still fits ALL of them on screen (no scroll needed).
    */
   function fitAllLargest() {
     if (!selectedIds.length) {
@@ -917,9 +942,7 @@ export function createMultiSpinController(deps) {
       return;
     }
 
-    // Drop shared + per-tile custom sizes
-    sharedGridSize = null;
-    saveSharedGridSize();
+    // Clear per-tile overrides; size will be pinned to the fit-all size
     for (const id of Object.keys(layoutMap)) {
       const L = layoutMap[id];
       if (!L) continue;
@@ -929,10 +952,10 @@ export function createMultiSpinController(deps) {
 
     const g = grid();
     if (g) {
-      // Clear oversized board constraints so viewport measure is real
-      g.style.minWidth = "0";
+      // Reset board so viewport measure is the real visible panel
+      g.style.minWidth = "";
       g.style.width = "100%";
-      g.style.minHeight = "0";
+      g.style.minHeight = "";
       try {
         g.scrollLeft = 0;
         g.scrollTop = 0;
@@ -943,10 +966,18 @@ export function createMultiSpinController(deps) {
 
     const packNow = () => {
       const n = Math.max(1, selectedIds.length);
-      const size = maxTileSizeForCount(n);
-      const { cols, cellW, cellH } = gridMetrics(size);
+      // Largest size + best columns so every wheel fits on screen
+      const pack = bestFitPack(n);
+      const size = pack.size;
+      const cols = pack.cols;
+      const cellW = size + TILE_GAP;
+      const cellH = size + TILE_CHROME_H + TILE_GAP;
 
-      // Dense pack — clears empty gaps
+      // Pin shared size so layout doesn't re-grow past the fit
+      sharedGridSize = size;
+      saveSharedGridSize();
+
+      // Dense pack — clears empty gaps; uses the same cols as the fit math
       selectedIds.forEach((id, i) => {
         const col = i % cols;
         const row = Math.floor(i / cols);
@@ -957,13 +988,37 @@ export function createMultiSpinController(deps) {
           x: col * cellW,
           y: row * cellH,
           size,
-          customSize: false,
+          customSize: true,
         };
       });
       saveLayout();
-      applyGridLayout({ redraw: true });
+
+      // Stay in current free/grid mode but place by the dense pack
+      if (!freeLayout) {
+        applyGridLayout({ redraw: true });
+      } else {
+        for (const t of tiles.values()) {
+          if (!t.rootEl) continue;
+          const pos = layoutMap[t.slotId];
+          if (!pos) continue;
+          t.rootEl.style.left = `${pos.x}px`;
+          t.rootEl.style.top = `${pos.y}px`;
+          t.rootEl.style.width = `${size}px`;
+          t.rootEl.style.minWidth = `${size}px`;
+          try {
+            t.wheel?.resize?.();
+            t.wheel?.draw?.();
+          } catch {
+            /* ignore */
+          }
+        }
+        updateBoardSize();
+      }
 
       if (g) {
+        // Board only needs to be as big as the pack (fits viewport)
+        g.style.minWidth = "";
+        g.style.minHeight = "";
         try {
           g.scrollLeft = 0;
           g.scrollTop = 0;
@@ -972,13 +1027,14 @@ export function createMultiSpinController(deps) {
         }
       }
 
+      syncPickerGridSizeUi();
       setSummary(
-        `Reset layout: ${n} wheel${n === 1 ? "" : "s"} at ${size}px (packed, no empty slots)`
+        `Fit largest: ${n} wheel${n === 1 ? "" : "s"} at ${size}px · ${cols}×${pack.rows} (all on screen)`
       );
       positionGridResizeHandle();
     };
 
-    // Two frames so clientWidth/Height update after clearing huge minWidth
+    // Two frames so clientWidth/Height update after clearing huge min sizes
     requestAnimationFrame(() => {
       requestAnimationFrame(packNow);
     });
