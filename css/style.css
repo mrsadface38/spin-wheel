@@ -1158,10 +1158,22 @@ body.multi-spin-mode #stage {
     box-shadow 0.1s;
 }
 
+.multi-grid-drop-cell.is-empty {
+  border-style: dashed;
+  border-color: rgba(140, 170, 255, 0.35);
+  background: rgba(70, 110, 220, 0.05);
+}
+
+.multi-grid-drop-cell.is-occupied {
+  border-style: solid;
+  border-color: rgba(140, 170, 255, 0.4);
+  background: rgba(70, 110, 220, 0.1);
+}
+
 .multi-grid-drop-cell.is-source {
   border-style: dotted;
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .multi-grid-drop-cell.is-active {
@@ -1173,6 +1185,10 @@ body.multi-spin-mode #stage {
     inset 0 0 24px rgba(126, 224, 168, 0.08);
 }
 
+.multi-grid-drop-cell.is-active.is-empty {
+  background: rgba(126, 224, 168, 0.12);
+}
+
 .multi-grid-drop-cell-num {
   position: absolute;
   top: 6px;
@@ -1181,6 +1197,18 @@ body.multi-spin-mode #stage {
   font-weight: 800;
   color: rgba(180, 200, 255, 0.55);
   letter-spacing: 0.02em;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-grid-drop-cell.is-empty .multi-grid-drop-cell-num {
+  color: rgba(140, 170, 255, 0.35);
+  font-size: 1.1rem;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .multi-grid-drop-cell.is-active .multi-grid-drop-cell-num {
