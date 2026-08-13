@@ -3354,6 +3354,46 @@ export function createMultiSpinController(deps) {
   }
 
   /**
+   * Multi board session for library Backup/Restore (keeps real wheel ids).
+   * When open + has on-screen wheels, restore can re-enter multi view.
+   * @returns {null | {
+   *   open: boolean,
+   *   freeLayout: boolean,
+   *   dragLocked: boolean,
+   *   sharedGridSize: number|null,
+   *   selectedIds: string[],
+   *   layout: Record<string, object>,
+   * }}
+   */
+  function getBackupMultiState() {
+    if (!active || !selectedIds.length) return null;
+    const layout = {};
+    for (const id of selectedIds) {
+      const L = layoutMap[id];
+      if (!L || typeof L !== "object") continue;
+      const entry = {};
+      if (Number.isFinite(L.x)) entry.x = L.x;
+      if (Number.isFinite(L.y)) entry.y = L.y;
+      if (Number.isFinite(L.col)) entry.col = L.col;
+      if (Number.isFinite(L.row)) entry.row = L.row;
+      if (Number.isFinite(L.size)) entry.size = L.size;
+      if (L.customSize === true) entry.customSize = true;
+      layout[id] = entry;
+    }
+    return {
+      open: true,
+      freeLayout: !!freeLayout,
+      dragLocked: !!dragLocked,
+      sharedGridSize:
+        sharedGridSize != null && Number.isFinite(sharedGridSize)
+          ? sharedGridSize
+          : null,
+      selectedIds: selectedIds.slice(),
+      layout,
+    };
+  }
+
+  /**
    * Snapshot of everything currently visible on the multi board (for Share).
    * Wheels are listed in stack/on-screen order with per-wheel layout.
    * @returns {null | {
@@ -3479,6 +3519,7 @@ export function createMultiSpinController(deps) {
     setSelectionUiVisible,
     applyLiveState,
     getShareSnapshot,
+    getBackupMultiState,
     applyShareImport,
   };
 }

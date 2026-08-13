@@ -11041,10 +11041,33 @@ $("#btn-export").addEventListener("click", () => {
   URL.revokeObjectURL(a.href);
 });
 
+/**
+ * True when a library backup includes a multi-spin board session to reopen.
+ * @param {object|null|undefined} raw
+ */
+function backupHasMultiSession(raw) {
+  const m = raw?.multi;
+  if (!m || typeof m !== "object") return false;
+  if (m.open === false) return false;
+  const ids = Array.isArray(m.selectedIds) ? m.selectedIds : [];
+  // Share-shaped multi block (wheels with data) also counts
+  const shareWheels = Array.isArray(m.wheels) ? m.wheels : [];
+  return ids.length > 0 || shareWheels.length > 0;
+}
+
 /** Full library backup (every wheel + which is active). */
 function backupLibrary() {
   syncUiPrefsIntoState();
   library = writeActiveState(library, state);
+  // Keep multi tiles in sync with the live editor before snapshot
+  try {
+    if (multiSpin?.isActive?.() && library?.activeId) {
+      const slot = getActiveSlot(library);
+      void multiSpin.applyLiveState?.(library.activeId, state, slot?.name);
+    }
+  } catch {
+    /* ignore */
+  }
   const payload = {
     format: "sad-wheel-library-v1",
     exportedAt: new Date().toISOString(),
@@ -11058,10 +11081,70 @@ function backupLibrary() {
       })),
     },
   };
+  // Same idea as Share: when multi-spin is open, save board session so Restore
+  // can put the user back into multi view with layout/stack/mode.
+  try {
+    const multi = multiSpin?.getBackupMultiState?.();
+    if (multi?.open && multi.selectedIds?.length) {
+      payload.multi = multi;
+    }
+  } catch (err) {
+    console.warn("backup multi state:", err);
+  }
   downloadJson(
     `sad-wheel-backup-${new Date().toISOString().slice(0, 10)}.json`,
     payload
   );
+}
+
+/**
+ * Re-open multi-spin from a backup multi block (ids match restored library).
+ * Also accepts share-shaped multi (wheels with embedded data) if ids missing.
+ * @param {object} multi
+ * @param {object} lib restored library
+ */
+async function restoreMultiFromBackup(multi, lib) {
+  if (!multiSpin || !multi || !lib?.wheels?.length) return false;
+
+  // Path A: backup multi with selectedIds (preferred — same ids as library)
+  let ids = Array.isArray(multi.selectedIds)
+    ? multi.selectedIds.map(String).filter(Boolean)
+    : [];
+  ids = ids.filter((id) => lib.wheels.some((w) => w.id === id));
+  let layout =
+    multi.layout && typeof multi.layout === "object" ? { ...multi.layout } : {};
+
+  // Path B: share-shaped multi inside backup (add was already done as library)
+  // Match by name order if no ids
+  if (!ids.length && Array.isArray(multi.wheels) && multi.wheels.length) {
+    // Prefer matching library wheels by name in stack order
+    const used = new Set();
+    for (const w of multi.wheels) {
+      const name = (w?.name && String(w.name).trim()) || "";
+      const hit = lib.wheels.find(
+        (lw) => !used.has(lw.id) && (lw.name || "") === name
+      );
+      if (hit) {
+        used.add(hit.id);
+        ids.push(hit.id);
+        if (w.layout && typeof w.layout === "object") {
+          layout[hit.id] = { ...w.layout };
+        }
+      }
+    }
+  }
+
+  if (!ids.length) return false;
+
+  multiSpin.applyShareImport({
+    selectedIds: ids,
+    layout,
+    freeLayout: multi.freeLayout === true,
+    dragLocked: multi.dragLocked === true,
+    sharedGridSize:
+      multi.sharedGridSize != null ? multi.sharedGridSize : null,
+  });
+  return true;
 }
 
 async function restoreLibraryFromFile(file) {
@@ -11072,9 +11155,26 @@ async function restoreLibraryFromFile(file) {
   if (!libRaw || !Array.isArray(libRaw.wheels) || !libRaw.wheels.length) {
     throw new Error("Not a valid library backup (missing wheels)");
   }
+
+  // Multi-only backup / share JSON pasted as "restore" — same path as multi share
+  if (
+    isMultiSharePayload(raw) &&
+    !raw?.library?.wheels &&
+    Array.isArray(raw.wheels)
+  ) {
+    await importMultiSharePayload(raw);
+    return;
+  }
+
+  const hasMulti = backupHasMultiSession(raw);
+  const multiNote = hasMulti
+    ? "\n\nThis backup includes a multi-spin board — Restore will open multi view (like Share)."
+    : "";
   if (
     !confirm(
-      `Restore library backup with ${libRaw.wheels.length} wheel(s)?\n\nThis replaces ALL wheels currently saved on this device.`
+      `Restore library backup with ${libRaw.wheels.length} wheel(s)?\n\n` +
+        `This replaces ALL wheels currently saved on this device.` +
+        multiNote
     )
   ) {
     return;
@@ -11103,11 +11203,34 @@ async function restoreLibraryFromFile(file) {
   undoStack.length = 0;
   lastWinnerId = null;
   hideResults();
+  // Leave multi if open so applyShareImport can re-enter cleanly
+  try {
+    if (multiSpin?.isActive?.()) multiSpin.exit();
+  } catch {
+    /* ignore */
+  }
   fillWheelSelect();
   bindAll();
   await preloadAudio();
   await refreshWheel();
-  alert(`Restored ${library.wheels.length} wheel(s).`);
+
+  let openedMulti = false;
+  if (hasMulti) {
+    try {
+      openedMulti = await restoreMultiFromBackup(raw.multi, library);
+    } catch (err) {
+      console.warn("restore multi view:", err);
+    }
+  }
+
+  updateShareButtonHint();
+  if (openedMulti) {
+    alert(
+      `Restored ${library.wheels.length} wheel(s) and opened multi-spin view.`
+    );
+  } else {
+    alert(`Restored ${library.wheels.length} wheel(s).`);
+  }
 }
 
 $("#btn-backup-library")?.addEventListener("click", () => {
