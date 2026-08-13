@@ -1041,6 +1041,23 @@ export function createMultiSpinController(deps) {
     return !!(tile && (tile.spinning || tile.wheel?.spinning));
   }
 
+  /** Busy or still has spins waiting. */
+  function isTileFullyIdle(tile) {
+    if (!tile) return true;
+    if (isTileBusy(tile)) return false;
+    if (Array.isArray(tile.queue) && tile.queue.length > 0) return false;
+    return true;
+  }
+
+  async function waitUntilTileFullyIdle(tile, timeoutMs = 600000) {
+    if (!tile) return;
+    const start = Date.now();
+    while (!isTileFullyIdle(tile)) {
+      if (Date.now() - start > timeoutMs) break;
+      await sleepMs(40);
+    }
+  }
+
   function updateQueueUi(tile) {
     if (!tile?.rootEl) return;
     const n = Array.isArray(tile.queue) ? tile.queue.length : 0;
@@ -1137,19 +1154,39 @@ export function createMultiSpinController(deps) {
       eff.landShowResultUnit
     );
     const waitMs = showMs > 0 ? showMs : 400;
+    const times = Math.min(
+      99,
+      Math.max(1, Number(eff.landActionTimes) || 1)
+    );
     const nextOpts = {
       silentLand: true,
       chainDepth: chainDepth + 1,
     };
 
-    if (action === "respin") {
-      setTileResult(tile, win, "→ respin…");
-      await sleepMs(waitMs);
-      // Queue if still finishing this spin / already busy — runs after
-      const r = await requestSpin(tile, nextOpts);
-      if (r === "queued") {
-        setTileResult(tile, win, `→ respin (queued · ${tile.queue.length})`);
+    async function fireTimes(targetTile, label) {
+      let queued = 0;
+      for (let i = 0; i < times; i++) {
+        const r = await requestSpin(targetTile, nextOpts);
+        if (r === "queued") queued += 1;
       }
+      if (queued > 0) {
+        const n = targetTile.queue?.length || queued;
+        setTileResult(
+          tile,
+          win,
+          times > 1
+            ? `→ ${label} ×${times} (queued · ${n})`
+            : `→ ${label} (queued · ${n})`
+        );
+      } else if (times > 1) {
+        setTileResult(tile, win, `→ ${label} ×${times}`);
+      }
+    }
+
+    if (action === "respin") {
+      setTileResult(tile, win, times > 1 ? `→ respin ×${times}…` : "→ respin…");
+      await sleepMs(waitMs);
+      await fireTimes(tile, "respin");
       return true;
     }
 
@@ -1160,12 +1197,13 @@ export function createMultiSpinController(deps) {
         return false;
       }
       if (tid === tile.slotId) {
-        setTileResult(tile, win, "→ respin…");
+        setTileResult(
+          tile,
+          win,
+          times > 1 ? `→ respin ×${times}…` : "→ respin…"
+        );
         await sleepMs(waitMs);
-        const r = await requestSpin(tile, nextOpts);
-        if (r === "queued") {
-          setTileResult(tile, win, `→ respin (queued · ${tile.queue.length})`);
-        }
+        await fireTimes(tile, "respin");
         return true;
       }
       const target = await ensureTileForSlot(tid);
@@ -1173,12 +1211,27 @@ export function createMultiSpinController(deps) {
         setTileResult(tile, win, "→ (wheel not found)");
         return false;
       }
-      setTileResult(tile, win, `→ ${target.name}`);
+      setTileResult(
+        tile,
+        win,
+        times > 1 ? `→ ${target.name} ×${times}` : `→ ${target.name}`
+      );
       await sleepMs(waitMs);
-      const r = await requestSpin(target, nextOpts);
-      if (r === "queued") {
-        const n = target.queue?.length || 0;
-        setTileResult(tile, win, `→ ${target.name} (queued · ${n})`);
+      await fireTimes(target, target.name);
+      // Wait for the other wheel to finish (and drain its queue) before we
+      // continue this wheel's own queue — optional multi-spin setting.
+      if (waitForTargetWheel) {
+        setTileResult(
+          tile,
+          win,
+          `→ ${target.name}${times > 1 ? ` ×${times}` : ""} (waiting…)`
+        );
+        await waitUntilTileFullyIdle(target);
+        setTileResult(
+          tile,
+          win,
+          `→ ${target.name}${times > 1 ? ` ×${times}` : ""} (done)`
+        );
       }
       return true;
     }
@@ -1442,6 +1495,12 @@ export function createMultiSpinController(deps) {
       applyDragLockUi();
     });
     if (lockChk()) lockChk().checked = dragLocked;
+
+    waitTargetChk()?.addEventListener("change", () => {
+      waitForTargetWheel = waitTargetChk().checked === true;
+      saveWaitForTarget();
+    });
+    if (waitTargetChk()) waitTargetChk().checked = waitForTargetWheel;
 
     document
       .getElementById("btn-multi-picker-collapse")
