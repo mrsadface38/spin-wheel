@@ -733,7 +733,12 @@ body.focus-mode .stage-panel {
   flex-direction: column;
   gap: 0;
   min-height: 0;
+  /* Allow grid/flex parents to shrink; prevents multi-board min-width from
+     expanding this panel and flinging absolute chrome (Hide panels) sideways */
+  min-width: 0;
+  max-width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 /* Hide / show editor panels — sits on the right edge of the wheel */
@@ -886,6 +891,9 @@ body.focus-mode .stage-panel {
   gap: 0.55rem;
   height: 100%;
   min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 .multi-root.hidden,
@@ -926,6 +934,9 @@ body.multi-spin-mode #stage {
 .multi-body {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
   display: flex;
   gap: 0.65rem;
   overflow: hidden;
@@ -1280,9 +1291,10 @@ body.multi-picker-drag-cursor * {
 
 /* Multi board: grid by default (no overlap); free placement optional */
 .multi-grid.multi-board {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
+  max-width: 100%;
   overflow: auto;
   position: relative;
   display: block;
@@ -1294,6 +1306,8 @@ body.multi-picker-drag-cursor * {
   background-size: 18px 18px;
   background-color: rgba(10, 12, 22, 0.55);
   box-sizing: border-box;
+  /* Scroll wide boards inside this box — do not inflate stage-panel width */
+  overscroll-behavior: contain;
 }
 
 .multi-grid.multi-board.is-grid-layout {
@@ -1860,13 +1874,22 @@ body.multi-picker-drag-cursor * {
     height: 100%;
     min-height: 0;
     max-height: 100%;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
     overflow: hidden;
+    /* Containing block for Hide panels — keep width = visible stage only */
+    contain: inline-size;
   }
 
   body.multi-spin-mode .multi-root {
     height: 100%;
     min-height: 0;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
     gap: 0.35rem;
+    overflow: hidden;
   }
 
   body.multi-spin-mode .multi-toolbar {
@@ -1913,11 +1936,25 @@ body.multi-picker-drag-cursor * {
     min-height: 0;
   }
 
-  /* Hide-panels pill sits on the stage — keep it from covering editor tabs */
+  /*
+   * Pin Hide panels to the VISIBLE top-right of stage-panel.
+   * (Board min-width used to widen stage-panel and fling this button left/right.)
+   */
   body.multi-spin-mode .btn-toggle-sidebar {
-    top: 0.4rem;
-    right: 0.4rem;
-    z-index: 35;
+    position: absolute;
+    top: 0.45rem;
+    right: 0.45rem;
+    bottom: auto;
+    left: auto;
+    transform: none !important;
+    z-index: 50;
+    margin: 0;
+    /* Don’t animate position/size — reflows looked like “shooting” */
+    transition:
+      background 0.15s,
+      color 0.15s,
+      border-color 0.15s,
+      box-shadow 0.15s;
   }
 }
 
@@ -1963,13 +2000,15 @@ body.multi-picker-drag-cursor * {
     flex: 1 1 8rem;
   }
 
-  /* Edge tabs become corner-style pills when the multi body stacks vertically */
+  /* Edge tabs become compact pills — stay start-aligned, don’t stretch full width */
   body.multi-spin-mode .btn-multi-picker-edge {
     flex-direction: row;
-    align-self: stretch;
+    align-self: flex-start;
+    flex-shrink: 0;
     min-width: 3rem;
     min-height: 2.85rem;
     height: auto;
+    max-width: 100%;
     padding: 0.55rem 0.85rem;
     gap: 0.4rem;
     margin-left: 0;
@@ -1994,11 +2033,13 @@ body.multi-picker-drag-cursor * {
     background: color-mix(in srgb, var(--accent) 18%, rgba(20, 24, 41, 0.95));
   }
 
+  /* Stay top-right of the stage (don’t jump to bottom on narrow multi) */
   body.multi-spin-mode .btn-toggle-sidebar {
-    /* Corner pill already; keep clear of multi toolbar */
-    top: auto;
-    bottom: 0.45rem;
+    top: 0.45rem;
     right: 0.45rem;
+    bottom: auto;
+    left: auto;
+    transform: none !important;
   }
 
   .tab {
