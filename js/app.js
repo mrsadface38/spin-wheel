@@ -6189,9 +6189,85 @@ $("#section-form").addEventListener("submit", async (e) => {
 });
 
 // --- Bulk add ---
+/** Hex color token for bulk field parsing (optional leading #). */
+function isBulkColorToken(s) {
+  return typeof s === "string" && /^#?[0-9a-fA-F]{3,8}$/.test(s.trim());
+}
+
+function normalizeBulkColorToken(s) {
+  const t = String(s || "").trim();
+  if (!isBulkColorToken(t)) return null;
+  return t.startsWith("#") ? t : `#${t}`;
+}
+
+/**
+ * Parse one bulk entry: Label | weight | color
+ * Also accepts legacy Label | color | weight when the 2nd field is a hex color.
+ */
+function parseBulkEntryFields(raw) {
+  const parts = String(raw || "")
+    .split("|")
+    .map((p) => p.trim());
+  const label = parts[0] || "Untitled";
+  let weight = 1;
+  let color = null;
+  let colorGiven = false;
+
+  const a = parts[1] || "";
+  const b = parts[2] || "";
+  const aColor = a ? normalizeBulkColorToken(a) : null;
+  const bColor = b ? normalizeBulkColorToken(b) : null;
+
+  if (aColor && !bColor) {
+    // Legacy: Label | color [| weight]
+    color = aColor;
+    colorGiven = true;
+    if (b) weight = normalizeWeight(b);
+  } else {
+    // Preferred: Label | weight | color
+    if (a) {
+      if (aColor && !b) {
+        // Label | #color only
+        color = aColor;
+        colorGiven = true;
+      } else {
+        weight = normalizeWeight(a);
+      }
+    }
+    if (bColor) {
+      color = bColor;
+      colorGiven = true;
+    }
+  }
+
+  return {
+    label,
+    weight,
+    color: color || nextPaletteColor(state),
+    colorGiven,
+  };
+}
+
+/** Split bulk text into entry strings (new lines, or commas when opted in). */
+function splitBulkEntries(text, useCommas) {
+  const raw = String(text || "");
+  if (useCommas) {
+    // Comma-separated items; allow newlines inside the paste as plain space between commas
+    return raw
+      .split(",")
+      .map((s) => s.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+  }
+  return raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
 $("#btn-add-many").addEventListener("click", () => {
   fillGroupSelects();
   $("#bulk-text").value = "";
+  if ($("#bulk-use-commas")) $("#bulk-use-commas").checked = false;
   bulkModal.showModal();
 });
 
@@ -6199,7 +6275,8 @@ $("#bulk-cancel").addEventListener("click", () => bulkModal.close());
 
 $("#bulk-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const lines = $("#bulk-text").value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const useCommas = $("#bulk-use-commas")?.checked === true;
+  const lines = splitBulkEntries($("#bulk-text")?.value || "", useCommas);
   if (!lines.length) return;
   // "" = None (no group). Do not fall back to first group.
   const bulkGroupRaw = $("#bulk-group")?.value ?? "";
@@ -6209,15 +6286,7 @@ $("#bulk-form").addEventListener("submit", async (e) => {
       : null;
   checkpoint();
   for (const line of lines) {
-    const parts = line.split("|").map((p) => p.trim());
-    const label = parts[0] || "Untitled";
-    const color = parts[1] && /^#?[0-9a-fA-F]{3,8}$/.test(parts[1])
-      ? parts[1].startsWith("#")
-        ? parts[1]
-        : `#${parts[1]}`
-      : nextPaletteColor(state);
-    const weight = parts[2] ? normalizeWeight(parts[2]) : 1;
-    const colorGiven = !!(parts[1] && /^#?[0-9a-fA-F]{3,8}$/.test(parts[1]));
+    const { label, weight, color, colorGiven } = parseBulkEntryFields(line);
     state.sections.push({
       id: uid("sec"),
       label,
