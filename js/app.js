@@ -68,6 +68,7 @@ import {
   encodeGifFromFrames,
   downloadBinary,
   recordWhileBusy,
+  GIF_DEFAULT_MAX_SIDE,
 } from "./make-gif.js";
 
 const audio = new AudioManager();
@@ -10076,7 +10077,7 @@ function setMakeGifButtonStatus(text, { disabled } = {}) {
  * Capture one frame of the main (single-wheel) stage.
  * @param {number} maxSide
  */
-function captureMainWheelGifFrame(maxSide = 360) {
+function captureMainWheelGifFrame(maxSide = GIF_DEFAULT_MAX_SIDE) {
   const stageEl = $("#stage");
   if (!stageEl || stageEl.hidden) {
     throw new Error("Wheel stage is not visible");
@@ -10099,7 +10100,11 @@ function captureMainWheelGifFrame(maxSide = 360) {
  * @param {string} [bgColor]
  * @param {number} maxSide
  */
-function captureMultiTileGifFrame(stageEl, bgColor, maxSide = 360) {
+function captureMultiTileGifFrame(
+  stageEl,
+  bgColor,
+  maxSide = GIF_DEFAULT_MAX_SIDE
+) {
   if (!stageEl) throw new Error("Multi tile stage missing");
   const { imageData } = captureStageFrame({
     stageEl,
@@ -10123,9 +10128,10 @@ async function makeWheelGif() {
   const prevLabel = btn?.textContent || "Make GIF";
   setMakeGifButtonStatus("Preparing…", { disabled: true });
 
-  const fps = 12;
+  // Higher res + fps = sharper, smoother GIF (files are larger)
+  const fps = 16;
   const delayMs = Math.round(1000 / fps);
-  const maxSide = 360;
+  const maxSide = GIF_DEFAULT_MAX_SIDE;
   let width = 0;
   let height = 0;
 

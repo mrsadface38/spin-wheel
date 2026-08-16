@@ -3,6 +3,9 @@
  */
 import { GIFEncoder, quantize, applyPalette } from "./gifenc.esm.js";
 
+/** Default max longest side — sharp enough for share; GIF still capped for file size. */
+export const GIF_DEFAULT_MAX_SIDE = 720;
+
 /**
  * @param {object} opts
  * @param {HTMLElement} opts.stageEl
@@ -18,18 +21,46 @@ export function captureStageFrame(opts = {}) {
   const stageEl = opts.stageEl;
   if (!stageEl) throw new Error("No stage to capture");
   const rect = stageEl.getBoundingClientRect();
-  let cssW = Math.max(32, Math.round(rect.width));
-  let cssH = Math.max(32, Math.round(rect.height));
-  const maxSide = Math.max(64, Number(opts.maxSide) || 360);
-  const scale = Math.min(1, maxSide / Math.max(cssW, cssH));
-  const width = Math.max(64, Math.round(cssW * scale));
-  const height = Math.max(64, Math.round(cssH * scale));
+  const cssW = Math.max(32, rect.width);
+  const cssH = Math.max(32, rect.height);
+  const maxSide = Math.max(128, Number(opts.maxSide) || GIF_DEFAULT_MAX_SIDE);
+
+  // Prefer high-DPI canvas buffers (devicePixelRatio) over CSS box size
+  const srcW = Math.max(
+    opts.wheelCanvas?.width || 0,
+    opts.bgCanvas?.width || 0,
+    opts.overlayCanvas?.width || 0,
+    Math.round(cssW * (typeof devicePixelRatio === "number" ? devicePixelRatio : 1))
+  );
+  const srcH = Math.max(
+    opts.wheelCanvas?.height || 0,
+    opts.bgCanvas?.height || 0,
+    opts.overlayCanvas?.height || 0,
+    Math.round(cssH * (typeof devicePixelRatio === "number" ? devicePixelRatio : 1))
+  );
+
+  // Output at source resolution, only shrink if above maxSide (never upscale mush)
+  let width = Math.max(64, srcW);
+  let height = Math.max(64, srcH);
+  const long = Math.max(width, height);
+  if (long > maxSide) {
+    const s = maxSide / long;
+    width = Math.max(64, Math.round(width * s));
+    height = Math.max(64, Math.round(height * s));
+  }
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("2D canvas unavailable");
+
+  ctx.imageSmoothingEnabled = true;
+  try {
+    ctx.imageSmoothingQuality = "high";
+  } catch {
+    /* older engines */
+  }
 
   // Solid stage fill (matches Look background when canvases are transparent)
   ctx.fillStyle = opts.bgColor || "#0f1220";
@@ -147,17 +178,22 @@ function drawPointerEl(ctx, pointerEl, outW, outH, stageRect) {
 export function encodeGifFromFrames(frames, width, height, delayMs = 80) {
   if (!frames?.length) throw new Error("No frames to encode");
   const gif = GIFEncoder();
+  // GIF delay is in 1/100s; keep frames smooth
   const delay = Math.max(2, Math.round(Number(delayMs) || 80));
   for (let i = 0; i < frames.length; i++) {
     const frame = frames[i];
     const data = frame?.data || frame;
-    const rgba =
-      data instanceof Uint8Array
+    // Copy so quantize can round pixels without mutating other frames
+    const rgba = new Uint8Array(
+      data instanceof Uint8Array || data instanceof Uint8ClampedArray
         ? data
-        : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    // gifenc quantize expects a full-buffer view length = w*h*4
-    const palette = quantize(rgba, 256);
-    const index = applyPalette(rgba, palette);
+        : data.buffer
+        ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+        : data
+    );
+    // Full 256-color palette per frame for less banding on gradients/images
+    const palette = quantize(rgba, 256, { format: "rgb565", oneBitAlpha: false });
+    const index = applyPalette(rgba, palette, "rgb565");
     gif.writeFrame(index, width, height, {
       palette,
       delay,
