@@ -1766,8 +1766,12 @@ export function createMultiSpinController(deps) {
         onDragStart: ({ interrupted } = {}) => {
           tile._wheelInteracted = true;
           deps.audio?.ensure?.();
+          // Clear big-center as soon as the user grabs the wheel
+          dismissTileResultForNewSpin(tile);
           if (interrupted) {
-            // spinTile's await will finish with null — hold queue until fling/idle
+            // Invalidate the in-flight spinTile so its land doesn't re-show overlay
+            bumpTileSpinGen(tile);
+            // spinTile's await will finish — hold queue until fling/idle
             tile._holdQueueForDrag = true;
             tile.spinning = false;
             tile.rootEl?.classList.remove("is-spinning");
@@ -1776,6 +1780,7 @@ export function createMultiSpinController(deps) {
         onFling: (vel) => {
           tile._wheelInteracted = true;
           tile._holdQueueForDrag = false;
+          dismissTileResultForNewSpin(tile);
           if (tile.state?.look?.fairDragSpin === true) {
             const dir = Number(vel) < 0 ? -1 : 1;
             void requestSpin(tile, {
@@ -2255,15 +2260,19 @@ export function createMultiSpinController(deps) {
     return Number.isFinite(n) ? n : 0;
   }
 
+  /** Bump generation so a superseded spin/fling doesn't paint a late result. */
+  function bumpTileSpinGen(tile) {
+    if (!tile) return 0;
+    tile._spinGen = (Number(tile._spinGen) || 0) + 1;
+    return tile._spinGen;
+  }
+
   /**
-   * When a new spin starts: if Auto-dismiss is off (0), clear big-center so the
-   * spin is visible. If Auto-dismiss is on (>0), leave the overlay/timer alone.
+   * Always clear big-center / banner when a new spin or fling starts so the
+   * wheel is visible (auto-dismiss timer is cancelled too).
    */
   function dismissTileResultForNewSpin(tile) {
     if (!tile?.rootEl) return;
-    const autoSec = tileAutoDismissSec(tile);
-    // Positive = auto-dismiss on → follow that timer only
-    if (autoSec > 0) return;
     clearTileResultCenter(tile);
     const el = tile.rootEl.querySelector(".multi-tile-result");
     if (el) {
@@ -2271,6 +2280,7 @@ export function createMultiSpinController(deps) {
       el.classList.remove("has-win");
       el.hidden = true;
     }
+    tile.lastWin = null;
   }
 
   /**
@@ -3236,18 +3246,41 @@ export function createMultiSpinController(deps) {
   /**
    * After the physical spin ends: clear busy flag, then land actions / queue.
    * Clearing busy before wait-for-other lets A↔B loops keep running.
+   * @param {{ silentLand?: boolean, chainDepth?: number, rigged?: boolean, spinGen?: number }} [opts]
    */
   async function afterTileSpin(tile, win, opts = {}) {
     const silentLand = opts.silentLand === true;
     const chainDepth = Number(opts.chainDepth) || 0;
     const rigged = opts.rigged === true;
+    const spinGen = opts.spinGen;
+
+    // Superseded by a newer spin/fling/grab — do not paint big-center over it
+    if (
+      spinGen != null &&
+      Number(spinGen) !== Number(tile._spinGen || 0)
+    ) {
+      return;
+    }
 
     // Spin animation finished — free the tile so portals can target it
     tile.spinning = false;
     tile.rootEl?.classList.remove("is-spinning");
 
     if (win) {
+      // Re-check: land wait can yield and a new spin may have started
+      if (
+        spinGen != null &&
+        Number(spinGen) !== Number(tile._spinGen || 0)
+      ) {
+        return;
+      }
       await recordTileWinAndEffect(tile, win, { rigged });
+      if (
+        spinGen != null &&
+        Number(spinGen) !== Number(tile._spinGen || 0)
+      ) {
+        return;
+      }
       // Land actions may wait for another wheel (spin-work idle only)
       await handleMultiLandAction(tile, win, chainDepth);
       if (!silentLand && chainDepth === 0) {
@@ -3320,14 +3353,11 @@ export function createMultiSpinController(deps) {
       /* ignore */
     }
 
+    const spinGen = bumpTileSpinGen(tile);
     tile.spinning = true;
     tile.rootEl?.classList.add("is-spinning");
-    // Auto-dismiss off (0): clear big-center so the spin is visible (incl. respin).
-    // Auto-dismiss on (>0): leave overlay/timer alone until it fires.
+    // Always clear big-center / banner so the spin is visible (incl. respin)
     dismissTileResultForNewSpin(tile);
-    if (chainDepth === 0 && !(tileAutoDismissSec(tile) > 0)) {
-      setTileResult(tile, null);
-    }
     let win = null;
     try {
       deps.audio?.ensure?.();
@@ -3354,6 +3384,7 @@ export function createMultiSpinController(deps) {
       silentLand,
       chainDepth,
       rigged: false,
+      spinGen,
     });
     return win;
   }
@@ -3379,12 +3410,10 @@ export function createMultiSpinController(deps) {
       /* ignore */
     }
 
+    const spinGen = bumpTileSpinGen(tile);
     tile.spinning = true;
     tile.rootEl?.classList.add("is-spinning");
     dismissTileResultForNewSpin(tile);
-    if (chainDepth === 0 && !(tileAutoDismissSec(tile) > 0)) {
-      setTileResult(tile, null);
-    }
     let win = null;
     try {
       deps.audio?.ensure?.();
@@ -3405,6 +3434,7 @@ export function createMultiSpinController(deps) {
       silentLand,
       chainDepth,
       rigged: true,
+      spinGen,
     });
     return win;
   }
