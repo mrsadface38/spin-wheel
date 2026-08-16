@@ -1971,6 +1971,8 @@ export function createMultiSpinController(deps) {
         getFairDragSpin: () => tile.state?.look?.fairDragSpin === true,
         onDragStart: ({ interrupted } = {}) => {
           tile._wheelInteracted = true;
+          // dblclick fires after a drag gesture — don't also requestSpin
+          suppressTileDblClickSpin(tile);
           deps.audio?.ensure?.();
           // Clear big-center as soon as the user grabs the wheel
           dismissTileResultForNewSpin(tile);
@@ -1986,6 +1988,7 @@ export function createMultiSpinController(deps) {
         onFling: (vel) => {
           tile._wheelInteracted = true;
           tile._holdQueueForDrag = false;
+          suppressTileDblClickSpin(tile);
           dismissTileResultForNewSpin(tile);
           if (tile.state?.look?.fairDragSpin === true) {
             const dir = Number(vel) < 0 ? -1 : 1;
@@ -2000,6 +2003,8 @@ export function createMultiSpinController(deps) {
         },
         onDragEndIdle: () => {
           tile._wheelInteracted = true;
+          // Cover pure click-drag with no fling that still produced a dblclick
+          suppressTileDblClickSpin(tile);
           tile.spinning = false;
           tile.rootEl?.classList.remove("is-spinning");
           // Resume any queue held while grabbing mid-spin
@@ -2012,6 +2017,16 @@ export function createMultiSpinController(deps) {
     } catch (err) {
       console.warn("multi-spin enablePointerDrag:", tile.name, err);
     }
+  }
+
+  /** Ignore the browser dblclick that follows a drag/fling on the same gesture. */
+  function suppressTileDblClickSpin(tile, ms = 550) {
+    if (!tile) return;
+    const until = Date.now() + Math.max(200, Number(ms) || 550);
+    tile._suppressDblClickSpinUntil = Math.max(
+      Number(tile._suppressDblClickSpinUntil) || 0,
+      until
+    );
   }
 
   function bindTileChrome(tile) {
@@ -2035,6 +2050,14 @@ export function createMultiSpinController(deps) {
       e.preventDefault();
       e.stopPropagation();
       if (tile.state?.look?.allowDoubleClickSpin === false) return;
+      // Double-click + drag in one motion: fling already spun — don't queue a 2nd
+      if (Date.now() < (Number(tile._suppressDblClickSpinUntil) || 0)) {
+        return;
+      }
+      // Already spinning / queued from the same gesture
+      if (isTileBusy(tile) || (tile.queue && tile.queue.length > 0)) {
+        return;
+      }
       void requestSpin(tile, { silentLand: false, chainDepth: 0 });
     });
 
