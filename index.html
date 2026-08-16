@@ -574,9 +574,9 @@
               <span>Wait for other wheel (multi-spin)</span>
             </label>
             <small>
-              When this wheel spins a different wheel (or respin + different): if on, multi-spin
+              When this wheel spins a different wheel, if on, multi-spin
               waits for that other wheel (and its queue) to finish before this wheel respins or
-              continues its own queue. If off, both can run at the same time.
+              continues its own queue.
             </small>
             <label class="toggle-row">
               <input type="checkbox" id="chk-follow-wait" />
@@ -584,8 +584,7 @@
             </label>
             <small>
               With Wait on: also wait while the other wheel is itself waiting for someone
-              (and so on). If that would create a wait loop (A waits for B waits for A…),
-              force-spin the wheel that would close the loop so the chain can continue.
+              (and so on).
             </small>
             <label class="toggle-row">
               <input type="checkbox" id="chk-replace-on-other-wheel" checked />
