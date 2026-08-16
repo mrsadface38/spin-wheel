@@ -4178,6 +4178,53 @@ export function createMultiSpinController(deps) {
     }
   }
 
+  /**
+   * Target for Make GIF in multi-spin: focused tile, else first on board.
+   * @returns {{ stageEl: HTMLElement, bgColor: string, name: string, startSpin: () => Promise<void>, isBusy: () => boolean }|null}
+   */
+  function getGifCaptureTarget() {
+    if (!active || !tiles.size) return null;
+    let tile =
+      (focusedSlotId && tiles.get(focusedSlotId)) ||
+      (selectedIds[0] && tiles.get(selectedIds[0])) ||
+      null;
+    if (!tile) {
+      tile = tiles.values().next().value || null;
+    }
+    if (!tile?.rootEl) return null;
+    const stageEl = tile.rootEl.querySelector(".multi-tile-stage");
+    if (!stageEl) return null;
+    const bgColor =
+      tile.state?.look?.backgroundColor ||
+      tile.wheel?.look?.backgroundColor ||
+      "#0f1220";
+    return {
+      stageEl,
+      bgColor,
+      name: tile.name || "wheel",
+      startSpin: async () => {
+        // One clean spin for recording (clears queue so GIF is a single spin)
+        tile.queue = [];
+        updateQueueUi(tile);
+        if (isTileBusy(tile)) {
+          try {
+            tile.wheel?.cancelAnimatedSpin?.();
+          } catch {
+            /* ignore */
+          }
+          tile.spinning = false;
+        }
+        dismissTileResultForNewSpin(tile);
+        await requestSpin(tile, {
+          silentLand: false,
+          chainDepth: 0,
+          awaitRun: true,
+        });
+      },
+      isBusy: () => isTileBusy(tile) || !!(tile.queue && tile.queue.length),
+    };
+  }
+
   return {
     isActive,
     anySpinning,
@@ -4196,6 +4243,7 @@ export function createMultiSpinController(deps) {
     setSelectionUiVisible,
     applyLiveState,
     pushLookToTile,
+    getGifCaptureTarget,
     getShareSnapshot,
     getBackupMultiState,
     applyShareImport,

@@ -63,6 +63,12 @@ import {
 } from "./presets.js";
 import { APP_UPDATE } from "./version.js";
 import { createMultiSpinController } from "./multi-spin.js";
+import {
+  captureStageFrame,
+  encodeGifFromFrames,
+  downloadBinary,
+  recordWhileBusy,
+} from "./make-gif.js";
 
 const audio = new AudioManager();
 /** @type {import("./wheels.js").WheelLibrary | ReturnType<typeof loadLibrary>} */
@@ -10055,6 +10061,197 @@ function downloadJson(filename, obj) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+// --- Make GIF (spin + record) ---
+let makeGifBusy = false;
+
+function setMakeGifButtonStatus(text, { disabled } = {}) {
+  const btn = $("#btn-make-gif");
+  if (!btn) return;
+  if (text != null) btn.textContent = text;
+  if (disabled != null) btn.disabled = !!disabled;
+}
+
+/**
+ * Capture one frame of the main (single-wheel) stage.
+ * @param {number} maxSide
+ */
+function captureMainWheelGifFrame(maxSide = 360) {
+  const stageEl = $("#stage");
+  if (!stageEl || stageEl.hidden) {
+    throw new Error("Wheel stage is not visible");
+  }
+  const { imageData } = captureStageFrame({
+    stageEl,
+    bgCanvas: $("#bg-canvas"),
+    wheelCanvas: $("#wheel-canvas"),
+    overlayCanvas: $("#wheel-overlay"),
+    bgColor: state.look?.backgroundColor || "#0f1220",
+    pointerEl: $("#pointer"),
+    maxSide,
+  });
+  return imageData;
+}
+
+/**
+ * Capture one frame of a multi-spin tile stage.
+ * @param {HTMLElement} stageEl
+ * @param {string} [bgColor]
+ * @param {number} maxSide
+ */
+function captureMultiTileGifFrame(stageEl, bgColor, maxSide = 360) {
+  if (!stageEl) throw new Error("Multi tile stage missing");
+  const { imageData } = captureStageFrame({
+    stageEl,
+    bgCanvas: stageEl.querySelector("canvas.bg-canvas"),
+    wheelCanvas: stageEl.querySelector("canvas.wheel-canvas"),
+    overlayCanvas: stageEl.querySelector("canvas.wheel-overlay"),
+    bgColor: bgColor || "#0f1220",
+    pointerEl: stageEl.querySelector(".pointer"),
+    maxSide,
+  });
+  return imageData;
+}
+
+/**
+ * Spin the current wheel and download a GIF of the spin.
+ */
+async function makeWheelGif() {
+  if (makeGifBusy) return;
+  makeGifBusy = true;
+  const btn = $("#btn-make-gif");
+  const prevLabel = btn?.textContent || "Make GIF";
+  setMakeGifButtonStatus("Preparing…", { disabled: true });
+
+  const fps = 12;
+  const delayMs = Math.round(1000 / fps);
+  const maxSide = 360;
+  let width = 0;
+  let height = 0;
+
+  try {
+    // Multi-spin: record the focused (or first) on-board wheel
+    if (multiSpin?.isActive?.()) {
+      const target = multiSpin.getGifCaptureTarget?.();
+      if (!target?.stageEl || typeof target.startSpin !== "function") {
+        alert(
+          "No wheel on the multi board to record. Add a wheel, then try Make GIF again."
+        );
+        return;
+      }
+      // Probe size
+      {
+        const probe = captureMultiTileGifFrame(
+          target.stageEl,
+          target.bgColor,
+          maxSide
+        );
+        width = probe.width;
+        height = probe.height;
+      }
+      const frames = await recordWhileBusy({
+        fps,
+        maxMs: 22000,
+        holdMs: 700,
+        onStatus: (msg) => setMakeGifButtonStatus(msg, { disabled: true }),
+        start: async () => {
+          await target.startSpin();
+        },
+        isBusy: () => !!target.isBusy?.(),
+        captureFrame: () => {
+          const img = captureMultiTileGifFrame(
+            target.stageEl,
+            target.bgColor,
+            maxSide
+          );
+          width = img.width;
+          height = img.height;
+          return img;
+        },
+      });
+      setMakeGifButtonStatus("Encoding…", { disabled: true });
+      // Yield so the button label paints before heavy encode
+      await sleepMs(30);
+      const bytes = encodeGifFromFrames(frames, width, height, delayMs);
+      const name = (target.name || "wheel")
+        .replace(/[^\w\-]+/g, "_")
+        .slice(0, 40);
+      downloadBinary(`sad-wheel-${name}-${Date.now()}.gif`, bytes);
+      return;
+    }
+
+    // Single-wheel mode
+    if (spinBusy || wheel?.spinning || wheel?._dragging) {
+      alert("Wait for the current spin to finish, then try Make GIF again.");
+      return;
+    }
+    const active = getActiveSections(state);
+    if (!active.length) {
+      alert("No active sections. Enable at least one section first.");
+      return;
+    }
+
+    {
+      const probe = captureMainWheelGifFrame(maxSide);
+      width = probe.width;
+      height = probe.height;
+    }
+
+    // Start spin and record in parallel (doSpin awaits land/result)
+    let spinDone = false;
+    let spinErr = null;
+    const spinPromise = doSpin()
+      .catch((err) => {
+        spinErr = err;
+      })
+      .finally(() => {
+        spinDone = true;
+      });
+
+    const frames = await recordWhileBusy({
+      fps,
+      maxMs: 22000,
+      holdMs: 800,
+      onStatus: (msg) => setMakeGifButtonStatus(msg, { disabled: true }),
+      // spin already started
+      start: async () => {},
+      isBusy: () => {
+        if (spinErr) return false;
+        // Keep capturing until doSpin fully settles (incl. brief result pose)
+        return !spinDone || !!wheel?.spinning || spinBusy;
+      },
+      captureFrame: () => {
+        const img = captureMainWheelGifFrame(maxSide);
+        width = img.width;
+        height = img.height;
+        return img;
+      },
+    });
+
+    await spinPromise;
+    if (spinErr) throw spinErr;
+
+    setMakeGifButtonStatus("Encoding…", { disabled: true });
+    await sleepMs(30);
+    const bytes = encodeGifFromFrames(frames, width, height, delayMs);
+    const slotName = (getActiveSlot(library)?.name || "wheel")
+      .replace(/[^\w\-]+/g, "_")
+      .slice(0, 40);
+    downloadBinary(`sad-wheel-${slotName}-${Date.now()}.gif`, bytes);
+  } catch (err) {
+    console.error("Make GIF failed:", err);
+    alert("Could not make GIF: " + (err?.message || err));
+  } finally {
+    makeGifBusy = false;
+    setMakeGifButtonStatus(prevLabel, { disabled: false });
+  }
+}
+
+$("#btn-make-gif")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  void makeWheelGif();
+});
 
 /**
  * UTF-8 string → standard base64 (chunked; safe for large image payloads).
