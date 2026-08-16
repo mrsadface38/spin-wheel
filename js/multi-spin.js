@@ -26,9 +26,13 @@ const SOFT_WARN_AT = 12;
 /** Min / max tile width (stage is square at this size). */
 const TILE_MIN = 140;
 const TILE_MAX = 960;
-const TILE_GAP = 16;
-/** Approx chrome under/above the square stage (head + result + queue). */
-const TILE_CHROME_H = 92;
+/** Gap between tiles in grid mode (tighter — no head/result bars on tiles). */
+const TILE_GAP = 8;
+/**
+ * Extra height beyond the square stage. Top bar + bottom result were removed
+ * (queue is an overlay). Keep a few px for border/shadow only.
+ */
+const TILE_CHROME_H = 4;
 
 /**
  * @param {object} deps
