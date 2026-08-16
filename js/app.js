@@ -1914,17 +1914,31 @@ function isAllSectionsGroup(g) {
 }
 
 function renderGroups() {
-  // Don't clobber the list mid phone-style drag
-  if (groupDrag.active || groupDrag.pending) return;
+  // Don't clobber the list mid phone-style drag.
+  // Pending-only must NOT block forever — a stuck pending freezes group counts.
+  if (groupDrag.active) return;
+  if (groupDrag.pending) {
+    resetGroupDragState();
+  }
+  // Keep sticky always-all groups in sync so counts match membership
+  if (syncAllSectionsGroups(state)) {
+    try {
+      library = writeActiveState(library, state);
+      saveLibrary(library);
+    } catch (err) {
+      console.warn("save after all-sections sync:", err);
+    }
+  }
   if (!state.groups.length) {
     groupsList.innerHTML = `<div class="empty-state">No groups. Add one, then assign sections to it.</div>`;
     return;
   }
+  const totalSections = state.sections.length;
   groupsList.innerHTML = state.groups
     .map((g, index) => {
       const count = state.sections.filter((s) => sectionInGroup(s, g.id)).length;
       const activeCount = state.sections.filter(
-        (s) => sectionInGroup(s, g.id) && s.enabled
+        (s) => sectionInGroup(s, g.id) && s.enabled !== false
       ).length;
       const isTop = index === 0;
       const allSec = isAllSectionsGroup(g);
@@ -1958,6 +1972,13 @@ function renderGroups() {
       const allBadge = allSec
         ? `<span class="group-all-sections-badge" title="This group includes every section on the wheel">ALWAYS ALL SECTIONS</span>`
         : "";
+      // active in group / members in group — and wheel total when the group is not all sections
+      const countLabel =
+        totalSections === 0
+          ? "0 sections"
+          : count === totalSections
+            ? `${activeCount}/${count} sections`
+            : `${activeCount}/${count} in group · ${totalSections} total`;
       return `
         <div class="group-card ${g.active ? "" : "inactive-card"} ${groupHasAnyOverride(g) ? "group-override-on" : ""} ${allSec ? "group-all-sections" : ""}" data-id="${g.id}">
           <div class="group-drag-handle" title="Drag to reorder" aria-label="Drag to reorder" role="button">
@@ -1968,7 +1989,7 @@ function renderGroups() {
           <div class="group-meta">
             <strong>${escapeHtml(groupDisplayName(g.id))}</strong>
             ${allBadge}
-            <small>${activeCount}/${count} sections · ${g.active ? "ACTIVE" : "OFF"}${isTop ? " · highest" : ""}${profileBits ? ` · ${profileBits}` : ""}</small>
+            <small title="Enabled members in this group / all members in this group${count !== totalSections ? ` (${totalSections} sections on wheel)` : ""}">${countLabel} · ${g.active ? "ACTIVE" : "OFF"}${isTop ? " · highest" : ""}${profileBits ? ` · ${profileBits}` : ""}</small>
           </div>
           <div class="card-actions">
             <button type="button" class="icon-btn" data-act="toggle" title="Toggle group">${g.active ? "✓" : "○"}</button>
@@ -2897,6 +2918,7 @@ sectionsList.addEventListener("click", async (e) => {
       }
       persist();
       renderSections();
+      renderGroups();
       scheduleNextSectionReturnCheck();
       await refreshWheel();
     } else if (act === "edit") {
@@ -2927,6 +2949,7 @@ sectionsList.addEventListener("click", async (e) => {
       persist();
       updateSectionSortUI();
       renderSections();
+      renderGroups();
       updateSectionsCount();
       await refreshWheel();
     } else if (act === "del") {
@@ -2942,6 +2965,7 @@ sectionsList.addEventListener("click", async (e) => {
       persist();
       updateSectionSortUI();
       renderSections();
+      renderGroups();
       await refreshWheel();
     }
   } catch (err) {
