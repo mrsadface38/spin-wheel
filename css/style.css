@@ -746,21 +746,32 @@ body.focus-mode .stage-panel {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  min-width: 28px;
-  padding: 0.75rem 0.35rem;
+  gap: 0.4rem;
+  /* Wide enough for finger/trackpad; was 28px and too easy to miss */
+  min-width: 40px;
+  min-height: 8.5rem;
+  padding: 1rem 0.5rem;
   border: 1px solid var(--border);
   border-right: none;
-  border-radius: 10px 0 0 10px;
+  border-radius: 12px 0 0 12px;
   background: rgba(20, 24, 41, 0.92);
   color: var(--text);
   cursor: pointer;
   box-shadow: -2px 0 12px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(6px);
   font: inherit;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 650;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  line-height: 1.15;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s,
+    min-width 0.15s,
+    padding 0.15s;
 }
 
 .btn-toggle-sidebar:hover {
@@ -769,10 +780,15 @@ body.focus-mode .stage-panel {
   color: var(--accent-2);
 }
 
+.btn-toggle-sidebar:active {
+  background: rgba(40, 48, 78, 0.98);
+}
+
 .btn-toggle-sidebar .toggle-sidebar-icon {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   line-height: 1;
   font-weight: 700;
+  pointer-events: none;
 }
 
 .btn-toggle-sidebar .toggle-sidebar-label {
@@ -780,6 +796,7 @@ body.focus-mode .stage-panel {
   text-orientation: mixed;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  pointer-events: none;
   /* Natural vertical-rl reads top-to-bottom toward the panels */
 }
 
@@ -791,6 +808,59 @@ body.focus-mode .stage-panel {
 /* › points at panels when open; flip when collapsed so it points outward / “show” */
 .layout.sidebar-collapsed .btn-toggle-sidebar .toggle-sidebar-icon {
   transform: scaleX(-1);
+}
+
+/*
+ * Narrow layout: edge tab is hard to hit (thumb zone / thin strip).
+ * Move to a large corner pill with horizontal label instead.
+ */
+@media (max-width: 960px) {
+  .btn-toggle-sidebar {
+    top: 0.55rem;
+    right: 0.55rem;
+    bottom: auto;
+    left: auto;
+    transform: none;
+    flex-direction: row;
+    min-width: 3rem;
+    min-height: 3rem;
+    height: auto;
+    padding: 0.7rem 0.95rem;
+    gap: 0.45rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+    font-size: 0.84rem;
+  }
+
+  .btn-toggle-sidebar .toggle-sidebar-label {
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    letter-spacing: 0.03em;
+  }
+
+  .btn-toggle-sidebar .toggle-sidebar-icon {
+    font-size: 1.2rem;
+  }
+
+  .layout.sidebar-collapsed .btn-toggle-sidebar {
+    background: color-mix(in srgb, var(--accent) 22%, rgba(20, 24, 41, 0.95));
+    border-color: var(--accent-2);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent-2) 35%, transparent),
+      0 4px 18px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* Phones: slightly larger tap target */
+@media (max-width: 520px) {
+  .btn-toggle-sidebar {
+    top: 0.45rem;
+    right: 0.45rem;
+    min-height: 3.15rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.88rem;
+  }
 }
 
 .stage {
