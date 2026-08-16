@@ -3567,6 +3567,98 @@ dialog.modal:not([open]) {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
+/* Group that always includes every section (flag or full membership) */
+.group-card.group-all-sections {
+  border-color: color-mix(in srgb, #e8a317 75%, var(--border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #f0b429 18%, var(--panel-2)),
+    color-mix(in srgb, #c47b0a 8%, var(--panel-2))
+  );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #f0b429 35%, transparent),
+    0 2px 12px color-mix(in srgb, #e8a317 18%, transparent);
+}
+
+.group-card.group-all-sections:hover {
+  border-color: color-mix(in srgb, #f5c542 85%, var(--border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #f5c542 45%, transparent),
+    0 3px 14px color-mix(in srgb, #e8a317 22%, transparent);
+}
+
+.group-card.group-all-sections .group-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.group-all-sections-badge {
+  display: inline-block;
+  margin: 0;
+  padding: 0.12rem 0.45rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  color: #1a1204;
+  background: linear-gradient(135deg, #ffe08a 0%, #f0b429 55%, #e09410 100%);
+  border: 1px solid color-mix(in srgb, #a66a00 40%, transparent);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 35%, transparent) inset;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.group-all-sections-modal-badge {
+  display: inline-block;
+  margin: 0.35rem 0 0;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #1a1204;
+  background: linear-gradient(135deg, #ffe08a 0%, #f0b429 55%, #e09410 100%);
+  border: 1px solid color-mix(in srgb, #a66a00 40%, transparent);
+  border-radius: 6px;
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 35%, transparent) inset;
+}
+
+.group-all-sections-modal-badge[hidden] {
+  display: none !important;
+}
+
+.group-members-block.is-all-sections-locked {
+  border-color: color-mix(in srgb, #e8a317 45%, var(--border));
+  background: color-mix(in srgb, #f0b429 7%, transparent);
+  border-radius: 10px;
+  padding: 0.65rem 0.7rem 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.group-members-block.is-all-sections-locked .group-all-sections-lock-hint {
+  display: block;
+  color: color-mix(in srgb, #f0b429 75%, var(--text));
+  font-weight: 600;
+}
+
+.group-all-sections-lock-hint[hidden] {
+  display: none !important;
+}
+
+.group-members-block.is-all-sections-locked .group-members-list {
+  opacity: 0.92;
+  pointer-events: none;
+}
+
+.group-members-block.is-all-sections-locked .group-members-list .btn {
+  opacity: 0.45;
+}
+
 .group-members-block {
   margin: 0.85rem 0 0.25rem;
   padding-top: 0.85rem;

@@ -438,6 +438,11 @@ export function normalizeGroup(g = {}) {
     id: g.id || uid("grp"),
     name: String(g.name ?? "Group"),
     active: g.active !== false,
+    /**
+     * When true, this group always includes every section on the wheel.
+     * New sections are auto-added; members cannot be removed while the flag is on.
+     */
+    allSections: g.allSections === true,
     // Default OFF — sections use their own profile per channel
     overrideColor:
       g.overrideColor === true || (g.overrideColor == null && legacyAll),
@@ -459,6 +464,39 @@ export function normalizeGroup(g = {}) {
     winEffectName: profile.winEffectName,
     ...normalizeLandActionFields(g),
   };
+}
+
+/** True if every section on the wheel is a member of this group. */
+export function groupContainsAllSections(state, groupId) {
+  const sections = state?.sections || [];
+  if (!sections.length || !groupId) return false;
+  return sections.every((s) => sectionInGroup(s, groupId));
+}
+
+/**
+ * Ensure every section is a member of each group marked `allSections`.
+ * @returns {boolean} true if any membership changed
+ */
+export function syncAllSectionsGroups(state) {
+  if (!state) return false;
+  const forced = (state.groups || []).filter((g) => g && g.allSections === true);
+  if (!forced.length) return false;
+  let changed = false;
+  for (const s of state.sections || []) {
+    const ids = getSectionGroupIds(s);
+    let next = ids.slice();
+    for (const g of forced) {
+      if (!next.includes(g.id)) {
+        next.push(g.id);
+        changed = true;
+      }
+    }
+    if (changed || next.length !== ids.length) {
+      s.groupIds = next;
+      delete s.groupId;
+    }
+  }
+  return changed;
 }
 
 /** Snapshot of profile fields only (for apply / resolve) */

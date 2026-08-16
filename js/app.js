@@ -16,6 +16,8 @@ import {
   normalizeGroup,
   normalizeProfileFields,
   groupHasAnyOverride,
+  groupContainsAllSections,
+  syncAllSectionsGroups,
   normalizeWeight,
   formatWeight,
   clampImageRotation,
@@ -74,6 +76,7 @@ try {
   state = hydrateState(
     JSON.parse(JSON.stringify(slot?.data || defaultState()))
   );
+  syncAllSectionsGroups(state);
 } catch (err) {
   console.error("Failed to load saved wheels — starting fresh:", err);
   library = loadLibrary();
@@ -85,6 +88,7 @@ try {
   } catch {
     state = defaultState();
   }
+  syncAllSectionsGroups(state);
 }
 /** True while a timed spin / fling session owns the wheel */
 let spinBusy = false;
@@ -704,6 +708,7 @@ async function applyLoadedWheel(nextLib, nextState) {
   spinBusy = false;
   library = nextLib;
   state = nextState;
+  syncAllSectionsGroups(state);
   undoStack.length = 0;
   lastWinnerId = null;
   winBgmOverrideActive = false;
@@ -1901,6 +1906,13 @@ function updateSectionChanceLabels() {
   });
 }
 
+/** Group always includes every section (flag or currently full membership). */
+function isAllSectionsGroup(g) {
+  if (!g) return false;
+  if (g.allSections === true) return true;
+  return groupContainsAllSections(state, g.id);
+}
+
 function renderGroups() {
   // Don't clobber the list mid phone-style drag
   if (groupDrag.active || groupDrag.pending) return;
@@ -1915,6 +1927,7 @@ function renderGroups() {
         (s) => sectionInGroup(s, g.id) && s.enabled
       ).length;
       const isTop = index === 0;
+      const allSec = isAllSectionsGroup(g);
       const ovParts = [
         g.overrideColor ? "slice" : "",
         g.overrideTextColor ? "text" : "",
@@ -1942,8 +1955,11 @@ function renderGroups() {
       const swatchBg = g.imageData
         ? `background-image:url(${JSON.stringify(g.imageData)});background-color:${g.color || "#3ecf8e"}`
         : `background:${g.active ? g.color || "#3ecf8e" : "#555"}`;
+      const allBadge = allSec
+        ? `<span class="group-all-sections-badge" title="This group includes every section on the wheel">ALWAYS ALL SECTIONS</span>`
+        : "";
       return `
-        <div class="group-card ${g.active ? "" : "inactive-card"} ${groupHasAnyOverride(g) ? "group-override-on" : ""}" data-id="${g.id}">
+        <div class="group-card ${g.active ? "" : "inactive-card"} ${groupHasAnyOverride(g) ? "group-override-on" : ""} ${allSec ? "group-all-sections" : ""}" data-id="${g.id}">
           <div class="group-drag-handle" title="Drag to reorder" aria-label="Drag to reorder" role="button">
             <span class="drag-grip" aria-hidden="true"></span>
           </div>
@@ -1951,6 +1967,7 @@ function renderGroups() {
           <div class="swatch" style="${swatchBg}"></div>
           <div class="group-meta">
             <strong>${escapeHtml(groupDisplayName(g.id))}</strong>
+            ${allBadge}
             <small>${activeCount}/${count} sections · ${g.active ? "ACTIVE" : "OFF"}${isTop ? " · highest" : ""}${profileBits ? ` · ${profileBits}` : ""}</small>
           </div>
           <div class="card-actions">
@@ -2554,6 +2571,7 @@ function cloneGroupForDuplicate(group) {
     id: newId,
     name: group.name || "Group",
     active: group.active !== false,
+    allSections: group.allSections === true,
     overrideColor: group.overrideColor === true,
     overrideTextColor: group.overrideTextColor === true,
     overrideTextStyle: group.overrideTextStyle === true,
@@ -2898,6 +2916,7 @@ sectionsList.addEventListener("click", async (e) => {
         state.yourOrderIds = yo;
       }
       onSectionsStructureChanged();
+      syncAllSectionsGroups(state);
       if (copy.landSfxData) {
         try {
           await audio.loadDataUrl(`land_${copy.id}`, copy.landSfxData);
@@ -3038,6 +3057,7 @@ groupsList.addEventListener("click", async (e) => {
           console.warn("Dup group SFX load:", err);
         }
       }
+      syncAllSectionsGroups(state);
       persist();
       renderGroups();
       renderSections();
@@ -3736,6 +3756,27 @@ function fillGroupProfileForm(group) {
   updateGroupPreviewWeightUI();
 }
 
+/** Whether the group modal currently has “always all sections” checked. */
+function groupModalAllSectionsOn() {
+  return $("#group-all-sections")?.checked === true;
+}
+
+/** Fill pending members with every section (always-all mode). */
+function fillPendingMembersAllSections() {
+  pendingGroupMemberIds = new Set((state.sections || []).map((s) => s.id));
+}
+
+function updateGroupAllSectionsUi() {
+  const on = groupModalAllSectionsOn();
+  const block = document.querySelector(".group-members-block");
+  block?.classList.toggle("is-all-sections-locked", on);
+  const badge = $("#group-all-sections-modal-badge");
+  if (badge) badge.hidden = !on;
+  const lockHint = document.querySelector(".group-all-sections-lock-hint");
+  if (lockHint) lockHint.hidden = !on;
+  if (on) fillPendingMembersAllSections();
+}
+
 function openGroupModal(group) {
   groupModalMembersReady = false;
   $("#group-modal-title").textContent = group ? "Edit group" : "Add group";
@@ -3747,14 +3788,24 @@ function openGroupModal(group) {
   if ($("#group-active")) {
     $("#group-active").checked = group ? group.active !== false : true;
   }
+  if ($("#group-all-sections")) {
+    // Only the sticky flag is checked; full membership alone still gets a list badge
+    $("#group-all-sections").checked = group?.allSections === true;
+  }
   groupMemberSearchQuery = "";
   const searchEl = $("#group-member-search");
   if (searchEl) searchEl.value = "";
 
   if (group) {
-    pendingGroupMemberIds = new Set(
-      state.sections.filter((s) => sectionInGroup(s, group.id)).map((s) => s.id)
-    );
+    if (group.allSections === true) {
+      fillPendingMembersAllSections();
+    } else {
+      pendingGroupMemberIds = new Set(
+        state.sections
+          .filter((s) => sectionInGroup(s, group.id))
+          .map((s) => s.id)
+      );
+    }
   } else {
     pendingGroupMemberIds = new Set();
   }
@@ -3764,6 +3815,7 @@ function openGroupModal(group) {
     console.error("fillGroupProfileForm:", err);
   }
   try {
+    updateGroupAllSectionsUi();
     renderGroupMembers();
   } catch (err) {
     console.error("renderGroupMembers:", err);
@@ -3790,6 +3842,7 @@ const groupMemberDrag = { id: null, from: null };
 /** Can remove section from the group being edited (needs another group or multi-membership). */
 function canRemoveSectionFromEditingGroup(s, editingId) {
   if (!s) return false;
+  if (groupModalAllSectionsOn()) return false;
   const other = getSectionGroupIds(s).filter((gid) => gid !== editingId);
   if (other.length > 0) return true;
   return state.groups.some((g) => g.id !== editingId);
@@ -3797,12 +3850,22 @@ function canRemoveSectionFromEditingGroup(s, editingId) {
 
 function addSectionToPendingGroup(id) {
   if (!id) return false;
+  if (groupModalAllSectionsOn()) {
+    fillPendingMembersAllSections();
+    return true;
+  }
   pendingGroupMemberIds.add(id);
   return true;
 }
 
 function removeSectionFromPendingGroup(id) {
   if (!id) return false;
+  if (groupModalAllSectionsOn()) {
+    alert(
+      "This group is set to always include all sections. Turn that off first if you want to remove members."
+    );
+    return false;
+  }
   const section = state.sections.find((s) => s.id === id);
   const editingId = $("#group-edit-id")?.value || "";
   if (section) {
@@ -3823,6 +3886,9 @@ function renderGroupMembers() {
   const inList = $("#group-members-in");
   const outList = $("#group-members-out");
   if (!inList || !outList) return;
+
+  const allOn = groupModalAllSectionsOn();
+  if (allOn) fillPendingMembersAllSections();
 
   const editingId = $("#group-edit-id")?.value || "";
   const q = groupMemberSearchQuery.trim().toLowerCase();
@@ -3858,10 +3924,12 @@ function renderGroupMembers() {
   const rowHtml = (s, side) => {
     const okRemove =
       side === "in" ? canRemoveSectionFromEditingGroup(s, editingId) : true;
-    const draggable = side === "out" || okRemove;
-    const dragTitle = draggable
-      ? "Drag to the other list"
-      : "Create another group first (section needs at least one group)";
+    const draggable = !allOn && (side === "out" || okRemove);
+    const dragTitle = allOn
+      ? "Always-all-sections mode — membership is locked"
+      : draggable
+        ? "Drag to the other list"
+        : "Create another group first (section needs at least one group)";
     const otherNames = getSectionGroupIds(s)
       .filter((gid) => gid && (side === "out" || gid !== editingId))
       .map((gid) => groupDisplayName(gid))
@@ -3877,9 +3945,15 @@ function renderGroupMembers() {
         ? `<button type="button" class="btn tiny ghost danger" ${
             okRemove
               ? `data-member-act="remove"`
-              : `disabled title="Create another group first (section needs at least one group)"`
+              : `disabled title="${
+                  allOn
+                    ? "Always-all-sections mode — turn it off to remove members"
+                    : "Create another group first (section needs at least one group)"
+                }"`
           }>Remove</button>`
-        : `<button type="button" class="btn tiny" data-member-act="add">Add</button>`;
+        : `<button type="button" class="btn tiny" data-member-act="add" ${
+            allOn ? "disabled" : ""
+          }>Add</button>`;
     return `
       <div
         class="group-member-row${draggable ? " is-draggable" : ""}"
@@ -3898,13 +3972,21 @@ function renderGroupMembers() {
   inList.innerHTML = inMembers.length
     ? inMembers.map((s) => rowHtml(s, "in")).join("")
     : `<div class="group-members-empty">${
-        q ? "No matches" : "No sections in this group yet — drag from Other sections"
+        q
+          ? "No matches"
+          : allOn
+            ? "No sections on this wheel yet"
+            : "No sections in this group yet — drag from Other sections"
       }</div>`;
 
   outList.innerHTML = outMembers.length
     ? outMembers.map((s) => rowHtml(s, "out")).join("")
     : `<div class="group-members-empty">${
-        q ? "No matches" : "All sections are in this group"
+        q
+          ? "No matches"
+          : allOn
+            ? "Always all sections — nothing left outside"
+            : "All sections are in this group"
       }</div>`;
 }
 
@@ -4037,6 +4119,11 @@ try {
 } catch (err) {
   console.warn("bindGroupMemberDragDrop:", err);
 }
+
+$("#group-all-sections")?.addEventListener("change", () => {
+  updateGroupAllSectionsUi();
+  renderGroupMembers();
+});
 
 $("#group-cancel").addEventListener("click", () => {
   groupModalMembersReady = false;
@@ -4450,6 +4537,7 @@ $("#group-form").addEventListener("submit", async (e) => {
     }
     let id = $("#group-edit-id")?.value || "";
     const active = $("#group-active")?.checked !== false;
+    const allSections = $("#group-all-sections")?.checked === true;
     const overrideParts = readOverridePartsFromForm();
     const profile = readGroupProfileFromForm();
     const landFields = readLandActionFromForm("group");
@@ -4464,6 +4552,7 @@ $("#group-form").addEventListener("submit", async (e) => {
             ...group,
             name,
             active,
+            allSections,
             ...overrideParts,
             ...profile,
             ...landFields,
@@ -4481,6 +4570,7 @@ $("#group-form").addEventListener("submit", async (e) => {
           id,
           name,
           active,
+          allSections,
           ...overrideParts,
           ...profile,
           ...landFields,
@@ -4491,6 +4581,7 @@ $("#group-form").addEventListener("submit", async (e) => {
 
     // Multi-group membership — only rewrite if the member lists were loaded
     if (groupModalMembersReady) {
+      if (allSections) fillPendingMembersAllSections();
       const fallback =
         state.groups.find((g) => g.id !== id) || state.groups[0];
       if (!fallback) {
@@ -4503,7 +4594,7 @@ $("#group-form").addEventListener("submit", async (e) => {
         let ids = getSectionGroupIds(s).filter((gid) =>
           state.groups.some((g) => g.id === gid)
         );
-        if (pendingGroupMemberIds.has(s.id)) {
+        if (pendingGroupMemberIds.has(s.id) || allSections) {
           if (!ids.includes(id)) ids.push(id);
         } else {
           ids = ids.filter((gid) => gid !== id);
@@ -4515,6 +4606,9 @@ $("#group-form").addEventListener("submit", async (e) => {
         setSectionGroupIds(s, ids);
       }
     }
+
+    // Other allSections groups (and this one) stay full when new membership rules run
+    syncAllSectionsGroups(state);
 
     if (profile.landSfxData) {
       try {
@@ -6084,6 +6178,7 @@ $("#section-form").addEventListener("submit", async (e) => {
       await audio.loadDataUrl(`land_${s.id}`, s.landSfxData);
     }
   }
+  syncAllSectionsGroups(state);
   persist();
   updateSectionSortUI();
   renderSections();
@@ -6159,9 +6254,11 @@ $("#bulk-form").addEventListener("submit", async (e) => {
   }
   ensureYourOrderIds();
   onSectionsStructureChanged();
+  syncAllSectionsGroups(state);
   persist();
   updateSectionSortUI();
   renderSections();
+  renderGroups();
   await refreshWheel();
   bulkModal.close();
 });
@@ -11481,6 +11578,7 @@ $("#import-file").addEventListener("change", async (e) => {
     } else {
       checkpoint();
       state = hydrateState(data);
+      syncAllSectionsGroups(state);
       persist();
       bindAll();
       await preloadAudio();

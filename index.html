@@ -1460,6 +1460,17 @@
               <input type="checkbox" id="group-active" checked />
               <span>Active (sections in this group can appear on the wheel)</span>
             </label>
+            <label class="toggle-row" id="group-all-sections-row">
+              <input type="checkbox" id="group-all-sections" />
+              <span>Always include all sections (new sections join automatically)</span>
+            </label>
+            <p
+              id="group-all-sections-modal-badge"
+              class="group-all-sections-modal-badge"
+              hidden
+            >
+              ALWAYS ALL SECTIONS
+            </p>
           </div>
 
           <div class="group-profile-block form-block compact">
@@ -1775,6 +1786,9 @@
             <h3>Sections in this group</h3>
             <p class="hint group-members-drag-hint">
               Drag sections between the lists (or use Add / Remove). With more than 20 sections on the wheel, lists switch to a compact grid for faster moves.
+            </p>
+            <p class="hint group-all-sections-lock-hint" hidden>
+              Membership is locked — this group always includes every section. Turn off “Always include all sections” above to edit the list.
             </p>
             <label class="search-field group-member-search">
               <span class="search-icon" aria-hidden="true">⌕</span>
