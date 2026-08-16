@@ -1850,6 +1850,12 @@ export function createMultiSpinController(deps) {
       } else {
         deps.onTileLookChanged?.(tile.slotId, tile.state);
       }
+      // Keep sidebar wheel in sync when this tile is the one being edited
+      try {
+        deps.onTilePointerAngle?.(tile.slotId, d);
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
       console.warn("multi-spin save pointer angle:", err);
     }

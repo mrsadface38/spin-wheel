@@ -12204,6 +12204,17 @@ async function init() {
         if (lib) library = lib;
         return saveLibrary(library);
       },
+      onTilePointerAngle: (slotId, deg) => {
+        if (!slotId || slotId !== library?.activeId) return;
+        if (!state.look) return;
+        state.look.pointerAngleDeg = deg;
+        try {
+          if (wheel?.look) wheel.look.pointerAngleDeg = deg;
+          wheel?.layoutPointer?.();
+        } catch {
+          /* ignore */
+        }
+      },
       audio,
       getSound: () => state?.sound || {},
       clampSpinDuration,
