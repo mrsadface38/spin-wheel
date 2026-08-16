@@ -1689,16 +1689,13 @@ export function createMultiSpinController(deps) {
     el.dataset.slotId = slot.id;
     el.setAttribute("role", "listitem");
     el.setAttribute("aria-selected", "false");
+    const name = slot.name || "Untitled";
+    el.title = `${name} — click to edit · drag grip to move · fling wheel to spin`;
     el.innerHTML = `
-      <div class="multi-tile-head">
-        <button type="button" class="multi-tile-drag" title="Drag to move this wheel" aria-label="Drag to move">
+      <div class="stage stage--mini multi-tile-stage">
+        <button type="button" class="multi-tile-drag" title="Drag to move this wheel" aria-label="Drag to move ${escapeAttr(name)}">
           <span class="drag-grip" aria-hidden="true"></span>
         </button>
-        <span class="multi-tile-name"></span>
-        <button type="button" class="btn small ghost multi-tile-edit" title="Edit this wheel in the sidebar">Edit</button>
-        <button type="button" class="btn small multi-tile-spin" title="Spin this wheel">Spin</button>
-      </div>
-      <div class="stage stage--mini multi-tile-stage">
         <div class="bg-media" aria-hidden="true"></div>
         <canvas class="bg-canvas"></canvas>
         <canvas class="wheel-canvas"></canvas>
@@ -1718,13 +1715,20 @@ export function createMultiSpinController(deps) {
           </div>
         </div>
       </div>
-      <div class="multi-tile-result" aria-live="polite"></div>
+      <div class="multi-tile-result" aria-live="polite" hidden></div>
       <div class="multi-tile-queue" hidden title="Spins waiting to run after this wheel finishes"></div>
       <div class="multi-tile-resize" title="Drag to resize this wheel" aria-label="Resize wheel" hidden></div>
       <span class="multi-tile-size-label" aria-hidden="true" hidden></span>
     `;
-    el.querySelector(".multi-tile-name").textContent = slot.name || "Untitled";
     return el;
+  }
+
+  /** Escape for double-quoted HTML attributes. */
+  function escapeAttr(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;");
   }
 
   function maxSpeedScaleForTile(tile) {
@@ -1800,20 +1804,7 @@ export function createMultiSpinController(deps) {
     const rootEl = tile.rootEl;
     const stage = rootEl.querySelector(".multi-tile-stage");
 
-    rootEl.querySelector(".multi-tile-spin")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      // If busy, queue another spin (count shown on tile)
-      void requestSpin(tile, { silentLand: false, chainDepth: 0 });
-    });
-
-    rootEl.querySelector(".multi-tile-edit")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      void selectTile(tile.slotId, { edit: true });
-    });
-
-    // Click tile body → select that wheel for sidebar editing
+    // Click tile / wheel window → edit that wheel in the sidebar (no Edit button)
     rootEl.addEventListener("click", (e) => {
       if (e.target.closest("button")) return;
       if (e.target.closest(".multi-tile-resize")) return;
@@ -1841,6 +1832,7 @@ export function createMultiSpinController(deps) {
       clearTileResultCenter(tile);
     });
 
+    // Drag handle lives inside the wheel window (no top chrome bar)
     const handle = rootEl.querySelector(".multi-tile-drag");
     handle?.addEventListener("pointerdown", (e) => {
       if (dragLocked) return;
@@ -2124,8 +2116,16 @@ export function createMultiSpinController(deps) {
     }
     if (name != null) {
       tile.name = name || "Untitled";
-      const nameEl = tile.rootEl?.querySelector(".multi-tile-name");
-      if (nameEl) nameEl.textContent = tile.name;
+      if (tile.rootEl) {
+        tile.rootEl.title = `${tile.name} — click to edit · drag grip to move · fling wheel to spin`;
+        const dragBtn = tile.rootEl.querySelector(".multi-tile-drag");
+        if (dragBtn) {
+          dragBtn.setAttribute(
+            "aria-label",
+            `Drag to move ${tile.name}`
+          );
+        }
+      }
     }
     try {
       tile.state = hydrateState(deepClone(rawState));
@@ -2266,6 +2266,7 @@ export function createMultiSpinController(deps) {
     if (el) {
       el.textContent = "";
       el.classList.remove("has-win");
+      el.hidden = true;
     }
   }
 
@@ -2379,6 +2380,7 @@ export function createMultiSpinController(deps) {
     if (!win) {
       el.textContent = note || "";
       el.classList.remove("has-win");
+      el.hidden = !note;
       clearTileResultCenter(tile);
       return;
     }
@@ -2397,15 +2399,16 @@ export function createMultiSpinController(deps) {
     const style = look.resultStyle === "banner" ? "banner" : "center";
 
     if (style === "center") {
-      // Big center overlay on this tile's stage (main-wheel style)
+      // Big center only — no bottom banner under the wheel in multi view
       showTileResultCenter(tile, win, note);
-      // Compact line under the stage for land-action notes / accessibility
-      el.textContent = note ? `${label} ${note}` : label;
-      el.classList.add("has-win");
+      el.textContent = "";
+      el.classList.remove("has-win");
+      el.hidden = true;
     } else {
       clearTileResultCenter(tile);
       el.textContent = note ? `Winner: ${label} ${note}` : `Winner: ${label}`;
       el.classList.add("has-win");
+      el.hidden = false;
     }
   }
 
@@ -3302,6 +3305,7 @@ export function createMultiSpinController(deps) {
       if (el) {
         el.textContent = "No active sections";
         el.classList.remove("has-win");
+        el.hidden = false;
       }
       return null;
     }
