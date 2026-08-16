@@ -11696,15 +11696,54 @@ function forceUiInteractive() {
   spinBusy = false;
 }
 
+/** Remember open/closed sections in section & group edit modals. */
+const EDIT_COLLAPSE_KEY = "spin-wheel-edit-collapse-v1";
+
+function loadEditCollapseMap() {
+  try {
+    const raw = localStorage.getItem(EDIT_COLLAPSE_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === "object" ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveEditCollapseMap(map) {
+  try {
+    localStorage.setItem(EDIT_COLLAPSE_KEY, JSON.stringify(map || {}));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Stable key for a collapsible block in section/group edit.
+ * @param {"section"|"group"} scope
+ * @param {string} title
+ */
+function editCollapseStorageKey(scope, title) {
+  const t = String(title || "section")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
+  return `${scope}:${t}`;
+}
+
 /**
  * Make form categories collapsible (click heading to fold/expand).
  * Targets .form-block / profile / members blocks that start with h3 or h4.
+ * Section & group edit modals: collapsed by default; remembers open/closed.
  * Safe to call more than once.
  */
 function initCollapsibleSections(root = document) {
   const blocks = root.querySelectorAll(
     ".form-block, .group-profile-block, .group-members-block"
   );
+  const collapseMap = loadEditCollapseMap();
+
   for (const block of blocks) {
     if (block.dataset.collapseReady === "1") continue;
     const heading = block.querySelector(
@@ -11724,7 +11763,6 @@ function initCollapsibleSections(root = document) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "collapsible-toggle";
-    btn.setAttribute("aria-expanded", "true");
     const title =
       heading.textContent?.trim() || heading.getAttribute("aria-label") || "Section";
     btn.setAttribute("aria-label", `Collapse or expand ${title}`);
@@ -11738,10 +11776,39 @@ function initCollapsibleSections(root = document) {
     block.appendChild(btn);
     block.appendChild(body);
 
+    // Section / group edit modals: default collapsed + remember preference
+    const inSectionModal = !!block.closest("#section-modal");
+    const inGroupModal = !!block.closest("#group-modal");
+    const inEditModal = inSectionModal || inGroupModal;
+    const scope = inSectionModal ? "section" : inGroupModal ? "group" : null;
+    const storageKey = scope ? editCollapseStorageKey(scope, title) : null;
+
+    let startCollapsed = false;
+    if (inEditModal && storageKey) {
+      if (Object.prototype.hasOwnProperty.call(collapseMap, storageKey)) {
+        startCollapsed = collapseMap[storageKey] === true;
+      } else {
+        // First time: all setting groups collapsed in section/group edit
+        startCollapsed = true;
+      }
+    }
+
+    if (startCollapsed) {
+      block.classList.add("is-collapsed");
+      btn.setAttribute("aria-expanded", "false");
+    } else {
+      btn.setAttribute("aria-expanded", "true");
+    }
+
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       const collapsed = block.classList.toggle("is-collapsed");
       btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      if (inEditModal && storageKey) {
+        const map = loadEditCollapseMap();
+        map[storageKey] = collapsed;
+        saveEditCollapseMap(map);
+      }
     });
   }
 }
