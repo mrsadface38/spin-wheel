@@ -9091,6 +9091,14 @@ async function onLookChange() {
   updateWinnerLabelDisplay();
   persist();
   await refreshWheel();
+  // Multi-spin: push Look (unlock pointer, wait flags, etc.) onto the open tile
+  try {
+    if (multiSpin?.isActive?.() && library?.activeId) {
+      multiSpin.pushLookToTile?.(library.activeId, state.look);
+    }
+  } catch (err) {
+    console.warn("multi-spin push look:", err);
+  }
   // Refresh section cards so slider min/max/step update live
   renderSections();
   scheduleAutoSpin();
@@ -12192,6 +12200,10 @@ async function init() {
   try {
     multiSpin = createMultiSpinController({
       getLibrary: () => library,
+      saveLibrary: (lib) => {
+        if (lib) library = lib;
+        return saveLibrary(library);
+      },
       audio,
       getSound: () => state?.sound || {},
       clampSpinDuration,

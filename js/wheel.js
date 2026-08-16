@@ -1776,11 +1776,11 @@ export class Wheel {
     ) {
       return;
     }
-    // Ignore UI chrome inside stage (result buttons, etc.)
+    // Ignore UI chrome inside stage (result buttons, winner pointer, etc.)
     if (
       e.target.closest &&
       e.target.closest(
-        "button, a, input, select, textarea, #pointer, #result-rigged, .result-actions-bar, .result-center-inner, .result-banner, .btn-toggle-sidebar"
+        "button, a, input, select, textarea, #pointer, .pointer, #result-rigged, .result-actions-bar, .result-center-inner, .result-banner, .btn-toggle-sidebar, .multi-tile-drag, .multi-tile-resize"
       )
     ) {
       return;

@@ -2211,11 +2211,26 @@ body.multi-picker-drag-cursor * {
   border-right: 16px solid transparent;
   border-top: 28px solid var(--accent-2);
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
-  z-index: 7;
+  /* Above stage media; multi tiles need this above the mini wheel hit layer */
+  z-index: 30;
   pointer-events: none;
   transform-origin: center center;
   touch-action: none;
   user-select: none;
+}
+
+/* Larger hit area when unlocked (triangle itself is thin) */
+.pointer.is-unlocked.is-draggable::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -55%);
+  border-radius: 50%;
+  /* invisible hit pad */
+  background: transparent;
 }
 
 .pointer.is-unlocked.is-draggable {

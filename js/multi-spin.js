@@ -1741,6 +1741,203 @@ export function createMultiSpinController(deps) {
     return pct / 100;
   }
 
+  // --- Winner pointer drag on multi tiles (Misc → unlock pointer) ---
+  const MULTI_POINTER_SNAP_DEGS = [0, 90, 180, 270];
+  const MULTI_POINTER_SNAP_WINDOW = 5;
+
+  function normalizeMultiPointerDeg(deg) {
+    const d = Number(deg);
+    if (!Number.isFinite(d)) return 90;
+    return ((d % 360) + 360) % 360;
+  }
+
+  function snapMultiPointerDeg(deg) {
+    let d = normalizeMultiPointerDeg(deg);
+    let best = d;
+    let bestDist = Infinity;
+    for (const s of MULTI_POINTER_SNAP_DEGS) {
+      let dist = Math.abs(d - s);
+      if (dist > 180) dist = 360 - dist;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = s;
+      }
+    }
+    if (bestDist <= MULTI_POINTER_SNAP_WINDOW) return best;
+    return d;
+  }
+
+  function multiPointerDegFromClient(tile, clientX, clientY) {
+    const stage = tile.rootEl?.querySelector(".multi-tile-stage");
+    if (!stage) {
+      return normalizeMultiPointerDeg(tile.state?.look?.pointerAngleDeg ?? 90);
+    }
+    const rect = stage.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const ang = Math.atan2(clientY - cy, clientX - cx);
+    return normalizeMultiPointerDeg((ang * 180) / Math.PI + 90);
+  }
+
+  /** Merge live library look into a tile wheel so unlock/pointer updates apply immediately. */
+  function syncTileLookFromLibrary(tile) {
+    if (!tile) return;
+    try {
+      const slot = librarySlots().find((w) => w.id === tile.slotId);
+      const look = slot?.data?.look;
+      if (!look) return;
+      tile.state = tile.state || {};
+      tile.state.look = { ...(tile.state.look || {}), ...look };
+      if (tile.wheel) {
+        tile.wheel.look = { ...(tile.wheel.look || {}), ...look };
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Host pushes editor Look changes onto the matching multi tile (e.g. unlock pointer). */
+  function pushLookToTile(slotId, look) {
+    if (!active || !slotId || !look) return;
+    const tile = tiles.get(slotId);
+    if (!tile) return;
+    tile.state = tile.state || {};
+    tile.state.look = { ...(tile.state.look || {}), ...look };
+    if (tile.wheel) {
+      tile.wheel.look = { ...(tile.wheel.look || {}), ...look };
+      try {
+        tile.wheel.layoutPointer?.();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /** Write pointer angle into this multi tile + library slot. */
+  function applyMultiPointerAngle(tile, deg, { persistNow = false, snap = true } = {}) {
+    if (!tile) return;
+    let d = normalizeMultiPointerDeg(deg);
+    if (snap) d = snapMultiPointerDeg(d);
+    if (!tile.state) tile.state = {};
+    if (!tile.state.look) tile.state.look = {};
+    tile.state.look.pointerAngleDeg = d;
+    if (tile.wheel?.look) tile.wheel.look.pointerAngleDeg = d;
+    try {
+      tile.wheel?.layoutPointer?.();
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (tile.wheel && !tile.wheel.spinning) {
+        tile.wheel.draw({ spinFrame: false });
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!persistNow) return;
+    try {
+      const lib = deps.getLibrary?.();
+      const slot = lib?.wheels?.find((w) => w.id === tile.slotId);
+      if (slot?.data) {
+        if (!slot.data.look) slot.data.look = {};
+        slot.data.look.pointerAngleDeg = d;
+        if (tile.state.look && "pointerLocked" in tile.state.look) {
+          slot.data.look.pointerLocked = tile.state.look.pointerLocked !== false;
+        }
+      }
+      if (typeof deps.saveLibrary === "function") {
+        deps.saveLibrary(lib);
+      } else {
+        deps.onTileLookChanged?.(tile.slotId, tile.state);
+      }
+    } catch (err) {
+      console.warn("multi-spin save pointer angle:", err);
+    }
+  }
+
+  /**
+   * Drag the yellow winner pointer on a multi tile (when unlocked).
+   */
+  function bindTileWinnerPointerDrag(tile) {
+    const el = tile.rootEl?.querySelector(".pointer");
+    if (!el || el.dataset.multiPointerDragBound === "1") return;
+    el.dataset.multiPointerDragBound = "1";
+
+    const dragState = { active: false, pointerId: null };
+
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button != null && e.button !== 0) return;
+      // Pull unlock flag from library so sidebar toggle applies without re-enter
+      syncTileLookFromLibrary(tile);
+      try {
+        tile.wheel?.layoutPointer?.();
+      } catch {
+        /* ignore */
+      }
+      const locked = tile.wheel?.isPointerLocked
+        ? tile.wheel.isPointerLocked()
+        : tile.state?.look?.pointerLocked !== false;
+      if (locked) return;
+      if (tile.spinning || tile.wheel?.spinning || tile.wheel?._dragging) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragState.active = true;
+      dragState.pointerId = e.pointerId;
+      el.classList.add("is-dragging");
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      applyMultiPointerAngle(
+        tile,
+        multiPointerDegFromClient(tile, e.clientX, e.clientY),
+        { snap: true }
+      );
+    });
+
+    el.addEventListener("pointermove", (e) => {
+      if (!dragState.active) return;
+      if (
+        dragState.pointerId != null &&
+        e.pointerId !== dragState.pointerId
+      ) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      applyMultiPointerAngle(
+        tile,
+        multiPointerDegFromClient(tile, e.clientX, e.clientY),
+        { snap: true }
+      );
+    });
+
+    const endPtr = (e) => {
+      if (!dragState.active) return;
+      if (
+        e &&
+        dragState.pointerId != null &&
+        e.pointerId !== dragState.pointerId
+      ) {
+        return;
+      }
+      dragState.active = false;
+      dragState.pointerId = null;
+      el.classList.remove("is-dragging");
+      applyMultiPointerAngle(
+        tile,
+        Number.isFinite(Number(tile.state?.look?.pointerAngleDeg))
+          ? tile.state.look.pointerAngleDeg
+          : 90,
+        { snap: true, persistNow: true }
+      );
+    };
+
+    el.addEventListener("pointerup", endPtr);
+    el.addEventListener("pointercancel", endPtr);
+  }
+
   /**
    * Mouse/touch drag on the mini stage: aim, grab-to-stop, fling (same as main wheel).
    */
@@ -1748,6 +1945,9 @@ export function createMultiSpinController(deps) {
     const stage = tile.rootEl?.querySelector(".multi-tile-stage");
     if (!stage || !tile.wheel || tile._wheelPointerBound) return;
     tile._wheelPointerBound = true;
+
+    // Winner pointer drag (unlocked) — separate from wheel fling
+    bindTileWinnerPointerDrag(tile);
 
     try {
       tile.wheel.enablePointerDrag(stage, {
@@ -2070,11 +2270,19 @@ export function createMultiSpinController(deps) {
     updateFocusUi();
     // Mouse drag / fling / grab-stop on the mini wheel (after DOM is live)
     enableTileWheelPointer(tile);
+    // Apply live unlock/pointer angle from library
+    syncTileLookFromLibrary(tile);
+    try {
+      wheel.layoutPointer?.();
+    } catch {
+      /* ignore */
+    }
 
     requestAnimationFrame(() => {
       try {
         wheel.resize?.();
         wheel.draw();
+        wheel.layoutPointer?.();
       } catch {
         /* ignore */
       }
@@ -2690,6 +2898,19 @@ export function createMultiSpinController(deps) {
   }
 
   /**
+   * True if `tile` or anyone it is following-wait on still has spin work or a wait.
+   * Used so Following wait doesn't finish until the whole chain settles.
+   */
+  function waitChainStillBusy(tile, depth = 0) {
+    if (!tile || depth > 32) return false;
+    if (!isTileSpinWorkIdle(tile)) return true;
+    if (!tile._waitingForSlotId) return false;
+    const next = tiles.get(tile._waitingForSlotId);
+    if (!next) return false;
+    return waitChainStillBusy(next, depth + 1);
+  }
+
+  /**
    * Wait for another wheel after a land transfer.
    * - Normal Wait: spin/queue idle only (target may still be “waiting” on someone).
    * - Following wait: also wait while target is waiting (and so on). If that would
@@ -2697,6 +2918,7 @@ export function createMultiSpinController(deps) {
    */
   async function waitForOtherWheelSmart(sourceTile, targetTile) {
     if (!sourceTile || !targetTile) return;
+    // Live flags from library (sidebar toggles apply without re-entering multi)
     const follow = tileFollowsWait(sourceTile);
     sourceTile._waitingForSlotId = targetTile.slotId;
     try {
@@ -2706,21 +2928,19 @@ export function createMultiSpinController(deps) {
         return;
       }
 
-      // Following wait: target must be spin-work idle and not waiting (chain resolved)
+      // Following wait: target + its wait chain must be fully settled
       const start = Date.now();
       const timeoutMs = 600000;
-      // Grace so a just-started spin is seen
-      let sawBusy = !isTileSpinWorkIdle(targetTile) || !!targetTile._waitingForSlotId;
-      const graceEnd = start + 200;
+      // Grace so a just-started spin is seen as busy
+      let sawBusy = waitChainStillBusy(targetTile);
+      const graceEnd = start + 280;
       while (!sawBusy && Date.now() < graceEnd) {
         if (sourceTile._forceBreakWait) {
           sourceTile._forceBreakWait = false;
           return;
         }
         await sleepMs(16);
-        if (!isTileSpinWorkIdle(targetTile) || targetTile._waitingForSlotId) {
-          sawBusy = true;
-        }
+        if (waitChainStillBusy(targetTile)) sawBusy = true;
       }
 
       while (Date.now() - start < timeoutMs) {
@@ -2761,6 +2981,8 @@ export function createMultiSpinController(deps) {
               silentLand: true,
               chainDepth: 0,
             });
+            // Wait for that kick spin (and its queue) so the chain can progress
+            await waitUntilTileSpinWorkIdle(kick, Math.min(120000, timeoutMs));
           } else {
             setSummary(
               `Following wait: loop broken — continuing ${sourceTile.name || "wheel"}`
@@ -2770,8 +2992,8 @@ export function createMultiSpinController(deps) {
           return;
         }
 
-        // Done when target has no spin work and is not waiting on anyone
-        if (isTileSpinWorkIdle(targetTile) && !targetTile._waitingForSlotId) {
+        // Done when target and everyone it was waiting on are spin-idle and not waiting
+        if (!waitChainStillBusy(targetTile)) {
           return;
         }
         await sleepMs(40);
@@ -3944,6 +4166,7 @@ export function createMultiSpinController(deps) {
     selectTile,
     setSelectionUiVisible,
     applyLiveState,
+    pushLookToTile,
     getShareSnapshot,
     getBackupMultiState,
     applyShareImport,
