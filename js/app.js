@@ -3781,6 +3781,44 @@ function openGroupModal(group) {
   });
 }
 
+/** Switch member lists to a compact grid when the wheel has more than this many sections. */
+const GROUP_MEMBER_GRID_THRESHOLD = 20;
+
+/** @type {{ id: string|null, from: "in"|"out"|null }} */
+const groupMemberDrag = { id: null, from: null };
+
+/** Can remove section from the group being edited (needs another group or multi-membership). */
+function canRemoveSectionFromEditingGroup(s, editingId) {
+  if (!s) return false;
+  const other = getSectionGroupIds(s).filter((gid) => gid !== editingId);
+  if (other.length > 0) return true;
+  return state.groups.some((g) => g.id !== editingId);
+}
+
+function addSectionToPendingGroup(id) {
+  if (!id) return false;
+  pendingGroupMemberIds.add(id);
+  return true;
+}
+
+function removeSectionFromPendingGroup(id) {
+  if (!id) return false;
+  const section = state.sections.find((s) => s.id === id);
+  const editingId = $("#group-edit-id")?.value || "";
+  if (section) {
+    const other = getSectionGroupIds(section).filter((gid) => gid !== editingId);
+    const hasFallback = state.groups.some((g) => g.id !== editingId);
+    if (!other.length && !hasFallback) {
+      alert(
+        "Create another group first — every section needs at least one group."
+      );
+      return false;
+    }
+  }
+  pendingGroupMemberIds.delete(id);
+  return true;
+}
+
 function renderGroupMembers() {
   const inList = $("#group-members-in");
   const outList = $("#group-members-out");
@@ -3809,62 +3847,159 @@ function renderGroupMembers() {
     state.sections.filter((s) => !pendingGroupMemberIds.has(s.id)).length
   );
 
-  /** Can drop this group if section keeps another group, or a fallback group exists. */
-  const canRemoveSection = (s) => {
-    const other = getSectionGroupIds(s).filter((gid) => gid !== editingId);
-    if (other.length > 0) return true;
-    // Only this group left — need another group to fall back to
-    return state.groups.some((g) => g.id !== editingId);
+  // Compact multi-column grid when the wheel is large
+  const useGrid = (state.sections?.length || 0) > GROUP_MEMBER_GRID_THRESHOLD;
+  inList.classList.toggle("is-section-grid", useGrid);
+  outList.classList.toggle("is-section-grid", useGrid);
+  inList.parentElement
+    ?.closest(".group-members-grid")
+    ?.classList.toggle("is-dense", useGrid);
+
+  const rowHtml = (s, side) => {
+    const okRemove =
+      side === "in" ? canRemoveSectionFromEditingGroup(s, editingId) : true;
+    const draggable = side === "out" || okRemove;
+    const dragTitle = draggable
+      ? "Drag to the other list"
+      : "Create another group first (section needs at least one group)";
+    const otherNames = getSectionGroupIds(s)
+      .filter((gid) => gid && (side === "out" || gid !== editingId))
+      .map((gid) => groupDisplayName(gid))
+      .filter((n) => n && n !== "—");
+    const extra =
+      side === "in" && otherNames.length
+        ? ` <small class="member-extra">also in: ${escapeHtml(otherNames.join(", "))}</small>`
+        : side === "out" && otherNames.length
+          ? ` <small class="member-extra">in: ${escapeHtml(otherNames.join(", "))}</small>`
+          : "";
+    const actionBtn =
+      side === "in"
+        ? `<button type="button" class="btn tiny ghost danger" ${
+            okRemove
+              ? `data-member-act="remove"`
+              : `disabled title="Create another group first (section needs at least one group)"`
+          }>Remove</button>`
+        : `<button type="button" class="btn tiny" data-member-act="add">Add</button>`;
+    return `
+      <div
+        class="group-member-row${draggable ? " is-draggable" : ""}"
+        data-id="${s.id}"
+        data-member-side="${side}"
+        draggable="${draggable ? "true" : "false"}"
+        title="${escapeHtml(dragTitle)}"
+      >
+        <span class="member-drag-grip" aria-hidden="true"></span>
+        <div class="swatch" style="background:${s.color || "#555"}"></div>
+        <span class="name" title="${escapeHtml(s.label)}">${escapeHtml(s.label || "—")}${extra}</span>
+        ${actionBtn}
+      </div>`;
   };
 
   inList.innerHTML = inMembers.length
-    ? inMembers
-        .map((s) => {
-          const ok = canRemoveSection(s);
-          const removeAttrs = ok
-            ? `data-member-act="remove"`
-            : `disabled title="Create another group first (section needs at least one group)"`;
-          // Filter other groups by id (never by name — names can match sections or each other)
-          const otherNames = getSectionGroupIds(s)
-            .filter((gid) => gid && gid !== editingId)
-            .map((gid) => groupDisplayName(gid))
-            .filter((n) => n && n !== "—")
-            .join(", ");
-          const extra = otherNames
-            ? ` <small class="member-extra">also in: ${escapeHtml(otherNames)}</small>`
-            : "";
-          return `
-      <div class="group-member-row" data-id="${s.id}">
-        <div class="swatch" style="background:${s.color}"></div>
-        <span class="name" title="${escapeHtml(s.label)}">${escapeHtml(s.label)}${extra}</span>
-        <button type="button" class="btn tiny ghost danger" ${removeAttrs}>Remove</button>
-      </div>`;
-        })
-        .join("")
+    ? inMembers.map((s) => rowHtml(s, "in")).join("")
     : `<div class="group-members-empty">${
-        q ? "No matches" : "No sections in this group yet"
+        q ? "No matches" : "No sections in this group yet — drag from Other sections"
       }</div>`;
 
   outList.innerHTML = outMembers.length
-    ? outMembers
-        .map((s) => {
-          const names = getSectionGroupIds(s)
-            .map((gid) => groupDisplayName(gid))
-            .filter((n) => n && n !== "—");
-          const extra = names.length
-            ? ` · in: ${escapeHtml(names.join(", "))}`
-            : "";
-          return `
-      <div class="group-member-row" data-id="${s.id}">
-        <div class="swatch" style="background:${s.color}"></div>
-        <span class="name" title="${escapeHtml(s.label)}">${escapeHtml(s.label)}${extra}</span>
-        <button type="button" class="btn tiny" data-member-act="add">Add</button>
-      </div>`;
-        })
-        .join("")
+    ? outMembers.map((s) => rowHtml(s, "out")).join("")
     : `<div class="group-members-empty">${
         q ? "No matches" : "All sections are in this group"
       }</div>`;
+}
+
+/** One-time drag/drop wiring for group member lists. */
+function bindGroupMemberDragDrop() {
+  if (bindGroupMemberDragDrop._ready) return;
+  bindGroupMemberDragDrop._ready = true;
+
+  const clearDragUi = () => {
+    document
+      .querySelectorAll(".group-member-row.is-dragging")
+      .forEach((r) => r.classList.remove("is-dragging"));
+    document
+      .querySelectorAll(".group-members-list.is-drag-over")
+      .forEach((l) => l.classList.remove("is-drag-over"));
+    document.body.classList.remove("group-member-drag-cursor");
+    groupMemberDrag.id = null;
+    groupMemberDrag.from = null;
+  };
+
+  const onListDragOver = (e, listEl) => {
+    if (!groupMemberDrag.id && !e.dataTransfer?.types?.includes("text/plain")) {
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    listEl.classList.add("is-drag-over");
+  };
+
+  const onListDrop = (e, side) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const listEl = e.currentTarget;
+    listEl.classList.remove("is-drag-over");
+    const id =
+      (e.dataTransfer?.getData("text/plain") || groupMemberDrag.id || "").trim();
+    if (!id) {
+      clearDragUi();
+      return;
+    }
+    let changed = false;
+    if (side === "in") {
+      changed = addSectionToPendingGroup(id);
+    } else {
+      changed = removeSectionFromPendingGroup(id);
+    }
+    clearDragUi();
+    if (changed) {
+      renderGroupMembers();
+      scheduleGroupLivePreview();
+    }
+  };
+
+  for (const side of ["in", "out"]) {
+    const listEl =
+      side === "in" ? $("#group-members-in") : $("#group-members-out");
+    if (!listEl) continue;
+
+    listEl.addEventListener("dragstart", (e) => {
+      const row = e.target.closest?.(".group-member-row");
+      if (!row || !listEl.contains(row)) return;
+      if (row.getAttribute("draggable") === "false") {
+        e.preventDefault();
+        return;
+      }
+      const id = row.dataset.id;
+      if (!id) return;
+      groupMemberDrag.id = id;
+      groupMemberDrag.from = side;
+      try {
+        e.dataTransfer.setData("text/plain", id);
+        e.dataTransfer.effectAllowed = "move";
+      } catch {
+        /* ignore */
+      }
+      row.classList.add("is-dragging");
+      document.body.classList.add("group-member-drag-cursor");
+    });
+
+    listEl.addEventListener("dragend", () => {
+      clearDragUi();
+    });
+
+    listEl.addEventListener("dragover", (e) => onListDragOver(e, listEl));
+    listEl.addEventListener("dragenter", (e) => {
+      e.preventDefault();
+      listEl.classList.add("is-drag-over");
+    });
+    listEl.addEventListener("dragleave", (e) => {
+      if (!listEl.contains(e.relatedTarget)) {
+        listEl.classList.remove("is-drag-over");
+      }
+    });
+    listEl.addEventListener("drop", (e) => onListDrop(e, side));
+  }
 }
 
 $("#group-member-search")?.addEventListener("input", (e) => {
@@ -3879,19 +4014,7 @@ $("#group-members-in")?.addEventListener("click", (e) => {
   const row = btn.closest(".group-member-row");
   const id = row?.dataset.id;
   if (!id) return;
-  // Multi-group: removing only drops this group's membership on save.
-  // Block only when this would leave the section with zero groups and no fallback.
-  const section = state.sections.find((s) => s.id === id);
-  const editingId = $("#group-edit-id")?.value || "";
-  if (section) {
-    const other = getSectionGroupIds(section).filter((gid) => gid !== editingId);
-    const hasFallback = state.groups.some((g) => g.id !== editingId);
-    if (!other.length && !hasFallback) {
-      alert("Create another group first — every section needs at least one group.");
-      return;
-    }
-  }
-  pendingGroupMemberIds.delete(id);
+  if (!removeSectionFromPendingGroup(id)) return;
   renderGroupMembers();
   scheduleGroupLivePreview();
 });
@@ -3903,10 +4026,17 @@ $("#group-members-out")?.addEventListener("click", (e) => {
   const row = btn.closest(".group-member-row");
   const id = row?.dataset.id;
   if (!id) return;
-  pendingGroupMemberIds.add(id);
+  addSectionToPendingGroup(id);
   renderGroupMembers();
   scheduleGroupLivePreview();
 });
+
+// Enable drag/drop once DOM is ready
+try {
+  bindGroupMemberDragDrop();
+} catch (err) {
+  console.warn("bindGroupMemberDragDrop:", err);
+}
 
 $("#group-cancel").addEventListener("click", () => {
   groupModalMembersReady = false;

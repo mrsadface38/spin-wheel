@@ -3582,6 +3582,12 @@ dialog.modal:not([open]) {
   margin-bottom: 0.55rem;
 }
 
+.group-members-drag-hint {
+  margin: 0 0 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .group-member-search {
   margin-bottom: 0.65rem;
 }
@@ -3590,6 +3596,10 @@ dialog.modal:not([open]) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.65rem;
+}
+
+.group-members-grid.is-dense .group-members-list {
+  max-height: min(340px, 42vh);
 }
 
 @media (max-width: 520px) {
@@ -3633,24 +3643,78 @@ dialog.modal:not([open]) {
   border: 1px solid var(--border);
   border-radius: 10px;
   min-height: 80px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.group-members-list.is-drag-over {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+
+/* Compact multi-column grid for large wheels (>20 sections) */
+.group-members-list.is-section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.25rem, 1fr));
+  gap: 0.35rem;
+  align-content: start;
+  max-height: min(340px, 42vh);
+}
+
+.group-members-list.is-section-grid .group-members-empty {
+  grid-column: 1 / -1;
 }
 
 .group-member-row {
   display: grid;
-  grid-template-columns: 14px 1fr auto;
-  gap: 0.4rem;
+  grid-template-columns: 12px 14px 1fr auto;
+  gap: 0.35rem;
   align-items: center;
   padding: 0.35rem 0.4rem;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 0.82rem;
+  user-select: none;
+}
+
+.group-member-row.is-draggable {
+  cursor: grab;
+}
+
+.group-member-row.is-draggable:active {
+  cursor: grabbing;
+}
+
+.group-member-row.is-dragging {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.group-member-row .member-drag-grip {
+  width: 10px;
+  height: 14px;
+  opacity: 0.45;
+  background:
+    radial-gradient(circle, currentColor 1px, transparent 1.4px) 0 0 / 4px 5px,
+    radial-gradient(circle, currentColor 1px, transparent 1.4px) 5px 0 / 4px 5px;
+  background-repeat: repeat-y;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.group-member-row:not(.is-draggable) .member-drag-grip {
+  opacity: 0.15;
 }
 
 .group-member-row .swatch {
   width: 14px;
   height: 14px;
   border-radius: 3px;
+  flex-shrink: 0;
 }
 
 .group-member-row .name {
@@ -3674,11 +3738,50 @@ dialog.modal:not([open]) {
   font-weight: 500;
 }
 
+/* Dense grid cells: show swatch + short label, hide grip/button for speed */
+.group-members-list.is-section-grid .group-member-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-height: 3.4rem;
+  padding: 0.35rem 0.2rem;
+  text-align: center;
+}
+
+.group-members-list.is-section-grid .group-member-row .member-drag-grip,
+.group-members-list.is-section-grid .group-member-row .btn {
+  display: none;
+}
+
+.group-members-list.is-section-grid .group-member-row .swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.group-members-list.is-section-grid .group-member-row .name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.group-members-list.is-section-grid .group-member-row .member-extra {
+  display: none;
+}
+
 .group-members-empty {
   color: var(--muted);
   font-size: 0.8rem;
   text-align: center;
   padding: 0.75rem 0.4rem;
+}
+
+body.group-member-drag-cursor,
+body.group-member-drag-cursor * {
+  cursor: grabbing !important;
 }
 
 .modal::backdrop {

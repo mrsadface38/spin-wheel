@@ -1773,6 +1773,9 @@
 
           <div class="group-members-block">
             <h3>Sections in this group</h3>
+            <p class="hint group-members-drag-hint">
+              Drag sections between the lists (or use Add / Remove). With more than 20 sections on the wheel, lists switch to a compact grid for faster moves.
+            </p>
             <label class="search-field group-member-search">
               <span class="search-icon" aria-hidden="true">⌕</span>
               <input type="search" id="group-member-search" placeholder="Filter sections…" autocomplete="off" />
@@ -1780,11 +1783,21 @@
             <div class="group-members-grid">
               <div class="group-members-col">
                 <h4>In this group <span id="group-in-count" class="count-badge">0</span></h4>
-                <div id="group-members-in" class="group-members-list"></div>
+                <div
+                  id="group-members-in"
+                  class="group-members-list"
+                  data-member-side="in"
+                  aria-label="Sections in this group — drop to add"
+                ></div>
               </div>
               <div class="group-members-col">
                 <h4>Other sections <span id="group-out-count" class="count-badge">0</span></h4>
-                <div id="group-members-out" class="group-members-list"></div>
+                <div
+                  id="group-members-out"
+                  class="group-members-list"
+                  data-member-side="out"
+                  aria-label="Other sections — drop to remove from this group"
+                ></div>
               </div>
             </div>
           </div>
