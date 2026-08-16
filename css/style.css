@@ -690,6 +690,8 @@ body.focus-mode .stage-panel {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  /* Keep menus/buttons usable on narrow windows */
+  max-width: 100%;
 }
 
 /* Layout */
@@ -1768,6 +1770,198 @@ body.multi-picker-drag-cursor * {
   }
 }
 
+/* ——— Small screens: top bar + multi-spin + editor stay usable ——— */
+@media (max-width: 960px) {
+  .top-bar {
+    padding: 0.55rem 0.75rem;
+    gap: 0.5rem;
+    /* Allow the bar to shrink; children scroll instead of crushing menus */
+    align-items: flex-start;
+  }
+
+  .wheel-switcher {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    order: 2;
+  }
+
+  .top-actions {
+    flex: 1 1 100%;
+    order: 3;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    overscroll-behavior-x: contain;
+    padding-bottom: 0.15rem;
+    gap: 0.35rem;
+  }
+
+  .top-actions .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .brand {
+    order: 1;
+    flex-shrink: 0;
+  }
+
+  /* Side-by-side becomes a 50/50 split so editor tabs aren’t off-screen */
+  body.multi-spin-mode .layout:not(.sidebar-collapsed) {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(240px, 46vh);
+    gap: 0.55rem;
+    padding: 0.55rem;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  body.multi-spin-mode .stage-panel {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  body.multi-spin-mode .multi-root {
+    height: 100%;
+    min-height: 0;
+    gap: 0.35rem;
+  }
+
+  body.multi-spin-mode .multi-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    overscroll-behavior-x: contain;
+    gap: 0.35rem;
+    padding: 0.2rem 0;
+  }
+
+  body.multi-spin-mode .multi-toolbar .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  body.multi-spin-mode .multi-summary {
+    flex: 0 1 auto;
+    max-width: 40vw;
+  }
+
+  body.multi-spin-mode .editor-panel {
+    /* Override the desktop 480px min so the panel fits the split row */
+    min-height: 0;
+    max-height: none;
+    height: 100%;
+    z-index: 40;
+  }
+
+  body.multi-spin-mode .tabs {
+    /* Bigger tap targets on the bottom editor strip */
+    min-height: 2.75rem;
+  }
+
+  body.multi-spin-mode .tab {
+    min-width: 4.75rem;
+    padding: 0.75rem 0.7rem;
+    font-size: 0.84rem;
+  }
+
+  body.multi-spin-mode .tab-panel {
+    min-height: 0;
+  }
+
+  /* Hide-panels pill sits on the stage — keep it from covering editor tabs */
+  body.multi-spin-mode .btn-toggle-sidebar {
+    top: 0.4rem;
+    right: 0.4rem;
+    z-index: 35;
+  }
+}
+
+@media (max-width: 720px) {
+  body.multi-spin-mode .layout:not(.sidebar-collapsed) {
+    /* Slightly more room for the editor tabs/content on phones */
+    grid-template-rows: minmax(0, 1fr) minmax(260px, 52vh);
+    gap: 0.4rem;
+    padding: 0.4rem;
+  }
+
+  body.multi-spin-mode .multi-body {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  body.multi-spin-mode .multi-picker {
+    max-height: min(22vh, 160px);
+    min-height: 0;
+    padding: 0.45rem 0.55rem;
+  }
+
+  body.multi-spin-mode .multi-picker-list {
+    max-height: 6.5rem;
+  }
+
+  body.multi-spin-mode .multi-picker-layout-controls {
+    /* Keep lock/free/size reachable without eating the board */
+    max-height: 4.5rem;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.55rem;
+    padding-top: 0.35rem;
+  }
+
+  body.multi-spin-mode .multi-picker-grid-size-row {
+    min-width: 10rem;
+    flex: 1 1 8rem;
+  }
+
+  body.multi-spin-mode .multi-body.picker-collapsed .btn-multi-picker-expand {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0.55rem 0.45rem;
+    font-size: 0.78rem;
+  }
+
+  body.multi-spin-mode .btn-toggle-sidebar {
+    /* Corner pill already; keep clear of multi toolbar */
+    top: auto;
+    bottom: 0.45rem;
+    right: 0.45rem;
+  }
+
+  .tab {
+    min-width: 4.5rem;
+    padding: 0.7rem 0.6rem;
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 520px) {
+  body.multi-spin-mode .layout:not(.sidebar-collapsed) {
+    grid-template-rows: minmax(0, 1fr) minmax(240px, 55vh);
+  }
+
+  body.multi-spin-mode .multi-toolbar .btn.small {
+    padding: 0.4rem 0.55rem;
+    font-size: 0.78rem;
+  }
+
+  body.multi-spin-mode .tab {
+    min-width: 4.25rem;
+    padding: 0.65rem 0.55rem;
+  }
+}
+
 .stage canvas {
   position: absolute;
   inset: 0;
@@ -2217,26 +2411,41 @@ body.multi-picker-drag-cursor * {
   overflow: hidden;
   box-shadow: var(--shadow);
   pointer-events: auto;
+  /* Tabs/menus stay above multi-spin tiles that paint outside the board */
+  isolation: isolate;
 }
 
 .tabs {
   display: flex;
+  flex-wrap: nowrap;
   border-bottom: 1px solid var(--border);
   background: var(--panel-2);
   flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+  /* Leave room so last tab isn’t clipped by panel border-radius */
+  padding: 0 0.15rem;
+  gap: 0;
 }
 
 .tab {
-  flex: 1;
+  flex: 1 0 auto;
+  min-width: 4.6rem;
   background: transparent;
   border: none;
   color: var(--muted);
-  padding: 0.85rem 0.5rem;
+  padding: 0.85rem 0.65rem;
   cursor: pointer;
   font-weight: 600;
   font-size: 0.9rem;
   border-bottom: 2px solid transparent;
   transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .tab:hover {

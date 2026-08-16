@@ -3557,6 +3557,19 @@ export function createMultiSpinController(deps) {
     }
     // Keep editor available — do not force-collapse panels
     focusedSlotId = activeLibraryId();
+    // Narrow screens: collapse the wheels list so the board + editor tabs fit.
+    // Session-only (don't persist) so desktop keep their expanded preference.
+    try {
+      if (
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(max-width: 720px)")?.matches &&
+        !pickerCollapsed
+      ) {
+        pickerCollapsed = true;
+      }
+    } catch {
+      /* ignore */
+    }
     applyDragLockUi();
     applyPickerCollapsedUi();
     applyLayoutModeUi();
@@ -3578,6 +3591,8 @@ export function createMultiSpinController(deps) {
           }
           updateBoardSize();
         }
+        // Second frame: mobile split layout settles after CSS grid rows apply
+        requestAnimationFrame(() => scheduleBoardReflow());
       });
       // Select active library wheel if on board
       const aid = activeLibraryId();
