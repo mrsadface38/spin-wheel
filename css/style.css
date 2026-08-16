@@ -962,63 +962,101 @@ body.multi-spin-mode #stage {
   font-weight: 700;
 }
 
-.multi-picker-collapse-btn {
-  flex-shrink: 0;
-  min-width: 1.75rem;
-  padding: 0.2rem 0.4rem;
-  font-size: 1.1rem;
-  line-height: 1;
-  font-weight: 700;
-}
-
 /* Collapsed: hide list, show slim expand tab on the left */
 .multi-body.picker-collapsed .multi-picker {
   display: none;
 }
 
-.btn-multi-picker-expand {
-  display: none;
-  flex: 0 0 auto;
+/*
+ * Wheels list edge tabs — same look as Hide panels (.btn-toggle-sidebar),
+ * but mirrored for the left side (collapse points left, expand opens right).
+ */
+.btn-multi-picker-edge {
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  align-self: stretch;
-  min-width: 28px;
-  padding: 0.65rem 0.3rem;
+  gap: 0.4rem;
+  min-width: 40px;
+  min-height: 8.5rem;
+  padding: 1rem 0.5rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: rgba(18, 22, 38, 0.92);
+  background: rgba(20, 24, 41, 0.92);
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 650;
-  box-shadow: var(--shadow);
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  line-height: 1.15;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(6px);
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
-.btn-multi-picker-expand:hover {
+.btn-multi-picker-edge:hover {
+  background: rgba(30, 36, 60, 0.98);
   border-color: var(--accent);
   color: var(--accent-2);
-  background: rgba(30, 36, 60, 0.98);
 }
 
-.btn-multi-picker-expand .multi-picker-expand-icon {
-  font-size: 1.15rem;
+.btn-multi-picker-edge:active {
+  background: rgba(40, 48, 78, 0.98);
+}
+
+.btn-multi-picker-edge .multi-picker-edge-icon {
+  font-size: 1.35rem;
   line-height: 1;
   font-weight: 700;
+  pointer-events: none;
 }
 
-.btn-multi-picker-expand .multi-picker-expand-label {
+.btn-multi-picker-edge .multi-picker-edge-label {
   writing-mode: vertical-rl;
   text-orientation: mixed;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  pointer-events: none;
+}
+
+/*
+ * Collapse (list open): sits between picker and board, flat against the list,
+ * rounded toward the board — mirror of Hide panels (which is flat on the right).
+ * Icon ‹ points left = collapse.
+ */
+.btn-multi-picker-collapse {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: -1px; /* tuck against picker border */
+  border-left: none;
+  border-radius: 0 12px 12px 0;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.35);
+  z-index: 4;
+}
+
+/* Expand (list collapsed): same chrome on the left of the board; › opens right */
+.btn-multi-picker-expand {
+  display: none;
+  flex: 0 0 auto;
+  align-self: center;
+  border-left: none;
+  border-radius: 0 12px 12px 0;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.35);
+  z-index: 4;
+}
+
+.multi-body.picker-collapsed .btn-multi-picker-collapse {
+  display: none !important;
 }
 
 .multi-body.picker-collapsed .btn-multi-picker-expand {
   display: flex;
+  border-color: var(--accent-2);
+  color: var(--accent-2);
 }
 
 .multi-body.picker-collapsed .btn-multi-picker-expand[hidden] {
@@ -1925,11 +1963,35 @@ body.multi-picker-drag-cursor * {
     flex: 1 1 8rem;
   }
 
+  /* Edge tabs become corner-style pills when the multi body stacks vertically */
+  body.multi-spin-mode .btn-multi-picker-edge {
+    flex-direction: row;
+    align-self: stretch;
+    min-width: 3rem;
+    min-height: 2.85rem;
+    height: auto;
+    padding: 0.55rem 0.85rem;
+    gap: 0.4rem;
+    margin-left: 0;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    font-size: 0.82rem;
+  }
+
+  body.multi-spin-mode .btn-multi-picker-edge .multi-picker-edge-label {
+    writing-mode: horizontal-tb;
+    letter-spacing: 0.03em;
+  }
+
+  body.multi-spin-mode .btn-multi-picker-edge .multi-picker-edge-icon {
+    font-size: 1.15rem;
+  }
+
   body.multi-spin-mode .multi-body.picker-collapsed .btn-multi-picker-expand {
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    padding: 0.55rem 0.45rem;
-    font-size: 0.78rem;
+    border-color: var(--accent-2);
+    color: var(--accent-2);
+    background: color-mix(in srgb, var(--accent) 18%, rgba(20, 24, 41, 0.95));
   }
 
   body.multi-spin-mode .btn-toggle-sidebar {

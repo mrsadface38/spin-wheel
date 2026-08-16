@@ -261,13 +261,12 @@ export function createMultiSpinController(deps) {
       expandBtn.setAttribute("aria-expanded", pickerCollapsed ? "false" : "true");
     }
     if (collapseBtn) {
+      collapseBtn.hidden = !!pickerCollapsed;
       collapseBtn.setAttribute(
         "aria-expanded",
         pickerCollapsed ? "false" : "true"
       );
-      collapseBtn.title = pickerCollapsed
-        ? "Show wheel list"
-        : "Collapse wheel list to the left";
+      collapseBtn.title = "Collapse wheel list";
     }
   }
 
