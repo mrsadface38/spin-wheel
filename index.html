@@ -1284,32 +1284,6 @@
           </div>
 
           <div class="form-block compact">
-            <h3>Background music on win (this section)</h3>
-            <label class="field">
-              <span>Music</span>
-              <div class="slider-with-value">
-                <select id="section-win-bgm" title="Change background music when this section wins">
-                  <option value="inherit">Don't change</option>
-                  <option value="custom">Custom file…</option>
-                  <option value="mute">Mute music</option>
-                </select>
-                <button type="button" id="section-win-bgm-preview" class="btn small ghost">Preview</button>
-              </div>
-              <small>When this section wins, switch (or mute) the background music. Wheel music returns on the next spin.</small>
-            </label>
-            <div class="audio-pick" id="section-win-bgm-custom-row" hidden>
-              <span id="section-win-bgm-name" class="audio-name">No custom file</span>
-              <div class="image-pick-actions">
-                <label class="btn small">
-                  Choose file
-                  <input type="file" id="section-win-bgm-input" accept="audio/*" hidden />
-                </label>
-                <button type="button" id="section-win-bgm-clear" class="btn small ghost">Clear file</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="form-block compact">
             <h3>After-win effect (this section)</h3>
             <label class="field">
               <span>Effect</span>
@@ -1331,6 +1305,28 @@
               </div>
             </div>
             <small>Custom media: WebM (alpha/transparency), WebP, PNG, or MP4. Plays full-screen for a few seconds.</small>
+            <label class="field">
+              <span>Background music on win</span>
+              <div class="slider-with-value">
+                <select id="section-win-bgm" title="Change background music when this section wins">
+                  <option value="inherit">Don't change</option>
+                  <option value="custom">Custom file…</option>
+                  <option value="mute">Mute music</option>
+                </select>
+                <button type="button" id="section-win-bgm-preview" class="btn small ghost">Preview</button>
+              </div>
+              <small>When this section wins, switch (or mute) the background music. Wheel music returns on the next spin.</small>
+            </label>
+            <div class="audio-pick" id="section-win-bgm-custom-row" hidden>
+              <span id="section-win-bgm-name" class="audio-name">No custom file</span>
+              <div class="image-pick-actions">
+                <label class="btn small">
+                  Choose file
+                  <input type="file" id="section-win-bgm-input" accept="audio/*" hidden />
+                </label>
+                <button type="button" id="section-win-bgm-clear" class="btn small ghost">Clear file</button>
+              </div>
+            </div>
           </div>
 
           <div class="form-block compact">
