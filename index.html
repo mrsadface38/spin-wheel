@@ -1830,22 +1830,14 @@
     <form method="dialog" id="bulk-form">
       <h2>Bulk add sections</h2>
       <p class="hint">
-        One section per line (default). Optional fields:
-        <code>Label | weight | color</code>
+        One section per line, or a single line separated by commas.
+        Optional fields: <code>Label | weight | color</code>
       </p>
       <textarea
         id="bulk-text"
         rows="10"
         placeholder="Alice&#10;Bob&#10;Charlie&#10;Prize A | 2 | #e74c3c"
       ></textarea>
-      <label class="toggle-row" id="bulk-comma-row">
-        <input type="checkbox" id="bulk-use-commas" />
-        <span>Split by commas instead of new lines (optional)</span>
-      </label>
-      <p class="hint" id="bulk-comma-hint">
-        When checked, items are separated by commas — e.g.
-        <code>Alice, Bob, Prize A | 2 | #e74c3c</code>. Leave off to keep one section per line.
-      </p>
       <label class="field">
         <span>Assign to group</span>
         <select id="bulk-group"></select>

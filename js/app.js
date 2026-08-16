@@ -2209,6 +2209,7 @@ function processSectionReturns(opts = {}) {
   if (count > 0) {
     if (doPersist) persist();
     renderSections();
+    renderGroups();
     if (doRefresh) {
       void refreshWheel().catch((err) =>
         console.warn("refresh after section return:", err)
@@ -3523,6 +3524,7 @@ async function setAllSectionsEnabled(enabled) {
   }
   persist();
   renderSections();
+  renderGroups();
   scheduleNextSectionReturnCheck();
   await refreshWheel();
 }
@@ -6272,26 +6274,33 @@ function parseBulkEntryFields(raw) {
   };
 }
 
-/** Split bulk text into entry strings (new lines, or commas when opted in). */
-function splitBulkEntries(text, useCommas) {
+/**
+ * Split bulk text into entry strings.
+ * Multiple non-empty lines → one entry per line (commas stay inside the label).
+ * Single non-empty line with commas → split on commas.
+ * Otherwise → one entry (the whole line).
+ */
+function splitBulkEntries(text) {
   const raw = String(text || "");
-  if (useCommas) {
-    // Comma-separated items; allow newlines inside the paste as plain space between commas
-    return raw
+  const lineParts = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lineParts.length > 1) return lineParts;
+  if (lineParts.length === 0) return [];
+  const single = lineParts[0];
+  if (single.includes(",")) {
+    return single
       .split(",")
       .map((s) => s.replace(/\s+/g, " ").trim())
       .filter(Boolean);
   }
-  return raw
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
+  return [single];
 }
 
 $("#btn-add-many").addEventListener("click", () => {
   fillGroupSelects();
   $("#bulk-text").value = "";
-  if ($("#bulk-use-commas")) $("#bulk-use-commas").checked = false;
   bulkModal.showModal();
 });
 
@@ -6299,8 +6308,7 @@ $("#bulk-cancel").addEventListener("click", () => bulkModal.close());
 
 $("#bulk-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const useCommas = $("#bulk-use-commas")?.checked === true;
-  const lines = splitBulkEntries($("#bulk-text")?.value || "", useCommas);
+  const lines = splitBulkEntries($("#bulk-text")?.value || "");
   if (!lines.length) return;
   // "" = None (no group). Do not fall back to first group.
   const bulkGroupRaw = $("#bulk-group")?.value ?? "";
@@ -6868,6 +6876,7 @@ async function applyPendingEliminate() {
     if (lastWinnerId === id) lastWinnerId = null;
     persist();
     renderSections();
+    renderGroups();
     scheduleNextSectionReturnCheck();
     await refreshWheel();
     return;
@@ -6882,6 +6891,7 @@ async function applyPendingEliminate() {
   persist();
   updateSectionSortUI();
   renderSections();
+  renderGroups();
   await refreshWheel();
 }
 
@@ -8916,6 +8926,7 @@ async function hideWinnerPart() {
   setResultRiggedVisible(isRigItActive() || isReverseRigActive());
   persist();
   renderSections();
+  renderGroups();
   scheduleNextSectionReturnCheck();
   await refreshWheel();
 }
@@ -8941,6 +8952,7 @@ async function removeWinnerPart() {
   persist();
   updateSectionSortUI();
   renderSections();
+  renderGroups();
   await refreshWheel();
 }
 
