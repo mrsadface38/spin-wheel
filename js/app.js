@@ -7309,30 +7309,6 @@ function playWinEffect(section = null, opts = {}) {
   }
 }
 
-/** Entrance styles for custom after-win media (picked at random). */
-const WIN_FX_ENTERS = [
-  "win-fx-enter-pop",
-  "win-fx-enter-drop",
-  "win-fx-enter-spin",
-  "win-fx-enter-slide",
-  "win-fx-enter-flip",
-  "win-fx-enter-zoomblur",
-];
-/** Hold / idle motion while media is on screen. */
-const WIN_FX_HOLDS = [
-  "win-fx-hold-float",
-  "win-fx-hold-pulse",
-  "win-fx-hold-sway",
-  "win-fx-hold-kenburns",
-];
-/** Exit styles. */
-const WIN_FX_EXITS = [
-  "win-fx-exit-fade",
-  "win-fx-exit-up",
-  "win-fx-exit-spin",
-  "win-fx-exit-shrink",
-];
-
 /**
  * Formats good for transparent after-win overlays.
  * WebM alpha, WebP, PNG; MP4 also allowed (opaque). GIFs not supported.
@@ -7408,7 +7384,7 @@ async function loadWinEffectFile(file) {
 }
 
 /**
- * Custom media with random enter/hold/exit.
+ * Custom after-win media: full-bleed background (cover), no confetti-style motion.
  * Supports transparent WebM, WebP, PNG, and MP4.
  * @param {string} dataUrl
  * @param {{ fileName?: string, container?: HTMLElement|null }} [opts]
@@ -7430,24 +7406,17 @@ function playCustomWinMedia(dataUrl, opts = {}) {
 
     const layer = document.createElement("div");
     if (local) {
-      layer.className = "win-effect-media-layer win-effect-media-layer--local";
+      layer.className =
+        "win-effect-media-layer win-effect-media-layer--local win-fx-fullscreen";
     } else {
       layer.id = "win-effect-media-layer";
-      layer.className = "win-effect-media-layer";
+      layer.className = "win-effect-media-layer win-fx-fullscreen";
     }
     layer.setAttribute("aria-hidden", "true");
 
     const fileName = opts.fileName || "";
     const transparent = winEffectLikelyTransparent(dataUrl, fileName);
     if (transparent) layer.classList.add("win-fx-transparent");
-
-    const enter =
-      WIN_FX_ENTERS[Math.floor(Math.random() * WIN_FX_ENTERS.length)];
-    const hold =
-      WIN_FX_HOLDS[Math.floor(Math.random() * WIN_FX_HOLDS.length)];
-    const exit =
-      WIN_FX_EXITS[Math.floor(Math.random() * WIN_FX_EXITS.length)];
-    layer.classList.add(enter, hold);
 
     const useVideo = isWinEffectVideoMime(dataUrl, fileName);
     /** @type {HTMLImageElement|HTMLVideoElement} */
@@ -7479,11 +7448,10 @@ function playCustomWinMedia(dataUrl, opts = {}) {
     const holdMs = local
       ? 2000 + Math.floor(Math.random() * 700)
       : 2800 + Math.floor(Math.random() * 900);
-    const exitMs = 520;
+    const exitMs = 450;
     const remove = () => {
       try {
-        layer.classList.remove(enter, hold);
-        layer.classList.add(exit);
+        layer.classList.add("win-fx-exit-fade");
         setTimeout(() => {
           try {
             layer.remove();
