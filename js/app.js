@@ -31,6 +31,10 @@ import {
   normalizeTextFont,
   normalizeLandActionFields,
   getEffectiveLandAction,
+  normalizeWinEffect,
+  BUILTIN_WIN_EFFECTS,
+  WIN_EFFECT_IDS,
+  isBuiltinWinEffectMedia,
 } from "./state.js";
 import {
   loadLibrary,
@@ -3642,7 +3646,7 @@ function readGroupProfileFromForm() {
     landSfxName: pendingGroupSfxName,
     winEffect: (() => {
       const v = $("#group-win-effect")?.value;
-      if (v === "none" || v === "confetti" || v === "custom") return v;
+      if (WIN_EFFECT_IDS.includes(v)) return v;
       return null;
     })(),
     winEffectData: pendingGroupWinEffectData,
@@ -3748,11 +3752,7 @@ function fillGroupProfileForm(group) {
   pendingGroupWinEffectName = g.winEffectName || null;
   if ($("#group-win-effect")) {
     $("#group-win-effect").value =
-      g.winEffect === "none" ||
-      g.winEffect === "confetti" ||
-      g.winEffect === "custom"
-        ? g.winEffect
-        : "look";
+      WIN_EFFECT_IDS.includes(g.winEffect) ? g.winEffect : "look";
   }
   updateGroupWinEffectCustomUI();
   if ($("#group-image-mode")) {
@@ -5467,12 +5467,11 @@ function openSectionModal(section) {
     pendingSectionWinEffectName = section?.winEffectName ?? null;
     if ($("#section-win-effect")) {
       const we = section?.winEffect;
-      $("#section-win-effect").value =
-        we === "none" || we === "confetti" || we === "custom"
-          ? we
-          : pendingSectionWinEffectData
-            ? "custom"
-            : "confetti";
+      $("#section-win-effect").value = WIN_EFFECT_IDS.includes(we)
+        ? we
+        : pendingSectionWinEffectData
+          ? "custom"
+          : "confetti";
     }
   }
   updateSectionSfxPresetUI();
@@ -6112,9 +6111,7 @@ $("#section-form").addEventListener("submit", async (e) => {
       : existing?.landSfxName ?? null,
     landSfxVolume: getSectionSfxVolumeFromForm(),
     winEffect: customWinEffect
-      ? ($("#section-win-effect")?.value === "none" ||
-        $("#section-win-effect")?.value === "confetti" ||
-        $("#section-win-effect")?.value === "custom"
+      ? (WIN_EFFECT_IDS.includes($("#section-win-effect")?.value)
           ? $("#section-win-effect").value
           : "confetti")
       : existing?.winEffect ?? null,
@@ -6423,8 +6420,7 @@ function bindLook() {
   }
   if ($("#win-effect")) {
     const we = state.look.winEffect;
-    $("#win-effect").value =
-      we === "none" || we === "custom" ? we : "confetti";
+    $("#win-effect").value = WIN_EFFECT_IDS.includes(we) ? we : "confetti";
   }
   updateLookWinEffectCustomUI();
   if ($("#chk-keyboard-spin")) {
@@ -7300,6 +7296,15 @@ function playWinEffect(section = null, opts = {}) {
     wheelState
   );
   if (effect === "none") return;
+  // Bundled presets (e.g. Fireworks.webm) — full-bleed custom media, no confetti motion
+  if (isBuiltinWinEffectMedia(effect)) {
+    const builtin = BUILTIN_WIN_EFFECTS[effect];
+    playCustomWinMedia(builtin.url, {
+      fileName: builtin.fileName || "",
+      container,
+    });
+    return;
+  }
   if (effect === "custom" && data) {
     playCustomWinMedia(data, { fileName: name || "", container });
     return;
@@ -8349,8 +8354,7 @@ function updateSectionWinEffectUI() {
           : sectionEditCustom.winEffect
             ? "confetti"
             : "inherit";
-      sel.value =
-        we === "custom" || we === "confetti" || we === "none" ? we : "confetti";
+      sel.value = WIN_EFFECT_IDS.includes(we) ? we : "confetti";
     }
   } else {
     sel.value = "inherit";
@@ -8991,8 +8995,7 @@ async function onLookChange() {
   }
   if ($("#win-effect")) {
     const v = $("#win-effect").value;
-    if (v === "none" || v === "custom") state.look.winEffect = v;
-    else state.look.winEffect = "confetti";
+    state.look.winEffect = normalizeWinEffect(v, "confetti");
     if (state.look.winEffect === "custom" && !state.look.winEffectData) {
       state.look.winEffect = "confetti";
     }
@@ -9210,7 +9213,10 @@ $("#look-win-effect-preview")?.addEventListener("click", () => {
   const we = state.look?.winEffect || "confetti";
   if (we === "none") return;
   if (we === "confetti") fireConfetti();
-  else if (we === "custom" && state.look?.winEffectData) {
+  else if (isBuiltinWinEffectMedia(we)) {
+    const builtin = BUILTIN_WIN_EFFECTS[we];
+    playCustomWinMedia(builtin.url, { fileName: builtin.fileName || "" });
+  } else if (we === "custom" && state.look?.winEffectData) {
     playCustomWinMedia(state.look.winEffectData, {
       fileName: state.look.winEffectName || "",
     });

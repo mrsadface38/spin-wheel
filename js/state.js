@@ -226,10 +226,31 @@ export const LAND_ACTION_KEYS = [
 
 /** @typedef {{ color?: boolean, textColor?: boolean, textStyle?: boolean, textFont?: boolean, winnerTextColor?: boolean, image?: boolean, sfx?: boolean, winEffect?: boolean, landAction?: boolean }} ProfileParts */
 
+/**
+ * Built-in after-win media (bundled assets — not stored in localStorage).
+ * @type {Record<string, { id: string, label: string, url: string, fileName: string }>}
+ */
+export const BUILTIN_WIN_EFFECTS = {
+  fireworks: {
+    id: "fireworks",
+    label: "Fireworks",
+    url: "assets/effects/Fireworks.webm",
+    fileName: "Fireworks.webm",
+  },
+};
+
+/** All selectable after-win effect ids (Look / section / group). */
+export const WIN_EFFECT_IDS = ["none", "confetti", "fireworks", "custom"];
+
 /** Normalize after-win effect id. */
 export function normalizeWinEffect(v, fallback = "confetti") {
-  if (v === "none" || v === "confetti" || v === "custom") return v;
+  if (WIN_EFFECT_IDS.includes(v)) return v;
   return fallback;
+}
+
+/** True when effect is a bundled media preset (not user custom file). */
+export function isBuiltinWinEffectMedia(v) {
+  return !!(v && BUILTIN_WIN_EFFECTS[v]);
 }
 
 export function uid(prefix = "id") {
@@ -406,14 +427,12 @@ export function normalizeProfileFields(src = {}) {
     imageRotation: clampImageRotation(src.imageRotation),
     landSfxData: src.landSfxData || null,
     landSfxName: src.landSfxName || null,
-    winEffect:
-      src.winEffect === "none" ||
-      src.winEffect === "confetti" ||
-      src.winEffect === "custom"
-        ? src.winEffect
-        : src.winEffectData
-          ? "custom"
-          : null,
+    winEffect: (() => {
+      const we = normalizeWinEffect(src.winEffect, null);
+      if (we) return we;
+      if (src.winEffectData) return "custom";
+      return null;
+    })(),
     winEffectData: src.winEffectData || null,
     winEffectName: src.winEffectName || null,
   };
@@ -426,9 +445,7 @@ export function normalizeGroup(g = {}) {
   // Group win effect: null = inherit Look for members (no group contribution)
   let winEffect = null;
   if (
-    g.winEffect === "none" ||
-    g.winEffect === "confetti" ||
-    g.winEffect === "custom"
+    WIN_EFFECT_IDS.includes(g.winEffect)
   ) {
     winEffect = g.winEffect;
   } else if (g.winEffectData) {
@@ -735,8 +752,9 @@ export function defaultState() {
        */
       eliminateAfterWin: "off",
       /**
-       * Global default after-win effect: "none" | "confetti" | "custom".
-       * Sections/groups can override. Custom uses winEffectData (image/GIF/video).
+       * Global default after-win effect: "none" | "confetti" | "fireworks" | "custom".
+       * Sections/groups can override. Custom uses winEffectData (image/video).
+       * Built-ins like fireworks use bundled assets (see BUILTIN_WIN_EFFECTS).
        */
       winEffect: "confetti",
       winEffectData: null,
@@ -983,7 +1001,7 @@ function migrate(data) {
   }
   // After-win effect dropdown (legacy confettiOnWin boolean → winEffect)
   {
-    const allowed = new Set(["none", "confetti", "custom"]);
+    const allowed = new Set(WIN_EFFECT_IDS);
     const hadWinEffect =
       data.look &&
       Object.prototype.hasOwnProperty.call(data.look, "winEffect");
@@ -1585,9 +1603,7 @@ function normalizeSection(s, groups, groupIdsSet) {
 
   let winEffect = null;
   if (
-    s.winEffect === "none" ||
-    s.winEffect === "confetti" ||
-    s.winEffect === "custom"
+    WIN_EFFECT_IDS.includes(s.winEffect)
   ) {
     winEffect = s.winEffect;
   } else if (s.winEffectData) {
