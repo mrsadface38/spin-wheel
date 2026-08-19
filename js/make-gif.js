@@ -234,7 +234,7 @@ export function downloadBinary(filename, data) {
  * @returns {Promise<ImageData[]>}
  */
 export async function recordWhileBusy(opts) {
-  const fps = Math.min(24, Math.max(6, Number(opts.fps) || 12));
+  const fps = Math.min(30, Math.max(8, Number(opts.fps) || 16));
   const delayMs = Math.round(1000 / fps);
   const maxMs = Math.max(2000, Number(opts.maxMs) || 20000);
   const holdMs = Math.max(0, Number(opts.holdMs) || 500);
