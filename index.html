@@ -232,6 +232,7 @@
             <button type="button" id="btn-add-section" class="btn small">+ Add section</button>
             <button type="button" id="btn-add-many" class="btn small ghost">+ Bulk add</button>
             <button type="button" id="btn-equalize-weights" class="btn small ghost" title="Set every section weight to 1">Equalize weights</button>
+            <button type="button" id="btn-bulk-view" class="btn small ghost" title="Show every section name in a compact list">Bulk view</button>
             <button type="button" id="btn-enable-all-sections" class="btn small ghost" title="Enable every section">Enable all</button>
             <button type="button" id="btn-disable-all-sections" class="btn small ghost" title="Disable every section">Disable all</button>
             <span class="sections-count-pill" id="sections-count" title="Total sections">0 sections</span>
@@ -1833,6 +1834,35 @@
       <div class="modal-actions">
         <button type="button" id="group-cancel" class="btn ghost">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Bulk view: compact list of all section names -->
+  <dialog id="bulk-view-modal" class="modal modal-bulk-view">
+    <form method="dialog" id="bulk-view-form">
+      <h2>All sections</h2>
+      <p class="hint">
+        Compact name list — click a name to edit that section.
+        <span id="bulk-view-count" class="bulk-view-count"></span>
+      </p>
+      <label class="search-field bulk-view-search">
+        <span class="search-icon" aria-hidden="true">⌕</span>
+        <input
+          type="search"
+          id="bulk-view-search"
+          placeholder="Filter names…"
+          autocomplete="off"
+        />
+      </label>
+      <div
+        id="bulk-view-list"
+        class="bulk-view-list"
+        role="list"
+        aria-label="Section names"
+      ></div>
+      <div class="modal-actions">
+        <button type="submit" class="btn primary">Close</button>
       </div>
     </form>
   </dialog>

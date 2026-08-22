@@ -2645,6 +2645,97 @@ body.multi-picker-drag-cursor * {
   white-space: nowrap;
 }
 
+/* Bulk view — compact section name list */
+.modal-bulk-view {
+  width: min(420px, 94vw);
+}
+
+.bulk-view-count {
+  color: var(--accent-2, #f0d78c);
+  font-weight: 650;
+}
+
+.bulk-view-search {
+  margin: 0 0 0.65rem;
+  width: 100%;
+}
+
+.bulk-view-list {
+  max-height: min(55vh, 420px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.25rem;
+  margin: 0 0 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  -webkit-overflow-scrolling: touch;
+}
+
+.bulk-view-row {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.bulk-view-row:hover,
+.bulk-view-row:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  outline: none;
+}
+
+.bulk-view-row.is-off {
+  opacity: 0.55;
+}
+
+.bulk-view-num {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.bulk-view-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-view-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.bulk-view-empty {
+  padding: 1.25rem 0.75rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
 .hint {
   color: var(--muted);
   font-size: 0.88rem;

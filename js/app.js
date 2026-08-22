@@ -3566,6 +3566,114 @@ $("#btn-equalize-weights")?.addEventListener("click", async () => {
   await refreshWheel();
 });
 
+// --- Bulk view: compact scrollable list of all section names ---
+const bulkViewModal = $("#bulk-view-modal");
+let bulkViewSearchQuery = "";
+
+function getBulkViewSections() {
+  // Same order as the Sections list (current sort / your order)
+  const list = Array.isArray(state.sections) ? state.sections.slice() : [];
+  const q = bulkViewSearchQuery.trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((s) =>
+    String(s.label || "")
+      .toLowerCase()
+      .includes(q)
+  );
+}
+
+function renderBulkViewList() {
+  const listEl = $("#bulk-view-list");
+  const countEl = $("#bulk-view-count");
+  if (!listEl) return;
+  const all = Array.isArray(state.sections) ? state.sections : [];
+  const shown = getBulkViewSections();
+  if (countEl) {
+    countEl.textContent =
+      shown.length === all.length
+        ? `(${all.length})`
+        : `(${shown.length} of ${all.length})`;
+  }
+  if (!all.length) {
+    listEl.innerHTML = `<div class="bulk-view-empty">No sections yet.</div>`;
+    return;
+  }
+  if (!shown.length) {
+    listEl.innerHTML = `<div class="bulk-view-empty">No names match your filter.</div>`;
+    return;
+  }
+  // Index by position in full list so numbers stay stable while filtering
+  const indexById = new Map(all.map((s, i) => [s.id, i + 1]));
+  listEl.innerHTML = shown
+    .map((s) => {
+      const n = indexById.get(s.id) || "—";
+      const off = s.enabled === false;
+      const onWheel = isSectionActiveOnWheel(state, s);
+      let badge = "";
+      if (off) badge = "off";
+      else if (!onWheel) badge = "hidden";
+      return `<button type="button" class="bulk-view-row${
+        off ? " is-off" : ""
+      }" role="listitem" data-id="${escapeHtml(s.id)}" title="Edit ${escapeHtml(
+        s.label || "Untitled"
+      )}">
+        <span class="bulk-view-num">${n}</span>
+        <span class="bulk-view-name">${escapeHtml(s.label || "Untitled")}</span>
+        ${
+          badge
+            ? `<span class="bulk-view-badge">${badge}</span>`
+            : `<span class="bulk-view-badge" aria-hidden="true"></span>`
+        }
+      </button>`;
+    })
+    .join("");
+}
+
+function openBulkViewModal() {
+  bulkViewSearchQuery = "";
+  const searchEl = $("#bulk-view-search");
+  if (searchEl) searchEl.value = "";
+  renderBulkViewList();
+  bulkViewModal?.showModal();
+  requestAnimationFrame(() => {
+    searchEl?.focus();
+  });
+}
+
+$("#btn-bulk-view")?.addEventListener("click", () => {
+  openBulkViewModal();
+});
+
+$("#bulk-view-search")?.addEventListener("input", (e) => {
+  bulkViewSearchQuery = e.target?.value || "";
+  renderBulkViewList();
+});
+
+$("#bulk-view-list")?.addEventListener("click", (e) => {
+  const row = e.target.closest?.(".bulk-view-row");
+  if (!row) return;
+  const id = row.dataset.id;
+  const section = state.sections.find((s) => s.id === id);
+  if (!section) return;
+  // Close list then open editor
+  try {
+    bulkViewModal?.close();
+  } catch {
+    /* ignore */
+  }
+  openSectionModal(section);
+});
+
+$("#bulk-view-form")?.addEventListener("submit", (e) => {
+  // Close button — dialog method=dialog already closes
+  e.preventDefault();
+  try {
+    bulkViewModal?.close();
+  } catch {
+    /* ignore */
+  }
+});
+
 $("#btn-add-group").addEventListener("click", () => {
   openGroupModal(null);
 });
